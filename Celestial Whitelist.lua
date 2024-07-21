@@ -7,7 +7,9 @@ local hwid = game:GetService("RbxAnalyticsService"):GetClientId()
 
 -- Configuration
 
-local log_executions = false
+AuthModule.log_executions = false
+AuthModule.log_breaches = false
+AuthModule.notify_execution = true
 
 -- Whitelist
 
@@ -24,9 +26,11 @@ if WhitelistedUsers[hwid] then
 
     AuthModule.authorized = true
 
-    utils.success("User " .. AuthModule.Username .. " authenticated!")
+    if AuthModule.notify_execution then
+        utils.success("User " .. AuthModule.Username .. " authenticated!")
+    end
 
-    if log_executions then
+    if AuthModule.log_executions then
         loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/main/Webhooks/Execution.lua"))()
     end
 else
@@ -34,7 +38,9 @@ else
     
     player:Kick("This session has been invalidated due to the stored credentials not being authorized.")
 
-    loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/main/Webhooks/Breach.lua"))()
+    if AuthModule.log_breaches then
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/main/Webhooks/Breach.lua"))()
+    end
 end
 
 return AuthModule
