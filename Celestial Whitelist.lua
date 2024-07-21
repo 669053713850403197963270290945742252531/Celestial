@@ -28,7 +28,7 @@ if WhitelistedUsers[hwid] then
 
     if AuthModule.notify_execution then
         --utils.success("User " .. AuthModule.Username .. " authenticated!")
-        utils.createRbxNotif("Celestial", "User " .. whitelist.Username .. " authenticated!", 18568429771, 3)
+        utils.createRbxNotif("Celestial", "User " .. AuthModule.Username .. " authenticated!", 18568429771, 3)
     end
 
     if AuthModule.log_executions then
