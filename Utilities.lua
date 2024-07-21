@@ -16,6 +16,7 @@ local teleportservice = game:GetService("TeleportService")
 local startergui = game:GetService("StarterGui")
 local marketplaceservice = game:GetService("MarketplaceService")
 
+local console = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/main/Console%20Printing.lua"))()
 local player = players.LocalPlayer
 
 
@@ -720,7 +721,7 @@ utils.updateMouseAppearance = function (assetid:number)
 
 	local mouse = player:GetMouse()
 
-	mouse.Icon = "rbxasset://" .. assetid
+	mouse.Icon = "rbxassetid://" .. assetid
 end
 
 
@@ -776,7 +777,7 @@ end
 
 -- Function - chatNotif
 
-utils.chatNotif = function(text:string, colorName:string, font:string)
+utils.chatNotif = function(text:string, colorName:string, font:string, size:number)
 	local channel = textchatservice.TextChannels.RBXSystem
 
 	-- Color Presets
@@ -817,7 +818,18 @@ utils.chatNotif = function(text:string, colorName:string, font:string)
 	-- Nil Handling
 
 	if font == "None" or font == "none" then
-		font = "Noto Sans"
+		font = "Arial"
+	end
+
+	if size == "Default" or size == "default" then
+		size = 18
+	end
+
+	-- Size Limits
+
+	if size > 50 then
+		warn("Size exceeded the limit of 50. Try a lower number and try again.")
+		return
 	end
 
     if channel then
@@ -826,7 +838,7 @@ utils.chatNotif = function(text:string, colorName:string, font:string)
                 Text = text,
                 Font = font,
                 Color = color:ToHex(),
-                FontSize = "17"
+                FontSize = size
             })
         )
     else
@@ -835,10 +847,10 @@ utils.chatNotif = function(text:string, colorName:string, font:string)
 end
 
 
--- Function - createNotif
+-- Function - createRbxNotif
 
 
-utils.createNotif = function(title, text, assetid, duration)
+utils.createRbxNotif = function(title:string, text:string, icon_assetid:number, duration:number)
 	-- Nil Handling
 
 	if title == "None" or title == "none" then
@@ -851,7 +863,7 @@ utils.createNotif = function(title, text, assetid, duration)
 
 	-- Types
 
-	local asset = marketplaceservice:GetProductInfo(assetid)
+	local asset = marketplaceservice:GetProductInfo(icon_assetid)
 	local asset_typeid = asset.AssetTypeId
 
 	-- Handling Asset Types
@@ -911,7 +923,7 @@ utils.createNotif = function(title, text, assetid, duration)
 		startergui:SetCore("SendNotification", {
 			Title = title,
 			Text = text,
-			Icon = "rbxassetid://" .. assetid,
+			Icon = "rbxassetid://" .. icon_assetid,
 			Duration = duration
 		})
 
@@ -920,6 +932,31 @@ utils.createNotif = function(title, text, assetid, duration)
 	else
 		warn("Expected image but got " .. asset_type)
 	end
+end
+
+
+-- Function - sendMessage
+
+
+utils.sendMessage = function(message:string)
+	local RBXGeneral = textchatservice.TextChannels.RBXGeneral
+	RBXGeneral:SendAsync(message)
+end
+
+
+-- Function - success
+
+
+utils.success = function(content:string)
+	console.custom_print(content, "rbxasset://textures/AudioDiscovery/done.png", Color3.fromRGB(9, 255, 0))
+end
+
+
+-- Function - error
+
+
+utils.error = function(content:string)
+	console.custom_print(content, "rbxasset://textures/AudioDiscovery/error.png", Color3.fromRGB(255, 0, 0))
 end
 
 return utils
