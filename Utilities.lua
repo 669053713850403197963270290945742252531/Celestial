@@ -964,8 +964,8 @@ end
 -- Function - fireTouchInterest
 
 
-utils.fireTouchInterest = function (touchtransmitter:path)
-	firetouchinterest(humrootpart, path, 1)
+utils.fireTouchEvent = function(touchtransmitter:any)
+    firetouchinterest(humrootpart, touchtransmitter, 1)
 end
 
 return utils
