@@ -18,6 +18,7 @@ local marketplaceservice = game:GetService("MarketplaceService")
 
 local console = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/main/Console%20Printing.lua"))()
 local player = players.LocalPlayer
+local humrootpart = player.Character.HumanoidRootPart
 
 
 -- Function - getPlayers
@@ -957,6 +958,14 @@ end
 
 utils.error = function(content:string)
 	console.custom_print(content, "rbxasset://textures/AudioDiscovery/error.png", Color3.fromRGB(255, 0, 0))
+end
+
+
+-- Function - fireTouchInterest
+
+
+utils.fireTouchInterest = function (touchtransmitter:path)
+	firetouchinterest(humrootpart, path, 1)
 end
 
 return utils
