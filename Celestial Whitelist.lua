@@ -16,7 +16,7 @@ AuthModule.notify_execution = true
 AuthModule.authorized = false
 
 local WhitelistedUsers = {
-    ["CA226CC5-96FE-4347-8345-085323E65245"] = { Username = "Corrade" },
+    ["504941D5-5510-434B-9030-2FD4FF0CAB1C"] = { Username = "Corrade" },
     ["00000000-0000-0000-0000-000000000000"] = { Username = "Linked Account" }
 }
 
