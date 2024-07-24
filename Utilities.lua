@@ -685,7 +685,7 @@ utils.playerTeleport = function(delay)
     end
 
     local originalcframe = humrootpart.CFrame
-    print("Original CFrame: ", originalcframe)
+    --print("Original CFrame: ", originalcframe)
 
     for _, otherPlayer in pairs(players:GetPlayers()) do
         if otherPlayer ~= player then
@@ -694,20 +694,20 @@ utils.playerTeleport = function(delay)
                 local otherHumrootpart = otherCharacter:FindFirstChild("HumanoidRootPart")
 
                 if otherHumrootpart then
-                    print("Teleporting to player: ", otherPlayer.Name)
+                    --print("Teleporting to player: ", otherPlayer.Name)
                     humanoid.Sit = false
                     humrootpart.CFrame = otherHumrootpart.CFrame
                     wait(delay)
                 else
-                    print("HumanoidRootPart not found for player: " .. otherPlayer.Name)
+                    --print("HumanoidRootPart not found for player: " .. otherPlayer.Name)
                 end
             else
-                print("Character not found for player: " .. otherPlayer.Name)
+                --print("Character not found for player: " .. otherPlayer.Name)
             end
         end
     end
 
-    print("Teleporting back to original position.")
+    --print("Teleporting back to original position.")
     humrootpart.CFrame = originalcframe
 end
 
