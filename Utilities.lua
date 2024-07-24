@@ -595,27 +595,42 @@ utils.sendNotif = function(title, text, duration, icon)
         title = "Untitled"
     end
 
-    if duration == nil or duration == "Default" or duration == "default" or duration == "None" or duration == "none" then
+    if duration == nil or duration == "Default" or duration == "default" then
         duration = 5
+    else
+        duration = tonumber(duration)
+
+        if duration == nil then
+            utils.error("Invalid duration value.")
+            return
+        end
     end
 
     -- Preventing excessive duration values
-
+    
     if duration > 10 then
         utils.error("Exceeded the allowed limit.")
         return
     end
 
-    if icon == nil or icon == "None" or icon == "none" then
+    if icon == nil or icon == "Default" or icon == "default" then
         icon = "rbxassetid://18568429771"
     end
 
-    if icon ~= "" then
-        local asset = marketplaceservice:GetProductInfo(icon)
-        local asset_typeid = asset.AssetTypeId
+    if icon ~= "" and icon ~= "rbxassetid://18568429771" then
+        local asset
+        pcall(function()
+            asset = marketplaceservice:GetProductInfo(icon)
+        end)
 
-        if asset_typeid ~= 1 then
-            utils.error("Cannot process notification: Invalid asset type.")
+        if asset then
+            local asset_typeid = asset.AssetTypeId
+            if asset_typeid ~= 1 then
+                utils.error("Cannot process notification: Invalid asset type.")
+                return
+            end
+        else
+            utils.error("Cannot process notification: Invalid icon.")
             return
         end
     end
@@ -624,9 +639,10 @@ utils.sendNotif = function(title, text, duration, icon)
         Title = title,
         Text = text,
         Duration = duration,
-        Icon = icon ~= "" and "rbxassetid://" .. icon or ""
+        Icon = icon
     })
 end
+
 
 
 -- Function - sendMessage
