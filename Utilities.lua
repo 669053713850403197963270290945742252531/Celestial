@@ -184,17 +184,9 @@ end
 
 -- Function - teleport
 
-local function stringToCFrame(cframeString)
-    local components = {}
-    for component in string.gmatch(cframeString, "[^,]+") do
-        table.insert(components, tonumber(component))
-    end
-    return CFrame.new(unpack(components))
-end
-
-utils.teleport = function(cframeString)
+utils.teleport = function(px, py, pz, r00, r01, r02, r10, r11, r12, r20, r21, r22)
     if character and character.PrimaryPart then
-        local destinationCFrame = stringToCFrame(cframeString)
+        local destinationCFrame = CFrame.new(px, py, pz, r00, r01, r02, r10, r11, r12, r20, r21, r22)
         character:SetPrimaryPartCFrame(destinationCFrame)
     else
         warn("Character or PrimaryPart not found")
