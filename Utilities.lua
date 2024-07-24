@@ -607,7 +607,7 @@ utils.sendNotif = function(title, text, duration, icon)
     end
 
     if icon == nil or icon == "None" or icon == "none" then
-        icon = ""
+        icon = "rbxassetid://18568429771"
     end
 
     if icon ~= "" then
