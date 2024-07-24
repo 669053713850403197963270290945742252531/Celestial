@@ -1425,7 +1425,7 @@ OriginEnding:AddLabel("Memory II - Gym")
 local RoseTeleport = OriginEnding:AddButton({
     Text = "Teleport to Rose",
     Func = function()
-        utils.partTeleport(game.Workspace.Gym.Roses.Rose.Stem.CFrame)
+        utils.partTeleport(game.Workspace.Gym.Roses.Rose.Stem)
     end,
     DoubleClick = false,
     Tooltip = false,
@@ -1445,7 +1445,7 @@ OriginEnding:AddLabel("Memory III - Obby")
 local CompleteEndgameObby = OriginEnding:AddButton({
     Text = "Complete Obby",
     Func = function()
-        utils.partTeleport(workspace.Obby.CheckpointPart3.CFrame)
+        utils.partTeleport(workspace.Obby.CheckpointPart3)
     end,
     DoubleClick = false,
     Tooltip = false,
