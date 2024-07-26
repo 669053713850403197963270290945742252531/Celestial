@@ -15,7 +15,7 @@ local altaccount = false
 -- Celestial Owner Check
 
 local CelestialOwnerCheck = {
-    "504941D5-5510-434B-9030-2FD4FF0CAB1C" -- Corrade (mystic_4791)
+    "5A572703-967C-43DD-B87F-7754C5EFFDAF" -- Corrade (mystic_4791)
 }
 
 if table.find(CelestialOwnerCheck, hwid) then
