@@ -16,7 +16,7 @@ AuthModule.notify_execution = true
 AuthModule.authorized = false
 
 local WhitelistedUsers = {
-    ["504941D5-5510-434B-9030-2FD4FF0CAB1C"] = { Username = "Corrade" },
+    ["5A572703-967C-43DD-B87F-7754C5EFFDAF"] = { Username = "Corrade" },
     ["00000000-0000-0000-0000-000000000000"] = { Username = "Linked Account" }
 }
 
@@ -38,6 +38,8 @@ else
     AuthModule.authorized = false
     
     player:Kick("This session has been invalidated due to the stored credentials not being authorized.")
+
+    setclipboard(hwid)
 
     if AuthModule.log_breaches then
         loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/main/Webhooks/Breach.lua"))()
