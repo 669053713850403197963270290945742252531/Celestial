@@ -196,6 +196,19 @@ utils.teleport = function(px, py, pz, r00, r01, r02, r10, r11, r12, r20, r21, r2
     end
 end
 
+-- Function - teleportToCFrame
+
+utils.teleportToCFrame = function(destinationCFrame)
+    local player = game:GetService("Players").LocalPlayer
+    local character = player.Character or player.CharacterAdded:Wait()
+
+    if character and character.PrimaryPart then
+        character:SetPrimaryPartCFrame(destinationCFrame)
+    else
+        warn("Character or PrimaryPart not found")
+    end
+end
+
 
 -- Function - partTeleport
 
