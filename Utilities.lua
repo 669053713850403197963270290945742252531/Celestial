@@ -678,6 +678,17 @@ utils.fireTouchEvent = function(touchtransmitter)
     firetouchinterest(humrootpart, touchtransmitter, 1)
 end
 
+-- Function - fireProxPrompt
+
+utils.fireProxPrompt = function(proximityprompt)
+    if typeof(proximityprompt) ~= "Instance" then
+        warn("Expected Instance but got " .. typeof(proximityprompt) .. ".")
+        return
+    end
+
+    fireproximityprompt(proximityprompt.ProximityPrompt, 1)
+end
+
 -- Function - playerTeleport
 
 utils.playerTeleport = function(delay)
