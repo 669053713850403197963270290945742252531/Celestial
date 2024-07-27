@@ -185,6 +185,9 @@ end
 -- Function - teleport
 
 utils.teleport = function(px, py, pz, r00, r01, r02, r10, r11, r12, r20, r21, r22)
+    local player = players.LocalPlayer
+    local character = player.Character or player.CharacterAdded:Wait()
+
     if character and character.PrimaryPart then
         local destinationCFrame = CFrame.new(px, py, pz, r00, r01, r02, r10, r11, r12, r20, r21, r22)
         character:SetPrimaryPartCFrame(destinationCFrame)
