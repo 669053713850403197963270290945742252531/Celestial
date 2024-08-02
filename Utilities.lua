@@ -19,6 +19,8 @@ local character = player.Character or player.CharacterAdded:Wait()
 local humanoid = character.Humanoid
 local humrootpart = player.Character.HumanoidRootPart
 
+--[[
+
 -- Function - getPlayers
 
 utils.getPlayers = function()
@@ -221,7 +223,24 @@ utils.partTeleport = function(part)
     end
 end
 
+]]
+
 -- Function - tweenTeleport
+
+-- Function to convert a string to a CFrame
+local function stringToCFrame(cframeString)
+    local components = cframeString:split(", ")
+    local cframeComponents = {}
+    for _, component in ipairs(components) do
+        table.insert(cframeComponents, tonumber(component))
+    end
+    return CFrame.new(unpack(cframeComponents))
+end
+
+local player = players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humrootpart = character:WaitForChild("HumanoidRootPart")
+local tweenservice = game:GetService("TweenService")
 
 local originalCanCollideStates = {}
 local originalGravity
@@ -247,17 +266,16 @@ local function restoreOriginalStates()
     --print("Restored original states and re-enabled CanCollide")
 end
 
-utils.tweenTeleport = function(duration, cframeString, disableFeatures)
-    if disableFeatures then
+utils.tweenTeleport = function(duration, cframeString, smooth)
+    if smooth then
         storeOriginalStates()
         workspace.Gravity = 0
         --print("Gravity set to 0")
     end
 
     if not humrootpart then
-        if disableFeatures then
+        if smooth then
             restoreOriginalStates()
-
             workspace.Gravity = originalGravity
         end
         return
@@ -274,26 +292,26 @@ utils.tweenTeleport = function(duration, cframeString, disableFeatures)
 
     tween.Completed:Connect(function()
         --print("Tween completed")
-
-        if disableFeatures then
+        if smooth then
             restoreOriginalStates()
-
             workspace.Gravity = originalGravity
         end
     end)
 end
 
+
+
 -- Function - tweenPartTeleport
 
-utils.tweenPartTeleport = function(duration, targetPart, disableFeatures)
-    if disableFeatures then
+utils.tweenPartTeleport = function(duration, targetPart, smooth)
+    if smooth then
         storeOriginalStates()
         workspace.Gravity = 0
         --print("Gravity set to 0")
     end
 
     if not humrootpart then
-        if disableFeatures then
+        if smooth then
             restoreOriginalStates()
 
             workspace.Gravity = originalGravity
@@ -313,7 +331,7 @@ utils.tweenPartTeleport = function(duration, targetPart, disableFeatures)
     tween.Completed:Connect(function()
         --print("Tween completed")
 
-        if disableFeatures then
+        if smooth then
             restoreOriginalStates()
             workspace.Gravity = originalGravity
         end
