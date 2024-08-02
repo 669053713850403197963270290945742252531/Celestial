@@ -19,8 +19,6 @@ local character = player.Character or player.CharacterAdded:Wait()
 local humanoid = character.Humanoid
 local humrootpart = player.Character.HumanoidRootPart
 
---[[
-
 -- Function - getPlayers
 
 utils.getPlayers = function()
@@ -222,8 +220,6 @@ utils.partTeleport = function(part)
         warn("Character or PrimaryPart not found")
     end
 end
-
-]]
 
 -- Function - tweenTeleport
 
