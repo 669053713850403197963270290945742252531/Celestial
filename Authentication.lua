@@ -16,17 +16,21 @@ AuthModule.notify_execution = true
 AuthModule.authorized = false
 
 local WhitelistedUsers = {
-    ["5A572703-967C-43DD-B87F-7754C5EFFDAF"] = { Username = "Corrade" },
-    ["00000000-0000-0000-0000-000000000000"] = { Username = "Linked Account" }
+    ["5A572703-967C-43DD-B87F-7754C5EFFDAF"] = { Username = "Corrade" , Rank = "Owner"},
+    ["00000000-0000-0000-0000-000000000000"] = { Username = "Unknown" , Rank = "User"}
 }
+
+-- Placeholder: 00000000-0000-0000-0000-000000000000
 
 if WhitelistedUsers[hwid] then
     local userInfo = WhitelistedUsers[hwid]
     AuthModule.Username = userInfo.Username
+    AuthModule.Rank = userInfo.Rank
 
     AuthModule.authorized = true
 
     if AuthModule.notify_execution then
+        print("Successfully logged in as " .. userInfo.Rank .. ": " .. userInfo.Username)
         --utils.success("User " .. AuthModule.Username .. " authenticated!")
         --utils.createRbxNotif("Celestial", "User " .. AuthModule.Username .. " authenticated!", 18568429771, 3)
     end
