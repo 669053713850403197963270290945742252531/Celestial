@@ -1,6 +1,7 @@
 local utils = {}
 
 -- Services
+
 local workspace = game:GetService("Workspace")
 local players = game:GetService("Players")
 local lighting = game:GetService("Lighting")
@@ -16,8 +17,8 @@ local console = loadstring(game:HttpGet("https://raw.githubusercontent.com/66905
 
 local player = players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
-local humanoid = character.Humanoid
-local humrootpart = player.Character.HumanoidRootPart
+local humanoid = character:WaitForChild("Humanoid")
+local humrootpart = character:WaitForChild("HumanoidRootPart")
 
 -- Function - getPlayers
 
@@ -735,6 +736,19 @@ utils.fireProxPrompt = function(proximityprompt)
     fireproximityprompt(proximityprompt.ProximityPrompt, 1)
 end
 
+
+-- Function - fireClickEvent
+
+
+utils.fireClickEvent = function(clickdetector)
+    if typeof(clickdetector) ~= "Instance" then
+        warn("Expected Instance but got " .. typeof(clickdetector) .. ".")
+        return
+    end
+
+    fireclickdetector(clickdetector.ClickDetector, 1)
+end
+
 -- Function - playerTeleport
 
 utils.playerTeleport = function(delay)
@@ -791,6 +805,70 @@ utils.getTime = function(displaySeconds)
         return os.date("%I:%M:%S %p")
     else
         return os.date("%I:%M %p")
+    end
+end
+
+
+-- Function - kill
+
+
+utils.kill = function(mode)
+    local supportedModes = {
+        Normal = true, -- set health to 0
+        Explosion = true, -- insert explosion instance into player
+        Ragdoll = false, -- disable humanoid properties to make the player fall down then kill
+        Sit = true -- wait a couple seconds to confirm that player is sitting down and then kill
+    }
+
+    if not supportedModes[mode] then
+        warn("Invalid kill mode. The list of available modes is listed on the documentation.")
+        return
+    end
+
+    -- Checking for the needed conditions to proceed
+
+    local dead
+    local forcefield
+
+    -- Death Check
+
+    if humanoid.Health <= 0 then
+        dead = true
+    else
+        dead = false
+    end
+
+    -- Forcefield Check
+
+    if character:FindFirstChild("ForceField") then
+        forcefield = true
+    else
+        forcefield = false
+    end
+
+
+    -- Proceeding with the function if the player isn't dead
+
+    if not dead and not forcefield then
+        if mode == "Normal" then
+            humanoid.Health = 0
+
+        elseif mode == "Explosion" then
+            local explosion = Instance.new("Explosion", character)
+
+            explosion.BlastPressure = 1000000
+            explosion.BlastRadius = 10000
+            explosion.DestroyJointRadiusPercent = 1
+            explosion.ExplosionType = Enum.ExplosionType.NoCraters
+            explosion.Position = humrootpart.Position
+
+        elseif mode == "Sit" then
+            humanoid.Sit = true
+            wait(0.3)
+            humanoid.Health = 0
+        end
+    else
+        warn("kill failed: Player is dead and/or has a forcefield.")
     end
 end
 
