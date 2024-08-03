@@ -673,8 +673,6 @@ utils.sendNotif = function(title, text, duration, icon)
     })
 end
 
-
-
 -- Function - sendMessage
 
 utils.sendMessage = function(message)
@@ -702,7 +700,28 @@ utils.fireTouchEvent = function(touchtransmitter)
         return
     end
 
-    firetouchinterest(humrootpart, touchtransmitter, 1)
+    firetouchinterest(humrootpart, touchtransmitter, 0)
+end
+
+-- Function - fireAllTouchEvents
+
+utils.fireAllTouchEvents = function(location)
+    if typeof(location) ~= "Instance" then
+        warn("Expected Instance but got " .. typeof(location) .. ".")
+        return
+    end
+    
+    for _, descendant in ipairs(location:GetDescendants()) do
+        if descendant:IsA("TouchTransmitter") then
+            local touchParent = descendant.Parent
+
+            if touchParent and touchParent:IsA("BasePart") then
+                firetouchinterest(humrootpart, touchParent, 0)
+            else
+                warn("TouchTransmitter's parent is not a BasePart.")
+            end
+        end
+    end
 end
 
 -- Function - fireProxPrompt
