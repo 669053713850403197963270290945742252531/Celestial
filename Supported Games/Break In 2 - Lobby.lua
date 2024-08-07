@@ -3,7 +3,7 @@ repeat task.wait(0.1) until game:IsLoaded()
 
 local repo = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/LinoriaLib/main/"
 local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/main/Utilities.lua"))()
-local whitelist = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/main/Celestial%20Whitelist.lua"))()
+local auth = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/main/Authentication.lua"))()
         
 local Library = loadstring(game:HttpGet(repo  ..  "Library.lua"))()
 local ThemeManager = loadstring(game:HttpGet(repo  ..  "addons/ThemeManager.lua"))()
@@ -36,10 +36,10 @@ local Tabs = {
     ["UI Settings"] = Window:AddTab("Configs"),
 }
 
-if whitelist.notify_execution then
-    Library:Notify("Celestial has loaded / User Authorized: " .. whitelist.Username, 6)
+if auth.notify_execution then
+    Library:Notify("Successfully logged in as " .. auth.Rank .. ": " .. auth.Username, 6)
 else
-    Library:Notify("Celestial has loaded / " .. os.date("%I") --[[hour]] .. ":" .. os.date("%M") --[[minute]] .. " " .. os.date("%p") --[[AM or PM]] .. ".", 6)
+    Library:Notify("Celestial has loaded / " .. utils.getTime(false) .. ".", 6)
 end
 
 -- Game Info Tab
@@ -69,11 +69,13 @@ UserDetailsGroup:AddLabel("Executor: " .. identifyexecutor())
 
 WhitelistDetailsGroup:AddDivider()
 
-WhitelistDetailsGroup:AddLabel("Authorized Username: " .. whitelist.Username)
-WhitelistDetailsGroup:AddLabel("Authorized: " .. tostring(whitelist.authorized))
-WhitelistDetailsGroup:AddLabel("Notify Execution: " .. tostring(whitelist.notify_execution))
-WhitelistDetailsGroup:AddLabel("Log Executions: " .. tostring(whitelist.log_executions))
-WhitelistDetailsGroup:AddLabel("Log Breaches: " .. tostring(whitelist.log_breaches))
+WhitelistDetailsGroup:AddLabel("Username: " .. auth.Username)
+WhitelistDetailsGroup:AddLabel("Rank: " .. auth.Rank)
+
+WhitelistDetailsGroup:AddLabel("Authorized: " .. tostring(auth.authorized))
+WhitelistDetailsGroup:AddLabel("Notify Execution: " .. tostring(auth.notify_execution))
+WhitelistDetailsGroup:AddLabel("Log Executions: " .. tostring(auth.log_executions))
+WhitelistDetailsGroup:AddLabel("Log Breaches: " .. tostring(auth.log_breaches))
 
 -- Main Tab
 
