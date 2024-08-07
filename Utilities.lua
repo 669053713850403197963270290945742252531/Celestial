@@ -197,7 +197,7 @@ utils.teleport = function(px, py, pz, r00, r01, r02, r10, r11, r12, r20, r21, r2
     end
 end
 
--- Function - teleportToCFrame
+-- Function - teleportToCFrame (used when teleporting to a cframe set by a variable)
 
 utils.teleportToCFrame = function(destinationCFrame)
     local player = game:GetService("Players").LocalPlayer
@@ -747,6 +747,21 @@ utils.fireClickEvent = function(clickdetector)
     end
 
     fireclickdetector(clickdetector.ClickDetector, 1)
+end
+
+-- Function - fireAllClickEvents
+
+utils.fireAllClickEvents = function(location)
+    if typeof(location) ~= "Instance" then
+        warn("Expected Instance but got " .. typeof(location) .. ".")
+        return
+    end
+    
+    for _, v in ipairs(location:GetDescendants()) do
+        if v:IsA("ClickDetector") then
+            fireclickdetector(v, 1)
+        end
+    end
 end
 
 -- Function - playerTeleport
