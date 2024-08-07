@@ -1,23 +1,23 @@
 repeat task.wait(0.1) until game:IsLoaded()
 
-
 local repo = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/LinoriaLib/main/"
 local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/main/Utilities.lua"))()
-local whitelist = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/main/Celestial%20Whitelist.lua"))()
+local auth = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/main/Authentication.lua"))()
 
 local Library = loadstring(game:HttpGet(repo  .. "Library.lua"))()
 local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
 local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 
 local player = game:GetService("Players").LocalPlayer
+local character = player.Character
+local humanoid = character:FindFirstChild("Humanoid")
+local humrootpart = character:FindFirstChild("HumanoidRootPart")
 local getgamename = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
-local teleportservice = game:GetService("TeleportService")
---local replicatedstorage = game:GetService("ReplicatedStorage")
 local events = game:GetService("ReplicatedStorage").Events
-local camera = game.Workspace.CurrentCamera
+local camera = game:GetService("Workspace").CurrentCamera
 
 local Window = Library:CreateWindow({
-    Title = "Celestial | " .. getgamename,
+    Title = "Celestial | " .. getgamename .. " - " .. auth.Username,
     Center = true,
     AutoShow = true,
     TabPadding = 7.9,
@@ -26,15 +26,23 @@ local Window = Library:CreateWindow({
 
 -- Module Variables
 
-local autogiveitemdelay = 1
 local walkspeedenabled = false
+local jumppowerenabled = false
+local gravityenabled = false
+local hipheightenabled = false
+
+local walkspeedslidervalue = 16
+local jumppowerslidervalue = 50
+local gravityslidervalue = 196.2
+local hipheightslidervalue = 2.3 -- default: 2.2977042198181152
+
+local autogiveitemdelay = 1
 local giveitemdropdownvalue = ""
 local giveamountvalue = 1
 local damageamountvalue = 0
 local teleportdropdownvalue = ""
 local giveweapondropdownvalue = ""
 local antislipenabled = false
-local walkspeedslidervalue = 16
 
 -- Loop Values
 
@@ -64,6 +72,14 @@ _G.spooffighting = true
 function updatewalkspeed()
     while _G.updatewalkspeed do
         utils.modifyPlayer("WalkSpeed", walkspeedslidervalue)
+
+        wait()
+    end
+end
+
+function updatejumppower()
+    while _G.updatejumppower do
+        utils.modifyPlayer("JumpPower", jumppowerslidervalue)
 
         wait()
     end
@@ -155,7 +171,7 @@ end
 
 function noclip()
     while _G.noclip do
-        for _, v in pairs(player.Character:GetDescendants()) do
+        for _, v in pairs(character:GetDescendants()) do
             pcall(function()
                 if v:IsA("BasePart") or v:IsA("UnionOperation") then
                     v.CanCollide = false
@@ -278,7 +294,7 @@ function collectcash()
     while _G.collectcash do
 		for _, v in pairs(game:GetService("Workspace"):GetChildren()) do
 			if v.Name == "Part" and v:FindFirstChild("TouchInterest") and v:FindFirstChild("Weld") and v.Transparency == 1 then
-				v.CFrame = player.Character.HumanoidRootPart.CFrame
+				v.CFrame = humrootpart.CFrame
 			end
 		end
 
@@ -318,26 +334,6 @@ function spooffighting()
     end
 end
 
-
--- Miscellaneous Functions
-
---[[
-
-local function teleport(x, y, z, xx, xy, xz, yx, yy, yz, zx, zy, zz)
-    local humrootpart = game.Players.LocalPlayer.Character.HumanoidRootPart
-
-    humrootpart.CFrame = CFrame.new(x, y, z, xx, xy, xz, yx, yy, yz, zx, zy, zz)
-end
-
-local function partteleport(partcframe)
-    local humrootpart = game.Players.LocalPlayer.Character.HumanoidRootPart
-    
-    humrootpart.CFrame = partcframe
-end
-
-]]
-
-
 local Tabs = {
     Information = Window:AddTab("Info"),
     Exploits = Window:AddTab("Exploits"),
@@ -348,10 +344,10 @@ local Tabs = {
     ["UI Settings"] = Window:AddTab("Configs"),
 }
 
-if whitelist.notify_execution then
-    Library:Notify("Celestial has loaded / User Authorized: " .. whitelist.Username, 6)
+if auth.notify_execution then
+    Library:Notify("Successfully logged in as " .. auth.Rank .. ": " .. auth.Username, 6)
 else
-    Library:Notify("Celestial has loaded / " .. os.date("%I") --[[hour]] .. ":" .. os.date("%M") --[[minute]] .. " " .. os.date("%p") --[[AM or PM]] .. ".", 6)
+    Library:Notify("Celestial has loaded / " .. utils.getTime(false) .. ".", 6)
 end
 
 -- Game Info Tab
@@ -381,11 +377,13 @@ UserDetailsGroup:AddLabel("Executor: " .. identifyexecutor())
 
 WhitelistDetailsGroup:AddDivider()
 
-WhitelistDetailsGroup:AddLabel("Authorized Username: " .. whitelist.Username)
-WhitelistDetailsGroup:AddLabel("Authorized: " .. tostring(whitelist.authorized))
-WhitelistDetailsGroup:AddLabel("Notify Execution: " .. tostring(whitelist.notify_execution))
-WhitelistDetailsGroup:AddLabel("Log Executions: " .. tostring(whitelist.log_executions))
-WhitelistDetailsGroup:AddLabel("Log Breaches: " .. tostring(whitelist.log_breaches))
+WhitelistDetailsGroup:AddLabel("Username: " .. auth.Username)
+WhitelistDetailsGroup:AddLabel("Rank: " .. auth.Rank)
+
+WhitelistDetailsGroup:AddLabel("Authorized: " .. tostring(auth.authorized))
+WhitelistDetailsGroup:AddLabel("Notify Execution: " .. tostring(auth.notify_execution))
+WhitelistDetailsGroup:AddLabel("Log Executions: " .. tostring(auth.log_executions))
+WhitelistDetailsGroup:AddLabel("Log Breaches: " .. tostring(auth.log_breaches))
 
 -- Exploits Tab
 
@@ -402,7 +400,7 @@ ExploitsGroup:AddDivider()
 ExploitsGroup:AddToggle("GodmodeToggle", {
     Text = "Godmode",
     Default = false,
-    Tooltip = "Makes you invincible.",
+    Tooltip = false,
 
     Callback = function(Value)
         _G.godmodeloop = Value
@@ -411,9 +409,9 @@ ExploitsGroup:AddToggle("GodmodeToggle", {
 })
 
 ExploitsGroup:AddToggle("HideEnergyUI", {
-    Text = "Hide Gain Energy UI",
+    Text = "Hide Energy Gain",
     Default = false,
-    Tooltip = false,
+    Tooltip = "Disables the green +x energy text above\nthe health bar",
 
     Callback = function(Value)
         _G.loophideenergy = Value
@@ -435,7 +433,7 @@ ExploitsGroup:AddToggle("BypassCutscenes", {
 })
 
 ExploitsGroup:AddToggle("WalkSpeedExploit", {
-    Text = "Speed Exploit",
+    Text = "Speed Boost",
     Default = false,
     Tooltip = false,
 
@@ -456,7 +454,7 @@ ExploitsGroup:AddToggle("WalkSpeedExploit", {
 ExploitsGroup:AddToggle("CollectCash", {
     Text = "Collect Cash",
     Default = false,
-    Tooltip = "Tends to act as if you collect one due to a lot of cash parts being added all at once.",
+    Tooltip = "Tends to act as if you collect one due\nto a lot of cash parts being added all\nat once.",
 
     Callback = function(Value)
         _G.collectcash = Value
@@ -537,6 +535,8 @@ VisualsGroup:AddToggle("DisableFrontDoor", {
             _G.disablefrontdoor = false
             disablefrontdoor()
 
+            wait(1)
+
             for _, v in pairs(game.Workspace.tst:GetDescendants()) do
                 if v.Name == "Door" and v:IsA("Part") then
                     v.CanCollide = false
@@ -615,12 +615,12 @@ OtherGroup:AddToggle("LoopKillEnemies", {
 TeleportationGroup:AddDivider()
 
 TeleportationGroup:AddDropdown("TeleportLocationDropdown", {
-    Values = {"Villian Base", "Kitchen", "Fighting Arena", "Gym", "Pizza Boss", "Shop", "Golden Apple Path", "Generator", "Boss Fight"},
+    Values = {"Kitchen", "Fighting Arena", "Gym", "Pizza Boss", "Shop", "Golden Apple Path", "Generator", "Boss Fight"},
     Default = 0,
     Multi = false,
 
     Text = "Location",
-    Tooltip = "The location to teleport to",
+    Tooltip = false,
 
     Callback = function(DropdownValue)
         teleportdropdownvalue = DropdownValue
@@ -630,10 +630,7 @@ TeleportationGroup:AddDropdown("TeleportLocationDropdown", {
 local TeleportToLocation = TeleportationGroup:AddButton({
     Text = "Teleport",
     Func = function()
-        if teleportdropdownvalue == "Villian Base" then
-            utils.teleport(-233.926117, 30.4567528, -790.019897, 0.00195977557, -8.22674984e-11, -0.999998093, -2.4766762e-09, 1, -8.71213934e-11, 0.999998093, 2.47684229e-09, 0.00195977557)
-            utils.fireTouchEvent(game.Workspace.InsideTouchParts.FrontDoor)
-        elseif teleportdropdownvalue == "Kitchen" then
+        if teleportdropdownvalue == "Kitchen" then
             utils.teleport(-216.701218, 30.4702568, -722.335327, 0.00404609647, 1.23633853e-07, 0.999991834, -7.18327664e-09, 1, -1.23605801e-07, -0.999991834, -6.68309719e-09, 0.00404609647)
         elseif teleportdropdownvalue == "Fighting Arena" then
             utils.teleport(-262.294586, 62.7116394, -735.916199, -1, -7.62224133e-08, -0.000201582094, -7.6233647e-08, 1, 5.5719358e-08, 0.000201582094, 5.57347235e-08, -1)
@@ -652,27 +649,21 @@ local TeleportToLocation = TeleportationGroup:AddButton({
             utils.teleport(-1328.85242, -346.249146, -810.092285, 0.00456922129, 5.69967078e-08, 0.999989569, 1.76120984e-08, 1, -5.70777772e-08, -0.999989569, 1.78727166e-08, 0.00456922129)
         end
 
-        --[[
-        kitchen: -216.701218, 30.4702568, -722.335327, 0.00404609647, 1.23633853e-07, 0.999991834, -7.18327664e-09, 1, -1.23605801e-07, -0.999991834, -6.68309719e-09, 0.00404609647
-        fighting arena: -262.294586, 62.7116394, -735.916199, -1, -7.62224133e-08, -0.000201582094, -7.6233647e-08, 1, 5.5719358e-08, 0.000201582094, 5.57347235e-08, -1
-        gym: -257.281738, 63.4477501, -843.258362, 0.999999464, -6.6242154e-09, 0.00105193094, 6.52111609e-09, 1, 9.80127126e-08, -0.00105193094, -9.8005799e-08, 0.999999464
-        pizza boss: -287.475769, 30.4527531, -721.746277, -0.00427152216, -8.6121041e-08, 0.99999088, 2.21573924e-08, 1, 8.6216474e-08, -0.99999088, 2.25254659e-08, -0.00427152216
-        villian base: -233.926117, 30.4567528, -790.019897, 0.00195977557, -8.22674984e-11, -0.999998093, -2.4766762e-09, 1, -8.71213934e-11, 0.999998093, 2.47684229e-09, 0.00195977557
-        shop: -251.009491, 30.4477539, -851.509705, 0.0225389507, 7.41174511e-10, -0.999745965, 2.19171417e-10, 1, 7.46304019e-10, 0.999745965, -2.35936659e-10, 0.0225389507
-        golden apple path: 85.6087112, 29.4477024, -804.023926, -0.999134541, 1.15144616e-09, 0.0415947847, 4.49046622e-09, 1, 8.01815432e-08, -0.0415947847, 8.02989319e-08, -0.999134541
-
-
-
-
-
-        generator: -114.484352, 30.0235462, -790.053833, -0.656062722, 0, -0.754706323, 0, 1, 0, 0.754706323, 0, -0.656062722
-        ]]
-
         if teleportdropdownvalue ~= "" then
-            Library:Notify("You have been teleported to: " .. teleportdropdownvalue, 4)
+            Library:Notify("You have been teleported to: " .. teleportdropdownvalue .. ".", 4)
         else
-            Library:Notify("Please select a location from the location dropdown above", 5)
+            Library:Notify("Please select a location from the location dropdown above.", 5)
         end
+    end,
+    DoubleClick = false,
+    Tooltip = false,
+})
+
+local TeleportToVillainBase = TeleportationGroup:AddButton({
+    Text = "Villain Base",
+    Func = function()
+        utils.teleport(-233.926117, 30.4567528, -790.019897, 0.00195977557, -8.22674984e-11, -0.999998093, -2.4766762e-09, 1, -8.71213934e-11, 0.999998093, 2.47684229e-09, 0.00195977557)
+        utils.fireTouchEvent(game.Workspace.InsideTouchParts.FrontDoor)
     end,
     DoubleClick = false,
     Tooltip = false,
@@ -690,6 +681,7 @@ TouchInterestsGroup:AddToggle("SpoofInside", {
     Callback = function(Value)
         if Value then
             Toggles.SpoofOutside:SetValue(false)
+            Toggles.AlwaysFight:SetValue(false)
 
             _G.insidespoof = true
             insidespoof()
@@ -754,7 +746,7 @@ local OthersGroup1 = Tabs.Utility:AddLeftGroupbox("Other")
 GiveItemGroup:AddDivider()
 
 GiveItemGroup:AddDropdown("ItemDropdown", {
-    Values = {"GoldPizza", "GoldenApple", "RainbowPizzaBox", "RainbowPizza", "GoldKey", "Bottle", "Armor", "Louise", "Lollipop", "Ladder", "MedKit", "Chips", "Cookie", "BloxyCola", "Apple", "Pizza", "ExpiredBloxyCola", "Battery"},
+    Values = {"GoldPizza", "GoldenApple", "RainbowPizzaBox", "RainbowPizza", "GoldKey", "Bottle", "Armor", "Louise", "Lollipop", "Ladder", "MedKit", "Chips", "Cookie", "BloxyCola", "Apple", "Pizza", "ExpiredBloxyCola"},
     Default = 0,
     Multi = false,
 
@@ -788,15 +780,17 @@ local GiveItem = GiveItemGroup:AddButton({
 
         if giveitemdropdownvalue == "Armor" then
             events.Vending:FireServer(3, "Armor2", "Armor", player.Name, true, 1)
+            Library:Notify("You have been given 1 of Armor.", 3)
+            return
         end
 
 
-        for i = 1, giveamountvalue do -- Getting the number that was inputted into the input and firing the event x times
+        for _ = 1, giveamountvalue do -- Getting the number that was inputted into the input and firing the event x times
             events.GiveTool:FireServer(giveitemdropdownvalue)
         end
 
         if giveitemdropdownvalue ~= "" and giveamountvalue ~= 0 then
-            Library:Notify("You have been given " .. giveamountvalue .. " of " .. giveitemdropdownvalue, 3)
+            Library:Notify("You have been given " .. giveamountvalue .. " of " .. giveitemdropdownvalue .. ".", 3)
         else
             Library:Notify("Please select a item from item dropdown and the give amount input above.", 5)
         end
@@ -828,7 +822,7 @@ local GiveWeapon = GiveItemGroup:AddButton({
         events.Vending:FireServer(3, giveweapondropdownvalue, "Weapons", player.Name, 1)
 
         if giveweapondropdownvalue ~= "" then
-            Library:Notify("You have been given the " .. giveweapondropdownvalue, 3)
+            Library:Notify("You have been given the " .. giveweapondropdownvalue .. ".", 3)
         else
             Library:Notify("Please select a item from weapon dropdown above.", 5)
         end
@@ -846,9 +840,25 @@ GiveItemGroup:AddLabel("Best Weapon: " .. bestweapon)
 local GiveBestWeapon = GiveItemGroup:AddButton({
     Text = "Give Best Weapon",
     Func = function()
+        -- checking if the player already has the best weapon
+
+        if player.Backpack:FindFirstChild(bestweapon) or character:FindFirstChild(bestweapon) then
+            Library:Notify("You already have the best weapon: " .. bestweapon)
+            return
+        end
+
         events.Vending:FireServer(3, bestweapon, "Weapons", player.Name, 1)
 
-        Library:Notify("You have been given the best weapon: " .. bestweapon, 3)
+        -- checking if the player actually got the best weapon
+
+        wait(0.2)
+
+        if player.Backpack:FindFirstChild(bestweapon) or character:FindFirstChild(bestweapon) then
+            Library:Notify("You have been given the best weapon: " .. bestweapon .. ".", 3)
+        else
+            Library:Notify("Failed to give best weapon: Best weapon wasn't found in Backpack. This is most\nlikely due to giving the best weapon and giving another weapon and results\nin the weapons replacing each other and bugging the weapons.")
+            return
+        end
     end,
     DoubleClick = false,
     Tooltip = false,
@@ -865,7 +875,7 @@ AutoTrainGroup:AddDivider()
 local TrainAll = AutoTrainGroup:AddButton({
     Text = "Train Strength & Speed",
     Func = function()
-        for i = 1, 5 do
+        for _ = 1, 5 do
             events.RainbowWhatStat:FireServer("Strength")
             events.RainbowWhatStat:FireServer("Speed")
         end
@@ -877,7 +887,7 @@ local TrainAll = AutoTrainGroup:AddButton({
 local TrainStrength = AutoTrainGroup:AddButton({
     Text = "Train Strength",
     Func = function()
-        for i = 1, 5 do
+        for _ = 1, 5 do
             events.RainbowWhatStat:FireServer("Strength")
         end
     end,
@@ -888,7 +898,7 @@ local TrainStrength = AutoTrainGroup:AddButton({
 local TrainSpeed = AutoTrainGroup:AddButton({
     Text = "Train Speed",
     Func = function()
-        for i = 1, 5 do
+        for _ = 1, 5 do
             events.RainbowWhatStat:FireServer("Speed")
         end
     end,
@@ -900,6 +910,7 @@ local TrainSpeed = AutoTrainGroup:AddButton({
 
 DisablersGroup:AddDivider()
 
+
 DisablersGroup:AddToggle("AntiIceSlip", {
     Text = "Anti Slip",
     Default = false,
@@ -907,28 +918,20 @@ DisablersGroup:AddToggle("AntiIceSlip", {
 
     Callback = function(Value)
         if Value then
-            for _, v in pairs(events:GetDescendants()) do
-                if v.Name == "IceSlip" and v:IsA("RemoteEvent") then
-                    v.Parent = game.Chat
-                end
-            end
+            events:FindFirstChild("IceSlip").Parent = game:GetService("Chat")
 
             antislipenabled = true
 
         else
 
-            for _, v in pairs(game.Chat:GetDescendants()) do
-                if v.Name == "IceSlip" and v:IsA("RemoteEvent") then
-                    v.Parent = events
-                end
-            end
+            game:GetService("Chat"):FindFirstChild("IceSlip").Parent = events
 
             antislipenabled = false
         end
     end
 })
 
-DisablersGroup:AddLabel("Anti Slip will also protect you from anything that makes you fall/sit down.", true)
+DisablersGroup:AddLabel("Anti Slip will also protect you from anything that makes you fall/sit down such as the wave 3 brute.", true)
 
 DisablersGroup:AddToggle("AntiHail", {
     Text = "Anti Hail",
@@ -937,19 +940,9 @@ DisablersGroup:AddToggle("AntiHail", {
 
     Callback = function(Value)
         if Value then
-            for _, v in pairs(game.Workspace:GetChildren()) do
-                if v.Name == "Hails" and v:IsA("Folder") then
-                    v.Parent = game.Chat
-                end
-            end
-    
+            game.Workspace:FindFirstChild("Hails").Parent = game:GetService("Chat")
         else
-    
-            for _, v in pairs(game.Chat:GetChildren()) do
-                if v.Name == "Hails" and v:IsA("Folder") then
-                    v.Parent = game.Workspace
-                end
-            end
+            game:GetService("Chat"):FindFirstChild("Hails").Parent = game.Workspace
         end
     end
 })
@@ -966,7 +959,7 @@ DisablersGroup:AddToggle("DisableWind", {
         if Value == false then
             _G.disablewindknockback = false
             disablewindknockback()
-
+            
             for _, v in pairs(game.Workspace:GetChildren()) do
                 if v.Name == "WavePart" then
                     v.CanTouch = true
@@ -1007,15 +1000,28 @@ OthersGroup1:AddDivider()
 local CollectHiddenItems = OthersGroup1:AddButton({
     Text = "Collect Hidden Items",
     Func = function()
+        utils.fireAllClickEvents(game.Workspace.Hidden)
+    end,
+    DoubleClick = false,
+    Tooltip = "Collects all the items hidden in drawers."
+})
+
+--[[
+
+local CollectHiddenItems = OthersGroup1:AddButton({
+    Text = "Collect Hidden Items",
+    Func = function()
         for _, v in pairs(game.Workspace.Hidden:GetDescendants()) do
             if v:IsA("ClickDetector") then
-                fireclickdetector(v)
+                utils.fireClickEvent(v.Parent)
             end
         end
     end,
     DoubleClick = false,
-    Tooltip = "Collects all the items hidden in drawers"
+    Tooltip = "Collects all the items hidden in drawers."
 })
+
+]]
 
 local hiddenitemslabel = OthersGroup1:AddLabel("Existing Hidden Items: ", true)
 
@@ -1044,17 +1050,22 @@ task.spawn(updatehiddenitems)
 local CollectOutsideItems = OthersGroup1:AddButton({
     Text = "Collect Outside Items",
     Func = function()
-        for _, v in pairs(workspace.OutsideParts:GetDescendants()) do
-            if v:IsA("ClickDetector") then
-                fireclickdetector(v)
-            end
+        local origcframe = humrootpart.CFrame
+
+        if #game.Workspace.OutsideParts:GetChildren() == 0 then
+            Library:Notify("No more outside items.", 5)
+            return
         end
+        
+        utils.fireAllClickEvents(game.Workspace.OutsideParts)
 
-        wait(0.7)
+        wait(0.1)
 
-        utils.teleport(-200.997543, 34.0999222, -790.799988, 1, -8.10623169e-05, -5.24520874e-06, 8.10623169e-05, 1, 5.24520874e-06, 5.24520874e-06, -5.24520874e-06, 1)
-
-        events.TeleportMain:FireServer("Main")
+        utils.teleport(-200.997543, 34.0999222, -790.799988, 1, -8.10623169e-05, -5.24520874e-06, 8.10623169e-05, 1, 5.24520874e-06, 5.24520874e-06, -5.24520874e-06, 1) -- teleport to entrance
+        wait(0.01)
+        events.TeleportMain:FireServer("Main") -- teleport to villian base
+        wait(0.1)
+        utils.teleportToCFrame(origcframe) -- teleport to original cframe
     end,
     DoubleClick = false,
     Tooltip = false,
@@ -1085,20 +1096,20 @@ end
 task.spawn(updateoutsideitems)
 
 local HealPlayersMedkit = OthersGroup1:AddButton({
-    Text = "Heal Others [MEDKIT]",
+    Text = "MedKit Heal Others",
     Func = function()
         for _, v in pairs(game:GetService("Players"):GetPlayers()) do
             events.HealPlayer:FireServer(v)
         end
     end,
     DoubleClick = false,
-    Tooltip = "Heals all other players using the medkit"
+    Tooltip = "Heals all other players using the medkit."
 })
 
 local HealYourself = OthersGroup1:AddButton({
     Text = "Heal Yourself",
     Func = function()
-        for i = 1, 2 do
+        for _ = 1, 2 do
             events.GiveTool:FireServer("GoldPizza")
 
             wait(0.2)
@@ -1145,7 +1156,7 @@ OthersGroup1:AddToggle("AutoHealPlayers", {
 OthersGroup1:AddToggle("AutoEat", {
     Text = "Auto Eat",
     Default = false,
-    Tooltip = "Eats your editable items",
+    Tooltip = "Eats your editable items.",
 
     Callback = function(Value)
         _G.autoeat = Value
@@ -1162,8 +1173,15 @@ local DamageGroup = Tabs.LocalPlayer:AddRightGroupbox("Damage")
 
 LocalPlayerGroup:AddDivider()
 
-LocalPlayerGroup:AddSlider("WalkSpeedSlider", {
-    Text = "WalkSpeed",
+LocalPlayerGroup:AddToggle("PlayerModControlToggle", {Text = "Player Modification"})
+local PlayerModDepBox = LocalPlayerGroup:AddDependencyBox();
+
+PlayerModDepBox:SetupDependencies({
+    {Toggles.PlayerModControlToggle, true}
+})
+
+PlayerModDepBox:AddSlider("WalkSpeedSlider", {
+    Text = "WalkSpeed Value",
     Default = 16,
     Min = 16,
     Max = 300,
@@ -1177,12 +1195,27 @@ LocalPlayerGroup:AddSlider("WalkSpeedSlider", {
     end
 })
 
-LocalPlayerGroup:AddInput("CustomWalkspeedInput", {
+PlayerModDepBox:AddSlider("JumpPowerSlider", {
+    Text = "JumpPower Value",
+    Default = 50,
+    Min = 10,
+    Max = 1000,
+    Rounding = 0,
+    Compact = false,
+
+    Callback = function(Value)
+        if jumppowerenabled then
+            jumppowerslidervalue = Value
+        end
+    end
+})
+
+PlayerModDepBox:AddInput("CustomWalkspeedInput", {
     Default = false,
     Numeric = true,
     Finished = true,
 
-    Text = "Custom Value",
+    Text = "Custom WalkSpeed Value",
     Tooltip = false,
 
     Placeholder = "Number",
@@ -1191,8 +1224,10 @@ LocalPlayerGroup:AddInput("CustomWalkspeedInput", {
     Callback = function(Text)
         local textNumber = tonumber(Text)
 
+        -- Determining Limits
+
         if textNumber == nil then
-            Library:Notify("Invalid value", 5)
+            Library:Notify("Invalid value.", 5)
             return
         end
 
@@ -1206,11 +1241,50 @@ LocalPlayerGroup:AddInput("CustomWalkspeedInput", {
             return
         end
 
+        -- Setting the value of the walkspeed slider to the text in the input
+
         Options.WalkSpeedSlider:SetValue(Text)
     end
 })
 
-LocalPlayerGroup:AddToggle("WalkSpeedEnabled", {
+PlayerModDepBox:AddInput("CustomJumpPowerInput", {
+    Default = false,
+    Numeric = true,
+    Finished = true,
+
+    Text = "Custom JumpPower Value",
+    Tooltip = false,
+
+    Placeholder = "Number",
+    MaxLength = 3,
+
+    Callback = function(Text)
+        local textNumber = tonumber(Text)
+
+        -- Determining Limits
+
+        if textNumber == nil then
+            Library:Notify("Invalid value.", 5)
+            return
+        end
+
+        if textNumber < Options.JumpPowerSlider.Min then
+            Library:Notify("Cannot have a value less then the minimum of " .. Options.JumpPowerSlider.Min .. ".", 5)
+            return
+        end
+
+        if textNumber > Options.JumpPowerSlider.Max then
+            Library:Notify("Cannot have a value greater then the maximum of " .. Options.JumpPowerSlider.Max .. ".", 5)
+            return
+        end
+
+        -- Setting the value of the jump power slider to the text in the input
+
+        Options.JumpPowerSlider:SetValue(Text)
+    end
+})
+
+PlayerModDepBox:AddToggle("WalkSpeedEnabled", {
     Text = "Enable WalkSpeed",
     Default = false,
     Tooltip = false,
@@ -1218,12 +1292,12 @@ LocalPlayerGroup:AddToggle("WalkSpeedEnabled", {
     Callback = function(Value)
         if Value then
             walkspeedenabled = true
-            walkspeedslidervalue = Options.WalkSpeedSlider.Value
+            walkspeedslidervalue = Options.WalkSpeedSlider.Value -- set the slider variable to the value of the walkspeed slider to instantly apply walkspeed when enabled
 
             _G.updatewalkspeed = true
             updatewalkspeed()
 
-            Toggles.WalkSpeedExploit:SetValue(false)
+            Toggles.WalkSpeedExploit:SetValue(false) -- disable WalkSpeedExploit to prevent overlapping
         else
             walkspeedenabled = false
 
@@ -1235,12 +1309,37 @@ LocalPlayerGroup:AddToggle("WalkSpeedEnabled", {
     end
 })
 
+PlayerModDepBox:AddToggle("JumpPowerEnabled", {
+    Text = "Enable JumpPower",
+    Default = false,
+    Tooltip = false,
+
+    Callback = function(Value)
+        if Value then
+            utils.modifyPlayer("UseJumpPower", true)
+
+            jumppowerenabled = true
+            jumppowerslidervalue = Options.JumpPowerSlider.Value -- set the slider variable to the value of the jump power slider to instantly apply jumppower when enabled
+
+            _G.updatejumppower = true
+            updatejumppower()
+        else
+            jumppowerenabled = false
+
+            _G.updatejumppower = false
+            updatejumppower()
+
+            utils.modifyPlayer("JumpPower", 50) -- reset jump power
+        end
+    end
+})
+
 LocalPlayerGroup:AddDivider()
 
 LocalPlayerGroup:AddToggle("Noclip", {
     Text = "Noclip",
     Default = false,
-    Tooltip = "Allows you to clip through walls",
+    Tooltip = "Allows you to clip through walls.",
 
     Callback = function(Value)
         _G.noclip = Value
@@ -1272,7 +1371,7 @@ local DamageConfirm = DamageGroup:AddButton({
     Text = "Damage",
     Func = function()
         if damageamountvalue == 0 then
-            Library:Notify("Invalid damage amount. Please enter a valid number", 4)
+            Library:Notify("Invalid damage amount. Please enter a valid number.", 4)
         else
             events.Energy:FireServer(-damageamountvalue, false, false)
         end
@@ -1292,38 +1391,39 @@ local OriginEnding = Tabs.Endings:AddLeftGroupbox("Origin Ending")
 SecretEndingGroup:AddDivider()
 
 local CompleteSecretEnding = SecretEndingGroup:AddButton({
-    Text = "Auto Secret Ending",
+    Text = "Unlock Secret Ending",
     Func = function()
-        Library:Notify("Knocked down tree", 1)
+        local origcframe = humrootpart.CFrame
 
+        Library:Notify("Knocked down tree.", 1)
 
-        events.LarryEndingEvent:FireServer("TreeFelled") -- Getting the gold crowbar
+        events.LarryEndingEvent:FireServer("TreeFelled") -- getting the gold crowbar
 
         wait(1.5)
 
-        events.LarryEndingEvent:FireServer("CrowbarCollected")
+        events.LarryEndingEvent:FireServer("CrowbarCollected") -- collecting crowbar that fell from the tree
 
-        Library:Notify("Obtained gold crowbar", 1)
-
-        events.LarryEndingEvent:FireServer("Hit") -- Hitting the boy
+        Library:Notify("Obtained gold crowbar.", 1)
+        
+        events.PunchableQuest:FireServer("Hit") -- hitting the boy
 
         wait(0.2)
 
-        utils.teleport(-85.1459122, 29.4477024, -913.470398, -0.734560668, -7.21119719e-10, 0.678543031, -1.29244693e-09, 1, -3.36398631e-10, -0.678543031, -1.12408605e-09, -0.734560668)
+        utils.teleport(-82.0809555, 29.4477024, -914.276917, -0.343557715, 7.47457136e-08, 0.939131558, -3.08562349e-08, 1, -9.08782312e-08, -0.939131558, -6.01999801e-08, -0.343557715) -- collecting the hat
 
-        Library:Notify("Obtained Scary Larry hat", 1)
+        Library:Notify("Obtained Scary Larry hat.", 1)
 
-        events.LarryEndingEvent:FireServer("MaskCollected") -- Getting the mask
+        events.LarryEndingEvent:FireServer("MaskCollected") -- getting the mask
 
-        Library:Notify("Obtained Scary Larry mask", 1)
+        Library:Notify("Obtained Scary Larry mask.", 1)
 
         -- Teleporting back to the base
 
-        wait(0.4)
+        wait(0.8)
 
-        events.TeleportMain:FireServer("Main")
+        utils.teleportToCFrame(origcframe) -- teleport back to original cframe
 
-        Library:Notify("Successfully Finished Auto Secret Ending", 3)
+        Library:Notify("Successfully Finished Auto Secret Ending.", 3)
     end,
     DoubleClick = false,
     Tooltip = false,
@@ -1333,7 +1433,7 @@ local CompleteSecretEnding = SecretEndingGroup:AddButton({
 
 EvilEndingGroup:AddDivider()
 
-EvilEndingGroup:AddLabel("First unlock all NPCs in the Miscellaneous tab and the Wave 3 Brute should drop it's crowbar, then pick up it by clicking on it.", true)
+EvilEndingGroup:AddLabel("First unlock all NPCs in the Miscellaneous tab and the Wave 3 Brute should drop it's crowbar, then pick up it by clicking on it and keep in mind it requires max strength.", true)
 
 -- Origin Ending
 
@@ -1346,7 +1446,7 @@ local CollectRequiredPapers = OriginEnding:AddButton({
             if v.Name == "Note1" or v.Name == "Note2" or v.Name == "Note3" or v.Name == "Note4" or v.Name == "Note5" or v.Name == "Note6" then
                 for _, v in pairs(v:GetDescendants()) do
                     if v:IsA("ClickDetector") then
-                        fireclickdetector(v)
+                        utils.fireClickEvent(v.Parent)
                     end
                 end
             end
@@ -1364,23 +1464,39 @@ OriginEnding:AddToggle("LarryESP", {
     Tooltip = false,
 
     Callback = function(Value)
+        local originending
+
+        -- Checking for origin ending
+
+        if game.Workspace:FindFirstChild("Gym") then
+            originending = true
+        else
+            originending = false
+        end
+
         if Value then
-            for _, v in pairs(game.Workspace:GetChildren()) do
-                if v.Name == "LarryBoss" and v:IsA("Model") then
-                    local larryesp = Instance.new("Highlight", v)
-    
-                    larryesp.Name = "_CelestialLarryESP"
-                    larryesp.Adornee = nil
-                    larryesp.FillColor = Color3.new(255, 0, 0)
-                    larryesp.FillTransparency = 0.5
-                    larryesp.OutlineColor = Color3.new(255, 255, 255)
-                    larryesp.OutlineTransparency = 0
+
+            if originending then
+                for _, v in pairs(game.Workspace:GetChildren()) do
+                    if v.Name == "LarryBoss" and v:IsA("Model") then
+                        local larryesp = Instance.new("Highlight", v)
+        
+                        larryesp.Name = "_CelestialLarryESP"
+                        larryesp.Adornee = nil
+                        larryesp.FillColor = Color3.new(255, 0, 0)
+                        larryesp.FillTransparency = 0.5
+                        larryesp.OutlineColor = Color3.new(255, 255, 255)
+                        larryesp.OutlineTransparency = 0
+                    end
                 end
+            else
+                Library:Notify("Origin Ending not found.", 5)
+                Toggles.LarryESP:SetValue(false)
             end
 
         else
 
-            for _, v in pairs(game.Workspace()) do
+            for _, v in pairs(game.Workspace:GetDescendants()) do
                 if v.Name == "_CelestialLarryESP" then
                     v:Destroy()
                 end
@@ -1392,21 +1508,37 @@ OriginEnding:AddToggle("LarryESP", {
 OriginEnding:AddToggle("CardboardBoxESP", {
     Text = "Cardboard Box ESP",
     Default = false,
-    Tooltip = "Might not always be reliabe due to Roblox's highlight cap",
+    Tooltip = "Tends to not be reliable due to Roblox's\nhighlight cap.",
 
     Callback = function(Value)
+        local originending
+
+        -- Checking for origin ending
+
+        if game.Workspace:FindFirstChild("GameObjects") then
+            originending = true
+        else
+            originending = false
+        end
+
         if Value then
-            for _, v in pairs(game.Workspace.GameObjects.Boxes:GetChildren()) do
-                if v.Name == "Box" and v:IsA("Model") then
-                    local cardboardboxesp = Instance.new("Highlight", v)
-    
-                    cardboardboxesp.Name = "_CelestialCardboardBoxESP"
-                    cardboardboxesp.Adornee = nil
-                    cardboardboxesp.FillColor = Color3.new(255, 255, 255)
-                    cardboardboxesp.FillTransparency = 1
-                    cardboardboxesp.OutlineColor = Color3.new(255, 255, 255)
-                    cardboardboxesp.OutlineTransparency = 0
+
+            if originending then
+                for _, v in pairs(game.Workspace.GameObjects.Boxes:GetChildren()) do
+                    if v.Name == "Box" and v:IsA("Model") then
+                        local cardboardboxesp = Instance.new("Highlight", v)
+        
+                        cardboardboxesp.Name = "_CelestialCardboardBoxESP"
+                        cardboardboxesp.Adornee = nil
+                        cardboardboxesp.FillColor = Color3.new(255, 255, 255)
+                        cardboardboxesp.FillTransparency = 1
+                        cardboardboxesp.OutlineColor = Color3.new(255, 255, 255)
+                        cardboardboxesp.OutlineTransparency = 0
+                    end
                 end
+            else
+                Library:Notify("Origin Ending not found.", 5)
+                Toggles.CardboardBoxESP:SetValue(false)
             end
             
         else
@@ -1425,7 +1557,19 @@ OriginEnding:AddLabel("Memory II - Gym")
 local RoseTeleport = OriginEnding:AddButton({
     Text = "Teleport to Rose",
     Func = function()
-        utils.partTeleport(game.Workspace.Gym.Roses.Rose.Stem)
+        local originending
+
+        if game.Workspace:FindFirstChild("Gym") then
+            originending = true
+        else
+            originending = false
+        end
+
+        if originending then
+            utils.partTeleport(game.Workspace.Gym.Roses.Rose.Stem)
+        else
+            Library:Notify("Origin Ending not found.", 5)
+        end
     end,
     DoubleClick = false,
     Tooltip = false,
@@ -1434,7 +1578,19 @@ local RoseTeleport = OriginEnding:AddButton({
 local SafeSpotTeleport = OriginEnding:AddButton({
     Text = "Teleport to Safe Spot",
     Func = function()
-        utils.teleport(498.540649, 265.847321, 701.331665, 0.999958396, 1.74917014e-09, -0.00912014209, -1.50502355e-09, 1, 2.67769042e-08, 0.00912014209, -2.67620646e-08, 0.999958396)
+        local originending
+
+        if game.Workspace:FindFirstChild("Gym") then
+            originending = true
+        else
+            originending = false
+        end
+
+        if originending then
+            utils.teleport(498.540649, 265.847321, 701.331665, 0.999958396, 1.74917014e-09, -0.00912014209, -1.50502355e-09, 1, 2.67769042e-08, 0.00912014209, -2.67620646e-08, 0.999958396)
+        else
+            Library:Notify("Origin Ending not found.", 5)
+        end
     end,
     DoubleClick = false,
     Tooltip = false,
@@ -1445,7 +1601,19 @@ OriginEnding:AddLabel("Memory III - Obby")
 local CompleteEndgameObby = OriginEnding:AddButton({
     Text = "Complete Obby",
     Func = function()
-        utils.partTeleport(workspace.Obby.CheckpointPart3)
+        local originending
+
+        if game.Workspace:FindFirstChild("Obby") then
+            originending = true
+        else
+            originending = false
+        end
+
+        if originending then
+            utils.partTeleport(game.Workspace.Obby.CheckpointPart3)
+        else
+            Library:Notify("Origin Ending not found.", 5)
+        end
     end,
     DoubleClick = false,
     Tooltip = false,
@@ -1472,81 +1640,42 @@ local TeleportToLobby = MiscGroup:AddButton({
 local IceSlip = MiscGroup:AddButton({
     Text = "Slip",
     Func = function()
-        if antislipenabled then -- if the toggle Anti Slip is enabled then disable it, fire the event, and then set it to true
-            Toggles.AntiIceSlip:SetValue(false)
+        if antislipenabled then
+            Toggles.AntiIceSlip:SetValue(false) -- disabling anti slip because it is enabled
 
-            events.IceSlip:FireServer()
+            events.IceSlip:FireServer() -- fire slip event
 
-            Toggles.AntiIceSlip:SetValue(true)
+            Toggles.AntiIceSlip:SetValue(true) -- set anti slip back to true
 
-        else -- if the toggle Anti Slip is not enabled then just fire the event normally
+        else
 
-            events.IceSlip:FireServer()
+            events.IceSlip:FireServer() -- fire the slip event normally because anti slip isn't enabled
         end
     end,
     DoubleClick = false,
-    Tooltip = "Triggers a ice slip",
+    Tooltip = "Triggers an ice slip.",
 })
 
 local BreakBarricades = MiscGroup:AddButton({
     Text = "Break Barricades",
     Func = function()
-        for i = 1, 25 do
-            for _, v in pairs(game:GetService("Workspace").FallenTrees:GetChildren()) do
+        local path = game.Workspace:FindFirstChild("FallenTrees")
+
+        if not path then
+            Library:Notify("Golden apple path not found. Try again once the path loads.")
+            return
+        end
+
+        for _ = 1, 25 do
+            for _, v in pairs(path:GetChildren()) do
 				if v:FindFirstChild("TreeHitPart") then
-					game.ReplicatedStorage.Events.RoadMissionEvent:FireServer(1, v.TreeHitPart, 5)
+					events.RoadMissionEvent:FireServer(1, v.TreeHitPart, 5)
                 end
             end
         end
     end,
     DoubleClick = false,
     Tooltip = "Destroys the barricades leading to the golden apple.",
-})
-
-local OpenTrashCans = MiscGroup:AddButton({
-    Text = "Open Trash Cans",
-    Func = function()
-        for i = 1, 30 do
-            for _, v in pairs(game.Workspace.TrashCans:GetDescendants()) do
-				if v:IsA("ClickDetector") then
-					fireclickdetector(v, 1)
-                end
-            end
-        end
-    end,
-    DoubleClick = false,
-    Tooltip = false,
-})
-
-MiscGroup:AddDivider()
-
-MiscGroup:AddToggle("ControlToggle", {Text = "FPS Cap"})
-local FPSCapDepBox = MiscGroup:AddDependencyBox();
-
-FPSCapDepBox:SetupDependencies({
-    {Toggles.ControlToggle, true}
-});
-
-local UnlockFPS = FPSCapDepBox:AddButton({
-    Text = "Unlock FPS",
-    Func = function()
-        Options.FPSCapSlider:SetValue(0)
-    end,
-    DoubleClick = false,
-    Tooltip = "Removes the 60 fps cap",
-})
-
-FPSCapDepBox:AddSlider("FPSCapSlider", {
-    Text = "FPS Cap",
-    Default = 0,
-    Min = 0,
-    Max = 1000,
-    Rounding = 0,
-    Compact = false,
-
-    Callback = function(Value)
-        setfpscap(Value)
-    end
 })
 
 -- NPCs Group
@@ -1557,12 +1686,10 @@ NPCGroup:AddDivider()
 local UnlockAllNPCs = NPCGroup:AddButton({
     Text = "Unlock All NPCs",
     Func = function()
-        local twadowants = player.PlayerGui.Phone.Phone.Phone.Background.InfoScreen.DogInfo.TwadoWants.Text
-
-
+        local requirement = player.PlayerGui.Phone.Phone.Phone.Background.InfoScreen.DogInfo.TwadoWants.Text
+        local origcframe = humrootpart.CFrame
 
         -- Uncle Pete
-    
     
     
         events.GiveCrowbar:FireServer(game.Workspace.TheHouse.Rack) -- getting crowbar
@@ -1581,11 +1708,9 @@ local UnlockAllNPCs = NPCGroup:AddButton({
 
         wait(1)
 
-        fireclickdetector(game:GetService("Workspace").UnclePete.ClickDetector) -- triggering quest
+        utils.fireClickEvent(game:GetService("Workspace").UnclePete) -- triggering quest
     
-        -- Finished Notification
-    
-        Library:Notify("Unlocked Uncle Pete", 6)
+        Library:Notify("Unlocked Uncle Pete.", 6) -- notify step completion
     
     
     
@@ -1593,68 +1718,35 @@ local UnlockAllNPCs = NPCGroup:AddButton({
     
     
     
-        events.GiveTool:FireServer("Louise")
+        events.GiveTool:FireServer("Louise") -- giving required item
 
         wait(0.5)
 
-        events.LouiseGive:FireServer(2)
-
-        -- opening the door so detective can exit the room easier
+        events.LouiseGive:FireServer(2) -- giving required item to detective
 
         for _, v in pairs(game.Workspace.TheHouse.OfficeDoor.ClosedDoor:GetDescendants()) do
             if v:IsA("ClickDetector") then
-                fireclickdetector(v)
+                utils.fireClickEvent(v.Parent) -- opening the door so detective can exit the room easier and faster
             end
         end
     
-        -- Finished Notification
-    
-        Library:Notify("Unlocked Detective", 6)
+        Library:Notify("Unlocked Detective.", 6) -- notify step completion
     
     
     
-        -- Dog / Twado
+        -- Twado
+
+        utils.teleport(-204.027481, 30.4477577, -791.114014, -0.00695088226, -8.00880642e-08, -0.99997586, 1.38134548e-09, 1, -8.00995963e-08, 0.99997586, -1.93807503e-09, -0.00695088226) -- teleporting to the entrance
+
+        events.CatFed:FireServer(requirement) -- feeding twado
+        wait(2) -- waiting 2 before the next step to accommodate with the server's twado feed delay
+        utils.tweenTeleport(1, "-197.036865, 29.2477055, -791.058167, -0.00797706284, 7.27165101e-08, -0.999968171, -1.20378851e-09, 1, 7.27284331e-08, 0.999968171, 1.78390946e-09, -0.00797706284", true) -- moving forward through the entrance
     
-    
-    
-        if twadowants == "Apple" then
-            events.CatFed:FireServer("Apple")
+        Library:Notify("Unlocked Twado.", 6) -- notify step completion
 
-            wait(1.5)
+        wait(1.4)
 
-            utils.teleport(-202.099976, 33.0500031, -790.599915, 1, 0, 0, 0, 1, 0, 0, 0, 1)
-
-
-
-        elseif twadowants == "Cookie" then
-            events.CatFed:FireServer("Cookie")
-
-            wait(1.5)
-
-            utils.teleport(-202.099976, 33.0500031, -790.599915, 1, 0, 0, 0, 1, 0, 0, 0, 1)
-
-
-
-        elseif twadowants == "Pizza" then
-            events.CatFed:FireServer("Pizza")
-
-            wait(1.5)
-
-            utils.teleport(-202.099976, 33.0500031, -790.599915, 1, 0, 0, 0, 1, 0, 0, 0, 1)
-
-
-
-        elseif twadowants == "BloxyCola" then
-            events.CatFed:FireServer("BloxyCola")
-
-            wait(1.5)
-
-            utils.teleport(-202.099976, 33.0500031, -790.599915, 1, 0, 0, 0, 1, 0, 0, 0, 1)
-        end
-    
-        -- Finished Notification
-    
-        Library:Notify("Unlocked Twado", 6)
+        utils.teleportToCFrame(origcframe) -- teleport back to the original cframe
     end,
     DoubleClick = false,
     Tooltip = false,
@@ -1687,7 +1779,7 @@ local UnlockPete = NPCGroup:AddButton({
 
         wait(1)
 
-        fireclickdetector(game:GetService("Workspace").UnclePete.ClickDetector) -- triggering quest
+        utils.fireClickEvent(game:GetService("Workspace").UnclePete) -- triggering quest
     end,
     DoubleClick = false,
     Tooltip = false,
@@ -1696,7 +1788,7 @@ local UnlockPete = NPCGroup:AddButton({
 local TriggerQuest = NPCGroup:AddButton({
     Text = "Trigger Quest",
     Func = function()
-        fireclickdetector(game:GetService("Workspace").UnclePete.ClickDetector)
+        utils.fireClickEvent(game:GetService("Workspace").UnclePete)
     end,
     DoubleClick = false,
     Tooltip = false,
@@ -1722,7 +1814,7 @@ local UnlockDetective = NPCGroup:AddButton({
 
         for _, v in pairs(game.Workspace.TheHouse.OfficeDoor.ClosedDoor:GetDescendants()) do
             if v:IsA("ClickDetector") then
-                fireclickdetector(v)
+                utils.fireClickEvent(v.Parent)
             end
         end
     end,
@@ -1737,9 +1829,11 @@ local TeleportToDetectiveRoom = NPCGroup:AddButton({
 
         for _, v in pairs(game.Workspace.TheHouse.OfficeDoor.ClosedDoor:GetDescendants()) do
             if v:IsA("ClickDetector") then
-                fireclickdetector(v)
+                utils.fireClickEvent(v.Parent)
             end
         end
+
+        wait(0.1)
     
         -- Teleport
     
@@ -1750,51 +1844,25 @@ local TeleportToDetectiveRoom = NPCGroup:AddButton({
 })
 
 
--- Dog
+-- Twado
 
 NPCGroup:AddDivider()
 
-NPCGroup:AddLabel("Dog")
+NPCGroup:AddLabel("Twado")
 
-local UnlockDog = NPCGroup:AddButton({
-    Text = "Unlock Dog",
+local UnlockTwado = NPCGroup:AddButton({
+    Text = "Unlock Twado",
     Func = function()
-        local twadowants = player.PlayerGui.Phone.Phone.Phone.Background.InfoScreen.DogInfo.TwadoWants.Text
+        local requirement = player.PlayerGui.Phone.Phone.Phone.Background.InfoScreen.DogInfo.TwadoWants.Text
+        local origcframe = humrootpart.CFrame
 
-        if twadowants == "Apple" then
-            events.CatFed:FireServer("Apple")
+        utils.teleport(-204.027481, 30.4477577, -791.114014, -0.00695088226, -8.00880642e-08, -0.99997586, 1.38134548e-09, 1, -8.00995963e-08, 0.99997586, -1.93807503e-09, -0.00695088226) -- teleporting to the entrance
 
-            wait(1.5)
-
-            utils.teleport(-202.099976, 33.0500031, -790.599915, 1, 0, 0, 0, 1, 0, 0, 0, 1)
-
-
-
-        elseif twadowants == "Cookie" then
-            events.CatFed:FireServer("Cookie")
-
-            wait(1.5)
-
-            utils.teleport(-202.099976, 33.0500031, -790.599915, 1, 0, 0, 0, 1, 0, 0, 0, 1)
-
-
-
-        elseif twadowants == "Pizza" then
-            events.CatFed:FireServer("Pizza")
-
-            wait(1.5)
-
-            utils.teleport(-202.099976, 33.0500031, -790.599915, 1, 0, 0, 0, 1, 0, 0, 0, 1)
-
-
-
-        elseif twadowants == "BloxyCola" then
-            events.CatFed:FireServer("BloxyCola")
-
-            wait(1.5)
-
-            utils.teleport(-202.099976, 33.0500031, -790.599915, 1, 0, 0, 0, 1, 0, 0, 0, 1)
-        end
+        events.CatFed:FireServer(requirement) -- feeding twado
+        wait(2) -- waiting 2 before the next step to accommodate with the server's twado feed delay
+        utils.tweenTeleport(1, "-197.036865, 29.2477055, -791.058167, -0.00797706284, 7.27165101e-08, -0.999968171, -1.20378851e-09, 1, 7.27284331e-08, 0.999968171, 1.78390946e-09, -0.00797706284", true) -- moving forward through the entrance
+        wait(1)
+        utils.teleportToCFrame(origcframe) -- teleport back to the original cframe
     end,
     DoubleClick = false,
     Tooltip = false,
@@ -1830,6 +1898,8 @@ Library:OnUnload(function()
 
     -- Restoring the default settings
 
+    _G.updatewalkspeed = false
+
     _G.godmodeloop = false
     _G.loophideenergy = false
     _G.disablefrontdoor = false
@@ -1839,47 +1909,93 @@ Library:OnUnload(function()
     _G.removeinventorysound = false
     _G.autohealall = false
     _G.disablewindknockback = false
+    _G.bypasscutscenes = false
     _G.larryesp = false
-
     _G.updateoutsideitems = false
     _G.updatehiddenitems = false
+    _G.collectcash = false
+    _G.disablevignette = false
+    _G.insidespoof = false
+    _G.outsidespoof = false
+    _G.spooffighting = false
 
-    utils.modifyPlayer("WalkSpeed", 16) -- WalkSpeedExploit
+    -- WalkSpeedExploit
 
-    for _, v in pairs(game.Workspace:GetDescendants()) do -- RemoveHighlight
-        if v.Name == "_CelestialLarryESP" or v.Name == "_CelestialItemHighlight" or v.Name == "_CelestialDresserHighlight" or v.Name == "_CelestialCardboardBoxESP" then
+    utils.modifyPlayer("WalkSpeed", 16)
+
+    -- HighlightHiddenItems
+
+    for _, v in pairs(game.Workspace:GetDescendants()) do
+        if v.Name == "_CelestialItemHighlight" then
             v:Destroy()
         end
     end
 
-    for _, v in pairs(game.Chat:GetDescendants()) do -- AntiIceSlip
-        if v.Name == "IceSlip" and v:IsA("RemoteEvent") then
-            v.Parent = events
+    -- DresserESP
+
+    for _, v in pairs(game.Workspace:GetDescendants()) do
+        if v.Name == "_CelestialDresserHighlight" then
+            v:Destroy()
         end
     end
 
-    for _, v in pairs(game.Chat:GetChildren()) do -- AntiHail
-        if v.Name == "Hails" and v:IsA("Folder") then
-            v.Parent = game.Workspace
+    -- DisableFrontDoor
+
+    for _, v in pairs(game.Workspace.tst:GetDescendants()) do
+        if v.Name == "Door" and v:IsA("Part") then
+            v.CanCollide = false
+            v.Transparency = 0
         end
     end
 
-    for _, v in pairs(game.Workspace:GetChildren()) do -- DisableWind
+    -- AlwaysFight
+
+    utils.fireTouchEvent(game.Workspace.EvilArea.ExitPart2)
+
+    -- AntiIceSlip
+
+    game:GetService("Chat"):FindFirstChild("IceSlip").Parent = events
+
+    -- AntiHail
+
+    game:GetService("Chat"):FindFirstChild("Hails").Parent = game.Workspace
+
+    -- DisableWind
+
+    for _, v in pairs(game.Workspace:GetChildren()) do
         if v.Name == "WavePart" then
             v.CanTouch = true
         end
     end
 
-    utils.modifyPlayer("WalkSpeed", 16) -- WalkSpeedEnabled
+    -- DisableMud
 
-    for _, v in pairs(game.Workspace:GetDescendants()) do -- LarryESP
-        if v.Name == "_CelestialLarryESP" and v:IsA("Highlight") then
+    for _, v in pairs(game:GetService("Workspace").BogArea:GetChildren()) do
+        if v.Name == "Mud" then
+            v.CanTouch = true
+        end
+    end
+
+    -- WalkSpeedEnabled
+
+    utils.modifyPlayer("WalkSpeed", 16)
+
+    -- JumpPowerEnabled
+
+    utils.modifyPlayer("JumpPower", 50)
+
+    -- LarryESP
+
+    for _, v in pairs(game.Workspace:GetDescendants()) do
+        if v.Name == "_CelestialLarryESP" then
             v:Destroy()
         end
     end
 
-    for _, v in pairs(game.Workspace:GetDescendants()) do -- CardboardBoxESP
-        if v.Name == "_CelestialCardboardBoxESP" and v:IsA("Highlight") then
+    -- CardboardBoxESP
+
+    for _, v in pairs(game.Workspace:GetDescendants()) do
+        if v.Name == "_CelestialCardboardBoxESP" then
             v:Destroy()
         end
     end
