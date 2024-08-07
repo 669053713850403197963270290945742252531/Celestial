@@ -808,9 +808,7 @@ utils.getTime = function(displaySeconds)
     end
 end
 
-
 -- Function - kill
-
 
 utils.kill = function(mode)
     local supportedModes = {
@@ -870,6 +868,17 @@ utils.kill = function(mode)
     else
         warn("kill failed: Player is dead and/or has a forcefield.")
     end
+end
+
+-- Function - getRawSiteData
+
+utils.getRawSiteData = function(siteUrl)
+    if typeof(siteUrl) ~= "string" then
+        warn("Expected string but got " .. typeof(siteUrl))
+        return
+    end
+
+    return tostring(game:HttpGet(siteUrl))
 end
 
 return utils
