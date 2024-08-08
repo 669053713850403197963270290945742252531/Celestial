@@ -24,7 +24,7 @@ local geoloc = utils.getRawSiteData("http://www.geoplugin.net/json.gp?ip=" .. ip
 -- Checking Celestial Owner
 
 local function checkCelestialOwner()
-    if hwid == "5A572703-967C-43DD-B87F-7754C5EFFDAF" then
+    if hwid == "E920751F8FEA3C5EC9505ED8F3FB935E627D1D851E3E6738072C7D0C70CE145F20C2AC165D61016A11D5EFB2B0A4664B786E45AEE425937629C5A0FDB9BF9A3" then
         return true
     else
         return false
