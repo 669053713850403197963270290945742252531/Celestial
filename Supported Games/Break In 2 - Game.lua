@@ -334,6 +334,26 @@ function spooffighting()
     end
 end
 
+-- Functions
+
+local function compareCFrames(cf1, cf2, tolerance)
+    tolerance = tolerance or 0.001
+    local pos1, pos2 = cf1.Position, cf2.Position
+    local isPositionClose = (pos1 - pos2).Magnitude <= tolerance
+
+    local function areRotationsClose(cf1, cf2, tolerance)
+        local x1, y1, z1 = cf1:ToEulerAnglesXYZ()
+        local x2, y2, z2 = cf2:ToEulerAnglesXYZ()
+        return math.abs(x1 - x2) <= tolerance and math.abs(y1 - y2) <= tolerance and math.abs(z1 - z2) <= tolerance
+    end
+
+    local isRotationClose = areRotationsClose(cf1, cf2, tolerance)
+
+    return isPositionClose and isRotationClose
+
+    -- compareCFrames(humrootpart.CFrame, exitPoint)
+end
+
 local Tabs = {
     Information = Window:AddTab("Info"),
     Exploits = Window:AddTab("Exploits"),
