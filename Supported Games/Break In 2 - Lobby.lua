@@ -10,12 +10,13 @@ local ThemeManager = loadstring(game:HttpGet(repo  ..  "addons/ThemeManager.lua"
 local SaveManager = loadstring(game:HttpGet(repo  ..  "addons/SaveManager.lua"))()
 
 local player = game:GetService("Players").LocalPlayer
+local humrootpart = player.Character:FindFirstChild("HumanoidRootPart")
+local humanoid = player.Character.Humanoid
 local getgamename = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
-local teleportservice = game:GetService("TeleportService")
 local remoteevents = game:GetService("ReplicatedStorage").RemoteEvents
 
 local Window = Library:CreateWindow({
-    Title = "Celestial | " .. getgamename,
+    Title = "Celestial | " .. getgamename .. " - " .. auth.Username,
     Center = true,
     AutoShow = true,
     TabPadding = 8,
@@ -28,6 +29,28 @@ local roledropdownvalue = ""
 local teleportdropdownvalue = ""
 local basicroledropdownvalue = ""
 local specialroledropdownvalue = ""
+local usecostume = false
+local usekidheight = false
+
+-- Functions
+
+local function compareCFrames(cf1, cf2, tolerance)
+    tolerance = tolerance or 0.001
+    local pos1, pos2 = cf1.Position, cf2.Position
+    local isPositionClose = (pos1 - pos2).Magnitude <= tolerance
+
+    local function areRotationsClose(cf1, cf2, tolerance)
+        local x1, y1, z1 = cf1:ToEulerAnglesXYZ()
+        local x2, y2, z2 = cf2:ToEulerAnglesXYZ()
+        return math.abs(x1 - x2) <= tolerance and math.abs(y1 - y2) <= tolerance and math.abs(z1 - z2) <= tolerance
+    end
+
+    local isRotationClose = areRotationsClose(cf1, cf2, tolerance)
+
+    return isPositionClose and isRotationClose
+
+    -- compareCFrames(humrootpart.CFrame, exitPoint)
+end
 
 local Tabs = {
     Information = Window:AddTab("Information"),
@@ -102,6 +125,14 @@ AutomationGroup:AddDropdown("Teleports", {
 local TruckTeleport = AutomationGroup:AddButton({
     Text = "Teleport",
     Func = function()
+        if humanoid.Sit then
+            humanoid.Sit = false
+
+            wait(0.4)
+        else
+            humanoid.Sit = false
+        end
+
         if teleportdropdownvalue == "Truck 1" then
             game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(87.4349976, 7.86999941, 108.889984, 8.10623169e-05, 1, 8.10623169e-05, -8.10623169e-05, -8.10623169e-05, 1, 1, -8.10623169e-05, 8.10623169e-05)
         elseif teleportdropdownvalue == "Truck 2" then
@@ -118,43 +149,34 @@ local TruckTeleport = AutomationGroup:AddButton({
     Tooltip = false
 })
 
-AutomationGroup:AddDivider()
-
-AutomationGroup:AddToggle("ControlToggle", {Text = "FPS Cap"})
-local FPSCapDepBox = AutomationGroup:AddDependencyBox();
-
-FPSCapDepBox:SetupDependencies({
-    {Toggles.ControlToggle, true}
-});
-
-local UnlockFPS = FPSCapDepBox:AddButton({
-    Text = "Unlock FPS",
-    Func = function()
-        Options.FPSCapSlider:SetValue(0)
-    end,
-    DoubleClick = false,
-    Tooltip = "Removes the 60 fps cap",
-})
-
-FPSCapDepBox:AddSlider("FPSCapSlider", {
-    Text = "FPS Cap",
-    Default = 0,
-    Min = 0,
-    Max = 1000,
-    Rounding = 0,
-    Compact = false,
-
-    Callback = function(Value)
-        setfpscap(Value)
-    end
-})
-
 -- Roles Group
 
 RolesGroup:AddDivider()
 
+RolesGroup:AddToggle("UseCostume", {
+    Text = "Use Costume",
+    Default = false,
+    Tooltip = "Toggles the use of costumes for each role.",
+
+    Callback = function(Value)
+        usecostume = Value
+    end
+})
+
+RolesGroup:AddToggle("UseKidHeight", {
+    Text = "Use Kid Height",
+    Default = true,
+    Tooltip = false,
+
+    Callback = function(Value)
+        usekidheight = Value
+    end
+})
+
+usekidheight = true
+
 RolesGroup:AddDropdown("BasicRoleDropdown", {
-    Values = {"The Hyper (Lollipop)", "The Sporty (Sports Drink)", "The Protecter (Bat)", "The Medic (Medkit)"},
+    Values = {"The Hyper (Lollipop)", "The Sporty (Sports Drink)", "The Protecter (Bat)", "The Medic (MedKit)"},
     Default = 0,
     Multi = false,
 
@@ -170,13 +192,13 @@ local UpdateRole = RolesGroup:AddButton({
     Text = "Update Role",
     Func = function()
         if basicroledropdownvalue == "The Hyper (Lollipop)" then
-            remoteevents.OutsideRole:FireServer("Lollipop", false, false)
+            remoteevents.MakeRole:FireServer("Lollipop", usekidheight, usecostume)
         elseif basicroledropdownvalue == "The Sporty (Sports Drink)" then
-            remoteevents.OutsideRole:FireServer("Bottle", false, false)
+            remoteevents.MakeRole:FireServer("Bottle", usekidheight, usecostume)
         elseif basicroledropdownvalue == "The Protecter (Bat)" then
-            remoteevents.OutsideRole:FireServer("Bat", false, false)
+            remoteevents.MakeRole:FireServer("Bat", usekidheight, usecostume)
         elseif basicroledropdownvalue == "The Medic (Medkit)" then
-            remoteevents.OutsideRole:FireServer("MedKit", false, false)
+            remoteevents.MakeRole:FireServer("MedKit", usekidheight, usecostume)
         end
 
         if basicroledropdownvalue ~= "" then
@@ -208,9 +230,9 @@ local UpdateRole = RolesGroup:AddButton({
     Text = "Update Role",
     Func = function()
         if specialroledropdownvalue == "The Nerd (Book)" then
-            remoteevents.OutsideRole:FireServer("Book", false, false)
+            remoteevents.MakeRole:FireServer("Book", usekidheight, usecostume)
         elseif specialroledropdownvalue == "The Hacker (Admin Phone)" then
-            remoteevents.OutsideRole:FireServer("Phone", false, false)
+            remoteevents.MakeRole:FireServer("Phone", usekidheight, usecostume)
         end
 
         if specialroledropdownvalue ~= "" then
@@ -238,7 +260,7 @@ UIGroups:AddToggle("HideBreakIn1", {
     Tooltip = "Hides Break In 1 recap button",
 
     Callback = function(Value)
-        player.PlayerGui.RightMenu.RightMenu.RightMenu.RightMenu.BreakIn1.Visible = Value
+        player.PlayerGui.RightMenu.RightMenu.RightMenu.RightMenu.BreakIn1.Visible = not player.PlayerGui.RightMenu.RightMenu.RightMenu.RightMenu.BreakIn1.Visible
     end
 })
 
@@ -248,9 +270,57 @@ UIGroups:AddToggle("TheHuntUI", {
     Tooltip = "Enables The Hunt menu that was used in the 2024 Roblox Egg Hunt",
 
     Callback = function(Value)
-        player.PlayerGui.BreakIn1ScreenHunt.BreakIn1ScreenHunt.BreakIn1ScreenHunt.Dialogue.Visible = Value
+        player.PlayerGui.BreakIn1ScreenHunt.BreakIn1ScreenHunt.BreakIn1ScreenHunt.Dialogue.Visible = not player.PlayerGui.BreakIn1ScreenHunt.BreakIn1ScreenHunt.BreakIn1ScreenHunt.Dialogue.Visible
     end
 })
+
+local leaveTruckButtonConnection -- Declare a variable to store the connection
+_G.looptruckbutton = true -- Global variable to control the loop
+
+UIGroups:AddToggle("TruckUI", {
+    Text = "Leave Truck Button",
+    Default = false,
+    Tooltip = "Enables an unreleased button to leave a truck.",
+
+    Callback = function(Value)
+        local buttonEnabled = Value
+        _G.looptruckbutton = Value
+
+        player.PlayerGui.TruckUI.Enabled = Value
+        player.PlayerGui.TruckUI.Leave.Visible = Value
+
+        -- Disconnect the previous connection if it exists
+
+        if leaveTruckButtonConnection then
+            leaveTruckButtonConnection:Disconnect()
+            leaveTruckButtonConnection = nil
+        end
+
+        -- Connect the event if the button is enabled
+
+        if buttonEnabled then
+            leaveTruckButtonConnection = player.PlayerGui.TruckUI.Leave.Button.MouseButton1Click:Connect(function()
+                if buttonEnabled then
+                    player.PlayerGui.TruckUI.Enabled = not player.PlayerGui.TruckUI.Enabled
+                end
+            end)
+        end
+
+        -- Recheck the conditions every time the player sits
+
+        while _G.looptruckbutton do
+            if humanoid.Sit and buttonEnabled then
+                player.PlayerGui.TruckUI.Enabled = true
+                player.PlayerGui.TruckUI.Leave.Visible = true
+            else
+                player.PlayerGui.TruckUI.Enabled = false
+                player.PlayerGui.TruckUI.Leave.Visible = false
+            end
+            wait(0.1)
+        end
+    end
+})
+
 
 -- Achievement Spoofer Group
 
@@ -333,6 +403,13 @@ local SpoofAchievements = AchievementSpooferGroups:AddButton({
 local UndoAchievementSpoof = AchievementSpooferGroups:AddButton({
     Text = "Restore",
     Func = function()
+        -- Resolving Nil Values
+
+        if previous_achievementratio == nil and hadnewindicator == nil then
+            Library:Notify("No saved achievement ratio or new indicator state saved.", 6)
+            return
+        end
+
         -- Disabling the achievement spoofers
 
         Options.AchievementRatioInput:SetValue("")
@@ -386,7 +463,25 @@ Library:OnUnload(function()
 
     -- Restoring the default settings
 
-    player.PlayerGui.RightMenu.RightMenu.RightMenu.RightMenu.BreakIn1.Visible = true
+    _G.looptruckbutton = false
+
+    -- TruckUI
+
+    if leaveTruckButtonConnection then
+        leaveTruckButtonConnection:Disconnect()
+        leaveTruckButtonConnection = nil
+    end
+
+    player.PlayerGui.TruckUI.Enabled = false
+    player.PlayerGui.TruckUI.Leave.Visible = false
+
+    -- TheHuntUI
+
+    player.PlayerGui.BreakIn1ScreenHunt.BreakIn1ScreenHunt.BreakIn1ScreenHunt.Dialogue.Visible = false
+
+    -- HideBreakIn1
+
+    player.PlayerGui.RightMenu.RightMenu.RightMenu.RightMenu.BreakIn1.Visible = false
 
     -- Changing the unloaded variable value
 
