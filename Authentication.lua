@@ -3,7 +3,7 @@ local AuthModule = {}
 local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/main/Utilities.lua"))()
 
 local player = game:GetService("Players").LocalPlayer
-local hwid = game:GetService("RbxAnalyticsService"):GetClientId()
+local hwid = gethwid()
 
 -- Configuration
 
@@ -16,8 +16,8 @@ AuthModule.notify_execution = true
 AuthModule.authorized = false
 
 local WhitelistedUsers = {
-    ["5A572703-967C-43DD-B87F-7754C5EFFDAF"] = { Username = "Corrade" , Rank = "Owner"},
-    ["00000000-0000-0000-0000-000000000000"] = { Username = "Unknown" , Rank = "User"}
+    ["E920751F8FEA3C5EC9505ED8F3FB935E627D1D851E3E6738072C7D0C70CE145F20C2AC165D61016A11D5EFB2B0A4664B786E45AEE425937629C5A0FDB9BF9A31"] = { Username = "Corrade" , Rank = "Owner"},
+    ["00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"] = { Username = "Unknown" , Rank = "User"}
 }
 
 -- Placeholder: 00000000-0000-0000-0000-000000000000
@@ -30,10 +30,10 @@ if WhitelistedUsers[hwid] then
     AuthModule.authorized = true
 
     if AuthModule.notify_execution then
-        --print("Successfully logged in as " .. userInfo.Rank .. ": " .. userInfo.Username)
+        --print("Successfully logged in as " .. AuthModule.Rank .. ": " .. AuthModule.Username)
         
-        --utils.success("User " .. AuthModule.Username .. " authenticated!")
-        --utils.createRbxNotif("Celestial", "User " .. AuthModule.Username .. " authenticated!", 18568429771, 3)
+        --utils.success("Successfully logged in as " .. AuthModule.Rank .. ": " .. AuthModule.Username)
+        --utils.sendNotif("Celestial", "Successfully logged in as " .. AuthModule.Rank .. ": " .. AuthModule.Username, 3, 18568429771)
     end
 
     if AuthModule.log_executions then
@@ -42,7 +42,7 @@ if WhitelistedUsers[hwid] then
 else
     AuthModule.authorized = false
     
-    player:Kick("This session has been invalidated due to the stored credentials not being authorized.")
+    player:Kick("This session has been invalidated due to the stored credentials not being authorized.\n\nYour hardware id has been copied to your clipboard.")
 
     setclipboard(hwid)
 
