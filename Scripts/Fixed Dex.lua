@@ -4,7 +4,7 @@
   Fixed Dex Notes
 
   This version of Dex is a modified version of the original dex developed by Moon.
-  This version only adds support for Synapse Z due to Synapse Z breaking tables.
+  This version only adds support for Synapse Z due to Synapse Z breaking some tables.
   Original Dex: https://raw.githubusercontent.com/infyiff/backup/main/dex.lua
 
 
