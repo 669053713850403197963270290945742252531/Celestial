@@ -169,7 +169,7 @@ utils.updateAudio = function(path, soundId, isPlaying)
 
     if type(path.GetChildren) == "function" then
         for _, v in pairs(path:GetChildren()) do
-            if v:IsA("Sound") and v.SoundId == "rbxassetid://" .. soundId then
+            if v:IsA("Sound") and v.SoundId == soundId then
                 v.Playing = isPlaying
                 found = true
             end
