@@ -702,6 +702,8 @@ utils.fireTouchEvent = function(touchtransmitter)
     end
 
     firetouchinterest(humrootpart, touchtransmitter, 0)
+    wait(0.01)
+    firetouchinterest(humrootpart, touchtransmitter, 1)
 end
 
 -- Function - fireAllTouchEvents
@@ -718,6 +720,8 @@ utils.fireAllTouchEvents = function(location)
 
             if touchParent and touchParent:IsA("BasePart") then
                 firetouchinterest(humrootpart, touchParent, 0)
+                wait(0.01)
+                firetouchinterest(humrootpart, touchParent, 1)
             else
                 warn("TouchTransmitter's parent is not a BasePart.")
             end
@@ -727,13 +731,26 @@ end
 
 -- Function - fireProxPrompt
 
-utils.fireProxPrompt = function(proximityprompt)
-    if typeof(proximityprompt) ~= "Instance" then
-        warn("Expected Instance but got " .. typeof(proximityprompt) .. ".")
+utils.fireProxPrompt = function(promptPath)
+    if typeof(promptPath) ~= "Instance" then
+        warn("Expected Instance but got " .. typeof(promptPath) .. ".")
         return
     end
 
-    fireproximityprompt(proximityprompt.ProximityPrompt, 1)
+    local hasPrompt = false
+
+    for _, v in ipairs(promptPath:GetChildren()) do
+        if v:IsA("ProximityPrompt") then
+            hasPrompt = true
+            print("yes prompt")
+            fireproximityprompt(v, 1)
+            break  -- Fire the first found ProximityPrompt and break the loop
+        end
+    end
+
+    if not hasPrompt then
+        print("no prompt")
+    end
 end
 
 
