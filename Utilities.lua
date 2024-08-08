@@ -742,14 +742,13 @@ utils.fireProxPrompt = function(promptPath)
     for _, v in ipairs(promptPath:GetChildren()) do
         if v:IsA("ProximityPrompt") then
             hasPrompt = true
-            print("yes prompt")
             fireproximityprompt(v, 1)
             break  -- Fire the first found ProximityPrompt and break the loop
         end
     end
 
     if not hasPrompt then
-        print("no prompt")
+        warn("ProximityPrompt was not found in: " .. tostring(promptPath))
     end
 end
 
