@@ -17,8 +17,8 @@ local console = loadstring(game:HttpGet("https://raw.githubusercontent.com/66905
 
 local player = players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
-local humanoid = character:WaitForChild("Humanoid")
-local humrootpart = character:WaitForChild("HumanoidRootPart")
+local humanoid = character:FindFirstChild("Humanoid")
+local humrootpart = character:FindFirstChild("HumanoidRootPart")
 
 -- Function - getPlayers
 
