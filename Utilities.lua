@@ -478,7 +478,7 @@ end
 -- Function - modifyPlayer
 
 utils.modifyPlayer = function(property, value)
-    game:GetService("Players").LocalPlayer.Character.Humanoid[property] = value
+    humanoid[property] = value
 end
 
 -- Function - setElementEnabled
