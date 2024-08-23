@@ -16,8 +16,8 @@ AuthModule.notify_execution = true
 AuthModule.authorized = false
 
 local WhitelistedUsers = {
-    ["5A572703-967C-43DD-B87F-7754C5EFFDAF"] = { Username = "Corrade" , Rank = "Owner"},
-    ["00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"] = { Username = "Unknown" , Rank = "User"}
+    ["9056CF11-6BF0-4AA9-999A-EE8BEE18D76B"] = { Username = "Corrade" , Rank = "Owner"},
+    ["00000000-0000-0000-0000-000000000000"] = { Username = "Unknown" , Rank = "User"}
 }
 
 -- Placeholder: 00000000-0000-0000-0000-000000000000
@@ -30,7 +30,7 @@ if WhitelistedUsers[hwid] then
     AuthModule.authorized = true
 
     if AuthModule.notify_execution then
-        --print("Successfully logged in as " .. AuthModule.Rank .. ": " .. AuthModule.Username)
+        print("Successfully logged in as " .. AuthModule.Rank .. ": " .. AuthModule.Username)
         
         --utils.success("Successfully logged in as " .. AuthModule.Rank .. ": " .. AuthModule.Username)
         --utils.sendNotif("Celestial", "Successfully logged in as " .. AuthModule.Rank .. ": " .. AuthModule.Username, 3, 18568429771)
