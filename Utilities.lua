@@ -718,7 +718,7 @@ end
 
 -- Function - fireAllTouchEvents
 
-utils.fireAllTouchEvents = function(location)
+utils.fireAllTouchEvents = function(humanoidRootPart, location)
     if typeof(location) ~= "Instance" then
         warn("Argument #1 expected Instance but got " .. typeof(location) .. ".")
         return
@@ -729,9 +729,9 @@ utils.fireAllTouchEvents = function(location)
             local touchParent = descendant.Parent
 
             if touchParent and touchParent:IsA("BasePart") then
-                firetouchinterest(humrootpart, touchParent, 0)
+                firetouchinterest(humanoidRootPart, touchParent, 0)
                 wait(0.01)
-                firetouchinterest(humrootpart, touchParent, 1)
+                firetouchinterest(humanoidRootPart, touchParent, 1)
             else
                 warn("TouchTransmitter's parent is not a BasePart.")
             end
