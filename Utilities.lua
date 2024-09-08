@@ -447,7 +447,7 @@ end
 
 utils.setCoreGuiEnabled = function(coreGuiType, state)
     if typeof(state) ~= "boolean" then
-        warn("Expected boolean but got " .. typeof(state) .. ".")
+        warn("Argument #2 expected boolean but got " .. typeof(state) .. ".")
         return
     end
 
@@ -677,8 +677,18 @@ end
 -- Function - sendMessage
 
 utils.sendMessage = function(message)
-    local RBXGeneral = textchatservice.TextChannels.RBXGeneral
-    RBXGeneral:SendAsync(message)
+    local chatVersion = textchatservice.ChatVersion.Name
+    
+    if chatVersion == "TextChatService" then -- TextChatService
+        local RBXGeneral = textchatservice.TextChannels.RBXGeneral
+        RBXGeneral:SendAsync(message)
+    else -- LegacyChatService
+        local chatEvent = game:GetService("ReplicatedStorage"):FindFirstChild("DefaultChatSystemChatEvents").SayMessageRequest
+
+        if chatEvent then
+            chatEvent:FireServer(message, "All")
+        end
+    end
 end
 
 -- Function - success
@@ -695,22 +705,22 @@ end
 
 -- Function - fireTouchEvent
 
-utils.fireTouchEvent = function(touchtransmitter)
+utils.fireTouchEvent = function(humanoidRootPart, touchtransmitter)
     if typeof(touchtransmitter) ~= "Instance" then
-        warn("Expected Instance but got " .. typeof(touchtransmitter) .. ".")
+        warn("Argument #1 expected Instance but got " .. typeof(touchtransmitter) .. ".")
         return
     end
 
-    firetouchinterest(humrootpart, touchtransmitter, 0)
+    firetouchinterest(humanoidRootPart, touchtransmitter, 0)
     wait(0.01)
-    firetouchinterest(humrootpart, touchtransmitter, 1)
+    firetouchinterest(humanoidRootPart, touchtransmitter, 1)
 end
 
 -- Function - fireAllTouchEvents
 
 utils.fireAllTouchEvents = function(location)
     if typeof(location) ~= "Instance" then
-        warn("Expected Instance but got " .. typeof(location) .. ".")
+        warn("Argument #1 expected Instance but got " .. typeof(location) .. ".")
         return
     end
     
@@ -733,7 +743,7 @@ end
 
 utils.fireProxPrompt = function(promptPath)
     if typeof(promptPath) ~= "Instance" then
-        warn("Expected Instance but got " .. typeof(promptPath) .. ".")
+        warn("Argument #1 expected Instance but got " .. typeof(promptPath) .. ".")
         return
     end
 
@@ -758,7 +768,7 @@ end
 
 utils.fireClickEvent = function(clickdetector)
     if typeof(clickdetector) ~= "Instance" then
-        warn("Expected Instance but got " .. typeof(clickdetector) .. ".")
+        warn("Argument #1 expected Instance but got " .. typeof(clickdetector) .. ".")
         return
     end
 
@@ -769,7 +779,7 @@ end
 
 utils.fireAllClickEvents = function(location)
     if typeof(location) ~= "Instance" then
-        warn("Expected Instance but got " .. typeof(location) .. ".")
+        warn("Argument #1 expected Instance but got " .. typeof(location) .. ".")
         return
     end
     
@@ -788,7 +798,7 @@ utils.playerTeleport = function(delay)
     local humrootpart = character:FindFirstChild("HumanoidRootPart")
 
     if typeof(delay) ~= "number" then
-        warn("Expected number but got " .. typeof(delay) .. ".")
+        warn("Argument #1 expected number but got " .. typeof(delay) .. ".")
         return
     end
 
@@ -827,16 +837,22 @@ end
 -- Function - getTime
 
 utils.getTime = function(displaySeconds)
-    if typeof(displaySeconds) ~= "boolean" then -- if the given value isn't nil, check if its a boolean
-        warn("Expected boolean but got " .. typeof(displaySeconds) .. ".")
+    if typeof(displaySeconds) ~= "boolean" then
+        warn("Argument #1 expected boolean but got " .. typeof(displaySeconds) .. ".")
         return
     end
     
-    if displaySeconds then
-        return os.date("%I:%M:%S %p")
+    local is24Hour = tonumber(os.date("%H")) == tonumber(os.date("%I"))
+    
+    local timeFormat
+
+    if is24Hour then
+        timeFormat = displaySeconds and "%H:%M:%S" or "%H:%M"
     else
-        return os.date("%I:%M %p")
+        timeFormat = displaySeconds and "%I:%M:%S %p" or "%I:%M %p"
     end
+    
+    return os.date(timeFormat)
 end
 
 -- Function - kill
@@ -850,35 +866,27 @@ utils.kill = function(mode)
     }
 
     if not supportedModes[mode] then
-        warn("Invalid kill mode. The list of available modes is listed on the documentation.")
-        return
+        mode = "Normal"
+        --warn("Invalid kill mode. The list of available modes is listed on the documentation.")
+        --return
     end
 
     -- Checking for the needed conditions to proceed
 
     local dead
-    local forcefield
 
     -- Death Check
 
-    if humanoid.Health <= 0 then
+    if humanoid.Health <= 0 or not character:FindFirstChild("HumanoidRootPart") or not character:FindFirstChild("Head") or not character:FindFirstChild("Humanoid") then
         dead = true
     else
         dead = false
     end
 
-    -- Forcefield Check
-
-    if character:FindFirstChild("ForceField") then
-        forcefield = true
-    else
-        forcefield = false
-    end
-
 
     -- Proceeding with the function if the player isn't dead
 
-    if not dead and not forcefield then
+    if not dead then
         if mode == "Normal" then
             humanoid.Health = 0
 
@@ -897,7 +905,7 @@ utils.kill = function(mode)
             humanoid.Health = 0
         end
     else
-        warn("kill failed: Player is dead and/or has a forcefield.")
+        warn("kill failed: Player is dead. Please try again once the player is alive.")
     end
 end
 
@@ -905,11 +913,71 @@ end
 
 utils.getRawSiteData = function(siteUrl)
     if typeof(siteUrl) ~= "string" then
-        warn("Expected string but got " .. typeof(siteUrl))
+        warn("Argument #1 expected string but got " .. typeof(siteUrl))
         return
     end
 
     return tostring(game:HttpGet(siteUrl))
+end
+
+-- Function - createErrorPrompt
+
+utils.createErrorPrompt = function(errorTitle, errorMessage, buttonIsPrimary)
+    -- Checks and providing default values
+
+    if typeof(errorTitle) ~= "number" and typeof(errorTitle) ~= "string" then
+        warn("Argument #1 expected number or string but got " .. typeof(errorTitle) .. ".")
+        errorTitle = "Error"
+    end
+
+    if typeof(errorMessage) ~= "boolean" and typeof(errorMessage) ~= "number" and typeof(errorMessage) ~= "string" and typeof(errorMessage) ~= "Instance" then
+        warn("Argument #2 expected boolean, number, string, or Instance but got " .. typeof(errorMessage) .. ".")
+        errorMessage = "An error occurred"
+    end
+
+    if errorTitle == "Default" or errorTitle == "default" or errorTitle == "None" or errorTitle == "none" then
+        errorTitle = "Corrade Private"
+    end
+
+    -- Check if buttonIsPrimary is nil, if so set a default value (false)
+    
+    if buttonIsPrimary == nil then
+        buttonIsPrimary = false
+    elseif typeof(buttonIsPrimary) ~= "boolean" then -- if buttonIsPrimary is provided but is not a boolean
+        warn("Argument #3 expected boolean but got " .. typeof(buttonIsPrimary) .. ".")
+        buttonIsPrimary = false
+    end
+
+    local errorPrompt = getrenv().require(game:GetService("CoreGui").RobloxGui.Modules.ErrorPrompt)
+    local prompt = errorPrompt.new("Default")
+    prompt._hideErrorCode = true
+    prompt:setErrorTitle(errorTitle)
+    
+    local gui = Instance.new("ScreenGui", game:GetService("CoreGui"))
+    gui.Name = "Corrade Private Error Prompt"
+    
+    local funcs = {{
+        Text = "Close",
+        Callback = function()
+            prompt:_close()
+            -- Cleanup the leftover GUI after closing
+            task.spawn(function()
+                for _, v in pairs(game:GetService("CoreGui"):GetDescendants()) do
+                    if v.Name == "Corrade Private Error Prompt" and v:IsDescendantOf(gui) then
+                        v:Destroy()
+                        gui:Destroy()
+                        return
+                    end
+                end
+                gui:Destroy()  -- Destroy ScreenGui if no error prompt found
+            end)
+        end,
+        Primary = buttonIsPrimary -- Set the value of Primary based on buttonIsPrimary
+    }}
+
+    prompt:updateButtons(funcs, "Default")
+    prompt:setParent(gui)
+    prompt:_open(tostring(errorMessage))
 end
 
 return utils
