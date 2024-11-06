@@ -16,8 +16,8 @@ AuthModule.notify_execution = true
 AuthModule.authorized = false
 
 local WhitelistedUsers = {
-    ["9056CF11-6BF0-4AA9-999A-EE8BEE18D76B"] = { Username = "Corrade" , Rank = "Owner"},
-    ["00000000-0000-0000-0000-000000000000"] = { Username = "Unknown" , Rank = "User"}
+    ["1E7D9A05-0131-4044-9E7B-76F820ACDC01"] = { Username = "Corrade", Rank = "Owner" },
+    ["00000000-0000-0000-0000-000000000000"] = { Username = "Unknown", Rank = "User" }
 }
 
 -- Placeholder: 00000000-0000-0000-0000-000000000000
