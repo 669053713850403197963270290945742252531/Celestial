@@ -30,7 +30,7 @@ if WhitelistedUsers[hwid] then
     AuthModule.authorized = true
 
     if AuthModule.notify_execution then
-        print("Successfully logged in as " .. AuthModule.Rank .. ": " .. AuthModule.Username)
+        --print("Successfully logged in as " .. AuthModule.Rank .. ": " .. AuthModule.Username)
         
         --utils.success("Successfully logged in as " .. AuthModule.Rank .. ": " .. AuthModule.Username)
         --utils.sendNotif("Celestial", "Successfully logged in as " .. AuthModule.Rank .. ": " .. AuthModule.Username, 3, 18568429771)
