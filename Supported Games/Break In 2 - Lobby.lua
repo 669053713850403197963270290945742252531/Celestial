@@ -5,9 +5,9 @@ local repo = "https://raw.githubusercontent.com/66905371385040319796327029094574
 local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/main/Utilities.lua"))()
 local auth = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/main/Authentication.lua"))()
         
-local Library = loadstring(game:HttpGet(repo  ..  "Library.lua"))()
-local ThemeManager = loadstring(game:HttpGet(repo  ..  "addons/ThemeManager.lua"))()
-local SaveManager = loadstring(game:HttpGet(repo  ..  "addons/SaveManager.lua"))()
+local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
+local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
+local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 
 local player = game:GetService("Players").LocalPlayer
 local humrootpart = player.Character:FindFirstChild("HumanoidRootPart")
@@ -134,9 +134,9 @@ local TruckTeleport = AutomationGroup:AddButton({
         end
 
         if teleportdropdownvalue == "Truck 1" then
-            game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(87.4349976, 7.86999941, 108.889984, 8.10623169e-05, 1, 8.10623169e-05, -8.10623169e-05, -8.10623169e-05, 1, 1, -8.10623169e-05, 8.10623169e-05)
+            utils.teleport(87.4349976, 7.86999941, 108.889984, 8.10623169e-05, 1, 8.10623169e-05, -8.10623169e-05, -8.10623169e-05, 1, 1, -8.10623169e-05, 8.10623169e-05)
         elseif teleportdropdownvalue == "Truck 2" then
-            game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(87.4349976, 7.86999941, 147.389984, 8.10623169e-05, 1, 8.10623169e-05, -8.10623169e-05, -8.10623169e-05, 1, 1, -8.10623169e-05, 8.10623169e-05)
+            utils.teleport(87.4349976, 7.86999941, 147.389984, 8.10623169e-05, 1, 8.10623169e-05, -8.10623169e-05, -8.10623169e-05, 1, 1, -8.10623169e-05, 8.10623169e-05)
         end
 
         if teleportdropdownvalue ~= "" then

@@ -13,9 +13,6 @@ local teleportservice = game:GetService("TeleportService")
 local startergui = game:GetService("StarterGui")
 local marketplaceservice = game:GetService("MarketplaceService")
 
-local console = loadstring(game:HttpGet(
-"https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/main/Console%20Printing.lua"))()
-
 local player = players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
 local humanoid = character:FindFirstChild("Humanoid")
@@ -734,18 +731,6 @@ utils.sendMessage = function(message)
             chatEvent:FireServer(message, "All")
         end
     end
-end
-
--- Function - success
-
-utils.success = function(content)
-    console.custom_print(content, "rbxasset://textures/AudioDiscovery/done.png", Color3.fromRGB(9, 255, 0))
-end
-
--- Function - error
-
-utils.error = function(content)
-    console.custom_print(content, "rbxasset://textures/AudioDiscovery/error.png", Color3.fromRGB(255, 0, 0))
 end
 
 -- Function - fireTouchEvent

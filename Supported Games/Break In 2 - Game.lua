@@ -4,7 +4,7 @@ local repo = "https://raw.githubusercontent.com/66905371385040319796327029094574
 local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/main/Utilities.lua"))()
 local auth = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/main/Authentication.lua"))()
 
-local Library = loadstring(game:HttpGet(repo  .. "Library.lua"))()
+local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
 local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
 local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 
@@ -312,7 +312,7 @@ end
 
 function insidespoof()
     while _G.insidespoof do
-        utils.fireTouchEvent(game.Workspace.InsideTouchParts.FrontDoor)
+        utils.fireTouchEvent(humrootpart, game.Workspace.InsideTouchParts.FrontDoor)
 
         wait(0.2)
     end
@@ -320,7 +320,7 @@ end
 
 function outsidespoof()
     while _G.outsidespoof do
-        utils.fireTouchEvent(game.Workspace.OutsideTouchParts.OutsideTouch)
+        utils.fireTouchEvent(humrootpart, game.Workspace.OutsideTouchParts.OutsideTouch)
 
         wait(0.2)
     end
@@ -328,7 +328,7 @@ end
 
 function spooffighting()
     while _G.spooffighting do
-        utils.fireTouchEvent(game.Workspace.EvilArea.EnterPart)
+        utils.fireTouchEvent(humrootpart, game.Workspace.EvilArea.EnterPart)
 
         wait(1)
     end
@@ -654,7 +654,7 @@ local TeleportToLocation = TeleportationGroup:AddButton({
             utils.teleport(-216.701218, 30.4702568, -722.335327, 0.00404609647, 1.23633853e-07, 0.999991834, -7.18327664e-09, 1, -1.23605801e-07, -0.999991834, -6.68309719e-09, 0.00404609647)
         elseif teleportdropdownvalue == "Fighting Arena" then
             utils.teleport(-262.294586, 62.7116394, -735.916199, -1, -7.62224133e-08, -0.000201582094, -7.6233647e-08, 1, 5.5719358e-08, 0.000201582094, 5.57347235e-08, -1)
-            utils.fireTouchEvent(game.Workspace.EvilArea.EnterPart)
+            utils.fireTouchEvent(humrootpart, game.Workspace.EvilArea.EnterPart)
         elseif teleportdropdownvalue == "Gym" then
             utils.teleport(-257.281738, 63.4477501, -843.258362, 0.999999464, -6.6242154e-09, 0.00105193094, 6.52111609e-09, 1, 9.80127126e-08, -0.00105193094, -9.8005799e-08, 0.999999464)
         elseif teleportdropdownvalue == "Pizza Boss" then
@@ -683,7 +683,7 @@ local TeleportToVillainBase = TeleportationGroup:AddButton({
     Text = "Villain Base",
     Func = function()
         utils.teleport(-233.926117, 30.4567528, -790.019897, 0.00195977557, -8.22674984e-11, -0.999998093, -2.4766762e-09, 1, -8.71213934e-11, 0.999998093, 2.47684229e-09, 0.00195977557)
-        utils.fireTouchEvent(game.Workspace.InsideTouchParts.FrontDoor)
+        utils.fireTouchEvent(humrootpart, game.Workspace.InsideTouchParts.FrontDoor)
     end,
     DoubleClick = false,
     Tooltip = false,
@@ -749,7 +749,7 @@ TouchInterestsGroup:AddToggle("AlwaysFight", {
 
             wait(1)
 
-            utils.fireTouchEvent(game.Workspace.EvilArea.ExitPart2)
+            utils.fireTouchEvent(humrootpart, game.Workspace.EvilArea.ExitPart2)
         end
     end
 })
@@ -1970,15 +1970,19 @@ Library:OnUnload(function()
 
     -- AlwaysFight
 
-    utils.fireTouchEvent(game.Workspace.EvilArea.ExitPart2)
+    utils.fireTouchEvent(humrootpart, game.Workspace.EvilArea.ExitPart2)
 
     -- AntiIceSlip
 
-    game:GetService("Chat"):FindFirstChild("IceSlip").Parent = events
+    if game:GetService("Chat"):FindFirstChild("IceSlip") then
+        game:GetService("Chat"):FindFirstChild("IceSlip").Parent = events
+    end
 
     -- AntiHail
 
-    game:GetService("Chat"):FindFirstChild("Hails").Parent = game.Workspace
+    if game:GetService("Chat"):FindFirstChild("Hails") then
+        game:GetService("Chat"):FindFirstChild("Hails").Parent = game.Workspace
+    end
 
     -- DisableWind
 
