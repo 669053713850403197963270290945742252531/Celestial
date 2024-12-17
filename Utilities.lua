@@ -1415,6 +1415,10 @@ utils.fetchOwnership = function(mode, id)
 end
 
 utils.getHRP = function(mode)
+    if mode == nil then
+        mode = "Instance"
+    end
+
     local hrp = game:GetService("Players").LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
 
     if mode == "Instance" then
