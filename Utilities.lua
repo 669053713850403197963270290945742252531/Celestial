@@ -1414,4 +1414,29 @@ utils.fetchOwnership = function(mode, id)
     end
 end
 
+utils.getHRP = function(mode)
+    local hrp = game:GetService("Players").LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+
+    if mode == "Instance" then
+        return hrp
+    elseif mode == "Boolean" then
+
+        if hrp then
+            return true
+        else
+            return false
+        end
+    end
+end
+
+--[[
+
+if utils.getHRP("Boolean") then
+    utils.getHRP("Instance").CFrame = CFrame.new(0, 0, 0)
+else
+    warn("no hrp")
+end
+
+]]
+
 return utils

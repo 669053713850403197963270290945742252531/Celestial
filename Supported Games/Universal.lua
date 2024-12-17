@@ -1,22 +1,39 @@
-repeat task.wait(0.1) until game:IsLoaded()
+while not game:IsLoaded() do
+    task.wait()
+end
 
-
-local repo = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/LinoriaLib/main/"
 local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/main/Utilities.lua"))()
 local auth = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/main/Authentication.lua"))()
-        
+
+--local repoOwner = "669053713850403197963270290945742252531"
+local repoOwner = "mstudio45"
+local exploit = identifyexecutor()
+
+if exploit == "Synapse Z" then -- fuck syn z drawing lib
+    repoOwner = "669053713850403197963270290945742252531"
+else
+    repoOwner = "mstudio45"
+end
+
+local repo = "https://raw.githubusercontent.com/" .. repoOwner .. "/LinoriaLib/main/"    
 local library = loadstring(game:HttpGet(repo .. "Library.lua"))()
-local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
-local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
+local themeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
+local saveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
+local options = library.Options
+local toggles = library.Toggles
 
 local player = game:GetService("Players").LocalPlayer
-local humrootpart = player.Character:FindFirstChild("HumanoidRootPart")
+local hrp = player.Character:FindFirstChild("HumanoidRootPart")
 local humanoid = player.Character.Humanoid
-local getgamename = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
-local remoteevents = game:GetService("ReplicatedStorage").RemoteEvents
+local gameName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
 
-local Window = library:CreateWindow({
-    Title = "Celestial - " .. getgamename .. " : " .. auth.Username,
+while not hrp do
+    warn("Player's HumanoidRootPart was not found at runtime. Halting further code execution until found.")
+    task.wait()
+end
+
+local window = library:CreateWindow({
+    Title = "Celestial - " .. gameName .. ": " .. auth.Username,
     Center = true,
     AutoShow = true,
     TabPadding = 8,
@@ -25,17 +42,18 @@ local Window = library:CreateWindow({
 
 -- Module Variables
 
-local variable
+local clipPosition = "Y (-)"
+local clipAmount = 0
 
 -- Functions
 
 
 
-local Tabs = {
-    Info = Window:AddTab("Info"),
-    Main = Window:AddTab("Main"),
-    Player = Window:AddTab("Player"),
-    ["UI Settings"] = Window:AddTab("Configs"),
+local tabs = {
+    info = window:AddTab("Info"),
+    main = window:AddTab("Main"),
+    player = window:AddTab("Player"),
+    ["UI Settings"] = window:AddTab("Configs"),
 }
 
 if auth.notify_execution then
@@ -46,16 +64,16 @@ end
 
 -- Game Info Tab
 
-local GameDetailsGroup = Tabs.Info:AddLeftGroupbox("Game Details")
-local UserDetailsGroup = Tabs.Info:AddRightGroupbox("User Details")
-local WhitelistDetailsGroup = Tabs.Info:AddLeftGroupbox("Whitelist Details")
+local GameDetailsGroup = tabs.info:AddLeftGroupbox("Game Details")
+local UserDetailsGroup = tabs.info:AddRightGroupbox("User Details")
+local WhitelistDetailsGroup = tabs.info:AddLeftGroupbox("Whitelist Details")
 
 -- Game Info Group
 
 GameDetailsGroup:AddDivider()
 
 GameDetailsGroup:AddLabel("Game Supported: true")
-GameDetailsGroup:AddLabel("Game Name: " .. getgamename, true)
+GameDetailsGroup:AddLabel("Game Name: " .. gameName, true)
 GameDetailsGroup:AddLabel("Place ID: " .. game.PlaceId)
 
 -- User Info Group
@@ -81,29 +99,74 @@ WhitelistDetailsGroup:AddLabel("Log Breaches: " .. tostring(auth.log_breaches))
 
 -- Main Tab
 
-local mainGroup = Tabs.Main:AddLeftGroupbox("Main")
+local mainGroup = tabs.main:AddLeftGroupbox("Main")
 
 -- Main Group
 
 mainGroup:AddDivider()
 
-mainGroup:AddDropdown("Dropdown", {
-    Values = {"Option 1", "Option 2"},
+mainGroup:AddLabel("Position Clipping\n", true)
+
+mainGroup:AddDropdown('MyDisabledValueDropdown', {
+    Values = {"X (+)", "X (-)", "Y (+)", "Y (-)", "Z (+)", "Z (-)"},
+    DisabledValues = nil,
     Default = 0,
+    --Default = "Y (-)",
     Multi = false,
 
-    Text = "Dropdown",
+    Text = 'Clip Position',
+    Tooltip = 'The direction of which you will clip.',
+    DisabledTooltip = nil,
+
+    Callback = function(value)
+        clipPosition = value
+        print("clipPosition: ", clipPosition)
+    end,
+
+    Disabled = false,
+    Visible = true,
+})
+
+mainGroup:AddInput("clipPositionAmount", {
+    Default = false,
+    Numeric = true,
+    Finished = false,
+
+    Text = "Amount",
     Tooltip = false,
 
-    Callback = function(Value)
-        variable = Value
+    Placeholder = "Number (###)",
+    MaxLength = 3,
+
+    Callback = function(value)
+        clipAmount = value
+        print("clipAmount: ", clipAmount)
     end
 })
 
-local Button = mainGroup:AddButton({
-    Text = "Button",
+local clip = mainGroup:AddButton({
+    Text = "Clip",
     Func = function()
+        local clipAmount = tonumber(clipAmount)
+        local position = hrp.Position
+        local hrpX = position.X
+        local hrpY = position.Y
+        local hrpZ = position.Z
 
+        if clipPosition == "X (+)" then
+            print(typeof(clipAmount))
+            hrp.Position = Vector3.new(hrpX, hrpY, hrpZ + clipAmount)
+        elseif clipPosition == "X (-)" then
+
+        elseif clipPosition == "Y (+)" then
+
+        elseif clipPosition == "Y (-)" then
+
+        elseif clipPosition == "Z (+)" then
+
+        elseif clipPosition == "Z (-)" then
+
+        end
     end,
     DoubleClick = false,
     Tooltip = false
@@ -111,7 +174,7 @@ local Button = mainGroup:AddButton({
 
 -- Player Tab
 
-local localplayerGroup = Tabs.Player:AddLeftGroupbox("LocalPlayer")
+local localplayerGroup = tabs.player:AddLeftGroupbox("LocalPlayer")
 
 -- LocalPlayer Group
 
@@ -119,53 +182,75 @@ localplayerGroup:AddDivider()
 
 -----------------------------------------------------------------------------------------------------------------------------------
 
-library:SetWatermarkVisibility(false)
+local watermarkEnabled = false
 
---[[
+library:SetWatermarkVisibility(watermarkEnabled)
 
-local FrameTimer = tick()
-local FrameCounter = 0;
-local FPS = 60;
+if watermarkEnabled then
 
-local WatermarkConnection = game:GetService("RunService").RenderStepped:Connect(function()
-    FrameCounter += 1;
+    local FrameTimer = tick()
+    local FrameCounter = 0
+    local FPS = 60
+    
+    local WatermarkConnection = game:GetService("RunService").RenderStepped:Connect(function()
+        FrameCounter += 1
+    
+        if (tick() - FrameTimer) >= 1 then
+            FPS = FrameCounter
+            FrameTimer = tick()
+            FrameCounter = 0
+        end
+    
+        library:SetWatermark(("Celestial | %s fps | %s ms"):format(
+            math.floor(FPS),
+            math.floor(game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue())
+        ))
+    end)
+end
 
-    if (tick() - FrameTimer) >= 1 then
-        FPS = FrameCounter;
-        FrameTimer = tick();
-        FrameCounter = 0;
-    end;
-
-    library:SetWatermark(("Celestial | %s fps | %s ms"):format(
-        math.floor(FPS),
-        math.floor(game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue())
-    ));
-end);
-
-]]
-
-library.KeybindFrame.Visible = false;
+library.KeybindFrame.Visible = false
 
 library:OnUnload(function()
 
 
     -- Unloading
 
-    WatermarkConnection:Disconnect()
+    if watermarkEnabled and WatermarkConnection then
+        WatermarkConnection:Disconnect()
+    end
+
     library.Unloaded = true
 end)
 
-local MenuGroup = Tabs["UI Settings"]:AddLeftGroupbox("Menu")
+local MenuGroup = tabs["UI Settings"]:AddLeftGroupbox("Menu")
 MenuGroup:AddButton("Unload", function()
     library:Unload()
 end)
 
+MenuGroup:AddDivider()
+
 MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind",{ Default = "End", NoUI = true, Text = "Menu keybind" })
 
-library.ToggleKeybind = Options.MenuKeybind
+library.ToggleKeybind = options.MenuKeybind
 
-ThemeManager:SetLibrary(library)
-SaveManager:SetLibrary(library)
+themeManager:SetLibrary(library)
+saveManager:SetLibrary(library)
+
+MenuGroup:AddToggle("keybindMenuToggle", {
+    Text = "Open Keybind Menu",
+    Default = library.KeybindFrame.Visible,
+    Callback = function(state)
+        Library.KeybindFrame.Visible = state
+    end
+})
+
+MenuGroup:AddToggle("ShowCustomCursor", {
+    Text = "Custom Cursor",
+    Default = true,
+    Callback = function(state)
+        library.ShowCustomCursor = state
+    end
+})
 
 --[[
 
@@ -174,8 +259,8 @@ MenuGroup:AddToggle("KeybindsVisible", {
     Default = true,
     Tooltip = "Toggles the visibility of the keybinds",
 
-    Callback = function(Value)
-        if Value then
+    Callback = function(state)
+        if state then
             library.KeybindFrame.Visible = true
         else
             library.KeybindFrame.Visible = false
@@ -185,12 +270,14 @@ MenuGroup:AddToggle("KeybindsVisible", {
 
 ]]
 
-ThemeManager:SetFolder("Celestial")
-SaveManager:SetFolder("Celestial/Break In 2 - Lobby")
+themeManager:SetFolder("Celestial")
+saveManager:SetFolder("Celestial/Universal")
+--saveManager:SetFolder("Celestial/Break In 2")
+--saveManager:SetSubFolder("Lobby")
 
-SaveManager:IgnoreThemeSettings()
-SaveManager:SetIgnoreIndexes({"MenuKeybind"})
-SaveManager:BuildConfigSection(Tabs["UI Settings"])
-ThemeManager:ApplyToTab(Tabs["UI Settings"])
+saveManager:IgnoreThemeSettings()
+saveManager:SetIgnoreIndexes({"MenuKeybind"})
+saveManager:BuildConfigSection(tabs["UI Settings"])
+themeManager:ApplyToTab(tabs["UI Settings"])
 
-SaveManager:LoadAutoloadConfig()
+saveManager:LoadAutoloadConfig()
