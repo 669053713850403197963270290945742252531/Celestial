@@ -4,8 +4,8 @@
         "Username": "Corrade",
         "Rank": "Owner",
         "JoinDate": "2024-12-18",
-        "Banned": true,
-        "BanReason": "Exploiting",
+        "Banned": false,
+        "BanReason": null,
         "Notes": "Flagged for repeated violations."
     },
     {
@@ -18,3 +18,6 @@
         "Notes": ""
     }
 ]
+
+-- 7453630E-B029-4398-844C-F511BEFC3C43
+-- 00000000-0000-0000-0000-000000000000
