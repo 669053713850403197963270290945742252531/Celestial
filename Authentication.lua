@@ -35,7 +35,7 @@ local function fetchWhitelist(url)
 end
 
 -- Fetch whitelist
-local whitelistURL = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Users.json"
+local whitelistURL = "https://pastebin.com/raw/QDRgYs0d"
 local WhitelistedUsers = fetchWhitelist(whitelistURL)
 
 if not WhitelistedUsers then
