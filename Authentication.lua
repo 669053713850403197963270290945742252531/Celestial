@@ -19,6 +19,7 @@ local function fetchWhitelist(url)
     end)
     if success then
         local successDecode, whitelistData = pcall(function()
+            print(response)
             return HttpService:JSONDecode(response)
         end)
         if successDecode then

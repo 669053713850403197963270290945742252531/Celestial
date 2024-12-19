@@ -4,8 +4,8 @@
         "Username": "Corrade",
         "Rank": "Owner",
         "JoinDate": "2024-12-18",
-        "Banned": true,
-        "BanReason": "Exploiting Terms of Service.",
+        "Banned": false,
+        "BanReason": null,
         "Notes": "None"
     },
     {
