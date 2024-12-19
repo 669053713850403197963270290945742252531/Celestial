@@ -7,42 +7,51 @@ local hwid = game:GetService("RbxAnalyticsService"):GetClientId()
 local HttpService = game:GetService("HttpService")
 
 -- Configuration
-
 auth.log_executions = false
 auth.log_breaches = false
 auth.notify_execution = true
 auth.authorized = false
 
 -- Modular whitelist
-
 local function fetchWhitelist(url)
     local success, response = pcall(function()
         return game:HttpGet(url)
     end)
     if success then
-        return HttpService:JSONDecode(response)
+        local successDecode, whitelistData = pcall(function()
+            return HttpService:JSONDecode(response)
+        end)
+        if successDecode then
+            return whitelistData
+        else
+            warn("Failed to decode the whitelist JSON data. Response: " .. response)
+        end
     else
-        warn("Failed to fetch or decode the whitelist.")
-        return nil
+        warn("Failed to fetch the whitelist from URL: " .. url)
     end
+    return nil
 end
 
 -- Fetch whitelist
-
 local whitelistURL = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Users.json"
 local WhitelistedUsers = fetchWhitelist(whitelistURL)
 
---[[
-
 if not WhitelistedUsers then
-    player:Kick("Failed to retrieve the whitelist. Please try again.")
+    warn("Failed to retrieve the whitelist. Please verify the URL and try again.")
     return
 end
 
-]]
+-- Authentication function
+auth.isOwner = function()
+    local user = WhitelistedUsers[hwid]
+    return user and user.Rank == "Owner"
+end
+
+auth.isAuthorized = function()
+    return WhitelistedUsers[hwid] ~= nil
+end
 
 -- Authentication process
-
 local function logEvent(eventType)
     local url = ""
     if eventType == "execution" then
@@ -56,23 +65,13 @@ local function logEvent(eventType)
 end
 
 if WhitelistedUsers then
-    local hwid = game:GetService("RbxAnalyticsService"):GetClientId()
-    local userData = nil
-
-    -- Find user by HWID
-    for _, user in pairs(WhitelistedUsers) do
-        if user.HWID == hwid then
-            userData = user
-            break
-        end
-    end
-
+    local userData = WhitelistedUsers[hwid]
     if userData then
         if userData.Banned then
             warn("You are banned from using this service.\nReason: " .. (userData.BanReason or "No reason provided."))
         else
             print("Successfully logged in as " .. userData.Rank .. ": " .. userData.Username)
-            --utils.sendNotif("Celestial", "Successfully logged in as " .. userData.Rank .. ": " .. userData.Username, 3, 18568429771)
+            -- utils.sendNotif("Celestial", "Successfully logged in as " .. userData.Rank .. ": " .. userData.Username, 3, 18568429771)
 
             if auth.log_executions then
                 logEvent("execution")
