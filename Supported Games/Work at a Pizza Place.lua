@@ -55,6 +55,7 @@ local clipAmount = 0
 local tabs = {
     info = window:AddTab("Info"),
     main = window:AddTab("Main"),
+    gui = window:AddTab("GUI"),
     player = window:AddTab("Player"),
     ["UI Settings"] = window:AddTab("Configs"),
 }
@@ -108,9 +109,85 @@ local mainGroup = tabs.main:AddLeftGroupbox("Main")
 
 mainGroup:AddDivider()
 
-mainGroup:AddLabel("Position Clipping\n", true)
+-- GUI Tab
 
-mainGroup:AddDropdown("clipPositionDropdown", {
+local interfacesGroup = tabs.gui:AddLeftGroupbox("Interfaces")
+
+-- Interfaces Group
+
+interfacesGroup:AddDivider()
+
+interfacesGroup:AddToggle("weatherMachineToggle", {
+	Text = "Weather Machine",
+	Tooltip = false,
+	DisabledTooltip = "",
+
+	Default = false,
+	Disabled = false,
+	Visible = true,
+	Risky = false,
+
+	Callback = function(state)
+		local weatherPage = player.PlayerGui.MainGui.WeatherMachinePage
+		local toggle = toggles.weatherMachineToggle
+
+		if state then
+			utils.fireClickEvent(game.Workspace.WeatherMachine.Button)
+			weatherPage.Visible = true
+
+			-- Monitor the visibility of the weather page
+			local connection
+			connection = weatherPage:GetPropertyChangedSignal("Visible"):Connect(function()
+				if not weatherPage.Visible then
+					toggle:SetValue(false) -- Disable the toggle when visibility changes
+					connection:Disconnect() -- Disconnect to avoid multiple triggers
+				end
+			end)
+		else
+			weatherPage.Visible = false
+		end
+	end
+})
+
+interfacesGroup:AddToggle("multiDisasterToggle", {
+	Text = "Multi Disaster Splash",
+	Tooltip = false,
+	DisabledTooltip = "",
+
+	Default = false,
+	Disabled = false,
+	Visible = true,
+	Risky = false,
+
+	Callback = function(state)
+		local disasterSplash = player.PlayerGui.MainGui.MultiDisasterSplash
+		local toggle = toggles.multiDisasterToggle
+
+		if state then
+			disasterSplash.Visible = true
+
+			local connection
+			connection = disasterSplash:GetPropertyChangedSignal("Visible"):Connect(function()
+				if not disasterSplash.Visible then
+					toggle:SetValue(false)
+					connection:Disconnect()
+				end
+			end)
+		else
+			disasterSplash.Visible = false
+		end
+	end
+})
+
+-- Player Tab
+
+local localplayerGroup = tabs.player:AddLeftGroupbox("LocalPlayer")
+
+-- LocalPlayer Group
+
+localplayerGroup:AddDivider()
+
+localplayerGroup:AddDropdown("clipPositionDropdown", {
     Values = {"X (+)", "X (-)", "Y (+)", "Y (-)", "Z (+)", "Z (-)"},
     DisabledValues = nil,
     Default = "Y (-)",
@@ -128,7 +205,7 @@ mainGroup:AddDropdown("clipPositionDropdown", {
     Visible = true,
 })
 
-mainGroup:AddInput("clipPositionAmount", {
+localplayerGroup:AddInput("clipPositionAmount", {
     Default = false,
     Numeric = true,
     Finished = false,
@@ -144,7 +221,7 @@ mainGroup:AddInput("clipPositionAmount", {
     end
 })
 
-local clip = mainGroup:AddButton({
+local clip = localplayerGroup:AddButton({
     Text = "Clip",
     Func = function()
         local hrp = utils.getHRP()
@@ -174,14 +251,6 @@ local clip = mainGroup:AddButton({
     DoubleClick = false,
     Tooltip = false
 })
-
--- Player Tab
-
-local localplayerGroup = tabs.player:AddLeftGroupbox("LocalPlayer")
-
--- LocalPlayer Group
-
-localplayerGroup:AddDivider()
 
 -----------------------------------------------------------------------------------------------------------------------------------
 
@@ -274,7 +343,7 @@ MenuGroup:AddToggle("KeybindsVisible", {
 ]]
 
 themeManager:SetFolder("Celestial")
-saveManager:SetFolder("Celestial/Universal")
+saveManager:SetFolder("Celestial/Work at a Pizza Places")
 --saveManager:SetFolder("Celestial/Break In 2")
 --saveManager:SetSubFolder("Lobby")
 
