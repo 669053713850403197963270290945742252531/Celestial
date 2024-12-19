@@ -23,19 +23,20 @@ local function fetchWhitelist(url)
     end)
 
     if success then
-        print("Whitelist successfully fetched: ", response) -- Debugging line
+        print("Raw response: ", response) -- Debugging
         local successDecode, whitelistData = pcall(function()
             return HttpService:JSONDecode(response)
         end)
 
         if successDecode then
-            print("Whitelist decoded successfully.") -- Debugging line
+            print("Whitelist decoded successfully.")
             return whitelistData
         else
-            warn("Failed to decode whitelist JSON data.")
+            warn("Failed to decode JSON data. Raw response:")
+            print(response)
         end
     else
-        warn("Failed to fetch whitelist from URL: " .. url)
+        warn("Failed to fetch data from URL: " .. url)
     end
     return nil
 end
@@ -44,7 +45,7 @@ end
 
 local WhitelistedUsers = fetchWhitelist(whitelistURL)
 if not WhitelistedUsers then
-    warn("Failed to retrieve the whitelist. Please try again.")
+    player:Kick("Failed to retrieve the whitelist. Please try again.")
     return
 end
 
@@ -62,8 +63,17 @@ local function logEvent(eventType)
     end
 end
 
-if WhitelistedUsers[hwid] then
-    local userInfo = WhitelistedUsers[hwid]
+local function isAuthorized(hwID)
+    for _, user in pairs(WhitelistedUsers) do
+        if user.HWID == hwID then
+            return user
+        end
+    end
+    return nil
+end
+
+local userInfo = isAuthorized(hwid)
+if userInfo then
     auth.Username = userInfo.Username
     auth.Rank = userInfo.Rank
     auth.authorized = true
@@ -78,8 +88,7 @@ if WhitelistedUsers[hwid] then
     end
 else
     auth.authorized = false
-    
-    player:Kick("This session has been invalidated due to invalid stored credentials.\n\nYour hardware id has been copied to your clipboard.")
+    warn("This session has been invalidated due to invalid stored credentials.\n\nYour hardware id has been copied to your clipboard.")
     setclipboard(hwid)
 
     if auth.log_breaches then
