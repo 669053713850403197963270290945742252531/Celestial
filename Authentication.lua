@@ -43,19 +43,20 @@ if not WhitelistedUsers then
     return
 end
 
--- Authentication function
+-- Authentication functions
+
 auth.isAuthorized = function()
     for _, user in ipairs(WhitelistedUsers) do
         if user.HWID == hwid then
-            return true, user
+            return true, user -- Return true and the user object
         end
     end
-    return false, nil
+    return false, nil -- Return false and nil if no match found
 end
 
 auth.isOwner = function()
     local isAuthorized, user = auth.isAuthorized()
-    return isAuthorized and user.Rank == "Owner"
+    return isAuthorized and user and user.Rank == "Owner"
 end
 
 -- Authentication process
@@ -73,7 +74,7 @@ end
 
 if WhitelistedUsers then
     local isAuthorized, userData = auth.isAuthorized()
-    if isAuthorized then
+    if isAuthorized and userData then
         auth.CurrentUser = userData -- Store the current user's data
         if userData.Banned then
             warn("You are banned from using this service.\nReason: " .. (userData.BanReason or "No reason provided."))
