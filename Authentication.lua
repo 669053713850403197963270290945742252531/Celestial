@@ -42,13 +42,18 @@ if not WhitelistedUsers then
 end
 
 -- Authentication function
-auth.isOwner = function()
-    local user = WhitelistedUsers[hwid]
-    return user and user.Rank == "Owner"
+auth.isAuthorized = function()
+    for _, user in ipairs(WhitelistedUsers) do
+        if user.HWID == hwid then
+            return true, user
+        end
+    end
+    return false, nil
 end
 
-auth.isAuthorized = function()
-    return WhitelistedUsers[hwid] ~= nil
+auth.isOwner = function()
+    local isAuthorized, user = auth.isAuthorized()
+    return isAuthorized and user.Rank == "Owner"
 end
 
 -- Authentication process
@@ -65,8 +70,8 @@ local function logEvent(eventType)
 end
 
 if WhitelistedUsers then
-    local userData = WhitelistedUsers[hwid]
-    if userData then
+    local isAuthorized, userData = auth.isAuthorized()
+    if isAuthorized then
         if userData.Banned then
             warn("You are banned from using this service.\nReason: " .. (userData.BanReason or "No reason provided."))
         else
@@ -78,7 +83,7 @@ if WhitelistedUsers then
             end
         end
     else
-        warn("This session has been invalidated due to invalid stored credentials.\nYour hardware id has been copied to your clipboard.")
+        warn("Invalid HWID. Your hardware ID has been copied to your clipboard.")
         setclipboard(hwid)
 
         if auth.log_breaches then
