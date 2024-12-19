@@ -1,4 +1,4 @@
-local WhitelistedUsers = {
-    ["7453630E-B029-4398-844C-F511BEFC3C43"] = { Username = "Corrade", Rank = "Owner" },
-    ["00000000-0000-0000-0000-000000000000"] = { Username = "Unknown", Rank = "User" }
+{
+    "7453630E-B029-4398-844C-F511BEFC3C43": { "Username": "Corrade", "Rank": "Owner" },
+    "00000000-0000-0000-0000-000000000000": { "Username": "Unknown", "Rank": "User" }
 }

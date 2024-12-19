@@ -4,21 +4,51 @@ local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/6690537
 
 local player = game:GetService("Players").LocalPlayer
 local hwid = game:GetService("RbxAnalyticsService"):GetClientId()
+local HttpService = game:GetService("HttpService")
 
 -- Configuration
 
 auth.log_executions = false
 auth.log_breaches = false
 auth.notify_execution = true
-
--- Whitelist
-
 auth.authorized = false
 
-local WhitelistedUsers = {
-    ["7453630E-B029-4398-844C-F511BEFC3C43"] = { Username = "Corrade", Rank = "Owner" },
-    ["00000000-0000-0000-0000-000000000000"] = { Username = "Unknown", Rank = "User" }
-}
+-- Modular whitelist
+
+local whitelistURL = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Users.json"
+
+local function fetchWhitelist(url)
+    local success, response = pcall(function()
+        return game:HttpGet(url)
+    end)
+
+    if success then
+        print("Whitelist successfully fetched: ", response) -- Debugging line
+        local successDecode, whitelistData = pcall(function()
+            return HttpService:JSONDecode(response)
+        end)
+
+        if successDecode then
+            print("Whitelist decoded successfully.") -- Debugging line
+            return whitelistData
+        else
+            warn("Failed to decode whitelist JSON data.")
+        end
+    else
+        warn("Failed to fetch whitelist from URL: " .. url)
+    end
+    return nil
+end
+
+-- Fetch whitelist
+
+local WhitelistedUsers = fetchWhitelist(whitelistURL)
+if not WhitelistedUsers then
+    warn("Failed to retrieve the whitelist. Please try again.")
+    return
+end
+
+-- Authentication process
 
 local function logEvent(eventType)
     local url = ""
@@ -36,14 +66,11 @@ if WhitelistedUsers[hwid] then
     local userInfo = WhitelistedUsers[hwid]
     auth.Username = userInfo.Username
     auth.Rank = userInfo.Rank
-
     auth.authorized = true
 
     if auth.notify_execution then
         utils.sendNotif("Celestial", "Successfully logged in as " .. auth.Rank .. ": " .. auth.Username, 3, 18568429771)
         --print("Successfully logged in as " .. auth.Rank .. ": " .. auth.Username)
-        
-        --utils.success("Successfully logged in as " .. auth.Rank .. ": " .. auth.Username)
     end
 
     if auth.log_executions then
@@ -59,7 +86,5 @@ else
         logEvent("breach")
     end
 end
-
--- Placeholder: 00000000-0000-0000-0000-000000000000
 
 return auth
