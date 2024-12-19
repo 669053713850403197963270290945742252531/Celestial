@@ -1,7 +1,7 @@
 [
     {
         "HWID": "7453630E-B029-4398-844C-F511BEFC3C43",
-        "Username": "Corrade",
+        "Identifer": "Corrade",
         "Rank": "Owner",
         "JoinDate": "2024-12-18",
         "Banned": false,
@@ -10,7 +10,7 @@
     },
     {
         "HWID": "00000000-0000-0000-0000-000000000000",
-        "Username": "Unknown",
+        "Identifer": "Unknown",
         "Rank": "User",
         "JoinDate": null,
         "Banned": false,

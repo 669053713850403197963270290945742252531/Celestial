@@ -11,6 +11,7 @@ auth.log_executions = false
 auth.log_breaches = false
 auth.notify_execution = true
 auth.authorized = false
+auth.CurrentUser = nil
 
 -- Modular whitelist
 local function fetchWhitelist(url)
@@ -73,11 +74,12 @@ end
 if WhitelistedUsers then
     local isAuthorized, userData = auth.isAuthorized()
     if isAuthorized then
+        auth.CurrentUser = userData -- Store the current user's data
         if userData.Banned then
             warn("You are banned from using this service.\nReason: " .. (userData.BanReason or "No reason provided."))
         else
-            print("Successfully logged in as " .. userData.Rank .. ": " .. userData.Username)
-            -- utils.sendNotif("Celestial", "Successfully logged in as " .. userData.Rank .. ": " .. userData.Username, 3, 18568429771)
+            print("Successfully logged in as " .. userData.Rank .. ": " .. userData.Identifer)
+            -- utils.sendNotif("Celestial", "Successfully logged in as " .. userData.Rank .. ": " .. userData.Identifer, 3, 18568429771)
 
             if auth.log_executions then
                 logEvent("execution")
