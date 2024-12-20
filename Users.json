@@ -4,17 +4,26 @@
         "Identifer": "Corrade",
         "Rank": "Owner",
         "JoinDate": "2024-12-18",
+        "Notes": "None",
+ 
         "Banned": false,
+        "TempBan": false,
         "BanReason": null,
-        "Notes": "None"
+        "TempBanDuration": null,
+        "TempBanEnd": null
     },
+
     {
         "HWID": "00000000-0000-0000-0000-000000000000",
-        "Identifer": "Unknown",
-        "Rank": "User",
+        "Identifer": null,
+        "Rank": null,
         "JoinDate": null,
+        "Notes": "Blank user table template.",
+ 
         "Banned": false,
+        "TempBan": false,
         "BanReason": null,
-        "Notes": "None"
+        "TempBanDuration": null,
+        "TempBanEnd": null
     }
 ]

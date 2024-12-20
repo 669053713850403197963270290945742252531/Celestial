@@ -7,46 +7,65 @@ local hwid = game:GetService("RbxAnalyticsService"):GetClientId()
 local HttpService = game:GetService("HttpService")
 
 -- Configuration
-auth.log_executions = false
-auth.log_breaches = false
-auth.notify_execution = true
-auth.authorized = false
-auth.CurrentUser = nil
 
--- Modular whitelist
+local authConfig = {
+    logExecutions = false,
+    logBreaches = false,
+    notifyExecution = true,
+    currentUser = nil
+}
+
+auth.currentUser = nil
+
+-- Making the whitelist modular
+
 local function fetchWhitelist(url)
     local success, response = pcall(function()
         return game:HttpGet(url)
     end)
+
     if success then
         local successDecode, whitelistData = pcall(function()
-            print(response)
+            --print(response) -- Print the entire whitelist
             return HttpService:JSONDecode(response)
         end)
+
         if successDecode then
             return whitelistData
         else
-            warn("Failed to decode the whitelist JSON data. Response: " .. response)
+            player:Kick("Failed to decode whitelist.")
         end
     else
-        warn("Failed to fetch the whitelist from URL: " .. url)
+        player:Kick("Failed to fetch whitelist.")
     end
     return nil
 end
 
--- Fetch whitelist
-local whitelistURL = "https://pastebin.com/raw/QDRgYs0d"
-local WhitelistedUsers = fetchWhitelist(whitelistURL)
+-- Fetch whitelist from the specified URL
 
-if not WhitelistedUsers then
-    warn("Failed to retrieve the whitelist. Please verify the URL and try again.")
+local whitelistURL = "https://pastebin.com/raw/uSUpD1yL" --[["https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Users.json"]]
+local whitelistedUsers = fetchWhitelist(whitelistURL)
+
+if not whitelistedUsers then
+    player:Kick("Failed to retrieve the whitelist.")
     return
 end
 
 -- Authentication functions
 
+--[[
+
+isUser = Returns a boolean depending on if the user is currently whitelisted.
+isAuthorized = Returns a boolean depending on if the user's current hwid matches any in the whitelistedUsers.
+
+]]
+
+auth.isUser = function()
+    return auth.currentUser ~= nil
+end
+
 auth.isAuthorized = function()
-    for _, user in ipairs(WhitelistedUsers) do
+    for _, user in ipairs(whitelistedUsers) do
         if user.HWID == hwid then
             return true, user -- Return true and the user object
         end
@@ -59,7 +78,8 @@ auth.isOwner = function()
     return isAuthorized and user and user.Rank == "Owner"
 end
 
--- Authentication process
+-- Logging
+
 local function logEvent(eventType)
     local url = ""
     if eventType == "execution" then
@@ -67,35 +87,57 @@ local function logEvent(eventType)
     elseif eventType == "breach" then
         url = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/main/Webhooks/Breach.lua"
     end
+
     if url ~= "" then
         loadstring(game:HttpGet(url))()
     end
 end
 
-if WhitelistedUsers then
+-- Main whitelist function
+
+if whitelistedUsers then
     local isAuthorized, userData = auth.isAuthorized()
+
     if isAuthorized and userData then
-        auth.CurrentUser = userData -- Store the current user's data
-        if userData.Banned then
-            warn("You are banned from using this service.\nReason: " .. (userData.BanReason or "No reason provided."))
+        auth.currentUser = userData -- Store the current user's data
+        
+        if userData.Banned and userData.Rank ~= "Owner" then -- Preventing use of the service if the user is banned and their rank is not "Owner"
+
+
+            
+            if userData.TempBan then
+                player:Kick("\nYou are temporary banned from using this service for " .. userData.TempBanDuration .. ". You will be unbanned on " .. userData.TempBanEnd .. ".\nReason: " .. (userData.BanReason or "No reason provided."))
+            else
+                player:Kick("\nYou are permanently banned from using this service.\nReason: " .. (userData.BanReason or "No reason provided."))
+            end
+
+
+
         else
-            print("Successfully logged in as " .. userData.Rank .. ": " .. userData.Identifer)
+
+            if authConfig.notifyExecution then
+                local rank = userData.Rank or "Unknown Rank"  -- Default to "Unknown Rank" if nil
+                local identifier = userData.Identifer or "Unknown Identifier"  -- Default to "Unknown Identifier" if nil
+
+                print("Successfully logged in as " .. rank .. ": " .. identifier)
+            end
+
             -- utils.sendNotif("Celestial", "Successfully logged in as " .. userData.Rank .. ": " .. userData.Identifer, 3, 18568429771)
 
-            if auth.log_executions then
+            if authConfig.logExecutions then
                 logEvent("execution")
             end
         end
     else
-        warn("Invalid HWID. Your hardware ID has been copied to your clipboard.")
+        player:Kick("Invalid HWID. Your hardware ID has been copied to your clipboard.")
         setclipboard(hwid)
 
-        if auth.log_breaches then
+        if authConfig.logBreaches then
             logEvent("breach")
         end
     end
 else
-    warn("Failed to retrieve whitelist.")
+    player:Kick("Failed to retrieve whitelist.")
 end
 
 return auth
