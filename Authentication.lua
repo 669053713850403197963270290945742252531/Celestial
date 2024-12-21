@@ -78,6 +78,30 @@ auth.isOwner = function()
     return isAuthorized and user and user.Rank == "Owner"
 end
 
+auth.fetchConfig = function(configName: string)
+    -- Error handling for invalid or missing value
+
+    if typeof(configName) ~= "string" or configName == nil then
+        warn("Argument #1 (configName) expected a string value and a valid config name but got a " .. typeof(configName) .. " value and an invalid config name.")
+        return "Failed. Check console for more information."
+    end
+
+    configName = string.lower(configName) -- Convert to lowercase
+
+    -- Check if the given configName matches a value inside authConfig
+
+    for key, value in pairs(authConfig) do
+        if string.lower(key) == configName then
+            return value
+        end
+    end
+
+    -- If no match is found
+
+    warn("Argument #1 (configName) expected a valid config name.")
+    return "Failed. Check console for more information."
+end
+
 -- Logging
 
 local function logEvent(eventType)
@@ -119,7 +143,7 @@ if whitelistedUsers then
                 local rank = userData.Rank or "Unknown Rank"  -- Default to "Unknown Rank" if nil
                 local identifier = userData.Identifer or "Unknown Identifier"  -- Default to "Unknown Identifier" if nil
 
-                print("Successfully logged in as " .. rank .. ": " .. identifier)
+                warn("Successfully logged in as " .. rank .. ": " .. identifier .. " / " .. utils.getTime(true))
             end
 
             -- utils.sendNotif("Celestial", "Successfully logged in as " .. userData.Rank .. ": " .. userData.Identifer, 3, 18568429771)
