@@ -44,7 +44,7 @@ end
 
 -- Fetch whitelist from the specified URL
 
-local whitelistURL = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Users.json"
+local whitelistURL = "https://pastebin.com/raw/uSUpD1yL" --[["https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Users.json"]]
 local whitelistedUsers = fetchWhitelist(whitelistURL)
 
 if not whitelistedUsers then
@@ -155,7 +155,7 @@ if whitelistedUsers then
         end
     else
         setclipboard(hashedHWID)
-        warn("Invalid HWID. Your hardware ID has been copied to your clipboard.")
+        player:Kick("Invalid HWID. Your hardware ID has been copied to your clipboard.")
 
         if authConfig.logBreaches then
             logEvent("breach")
