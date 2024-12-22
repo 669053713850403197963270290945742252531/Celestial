@@ -155,7 +155,7 @@ if whitelistedUsers then
         end
     else
         setclipboard(hashedHWID)
-        player:Kick("Invalid HWID. Your hardware ID has been copied to your clipboard.")
+        warn("Invalid HWID: Your hardware ID has been copied to your clipboard.")
 
         if authConfig.logBreaches then
             logEvent("breach")

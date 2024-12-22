@@ -5,26 +5,20 @@ end
 local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/main/Utilities.lua"))()
 local auth = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/main/Authentication.lua"))()
 
---local repoOwner = "669053713850403197963270290945742252531"
-local repoOwner = "mstudio45"
-local exploit = identifyexecutor()
+-- Library variables
 
-if exploit == "Synapse Z" then -- fuck syn z drawing lib
-    repoOwner = "669053713850403197963270290945742252531"
-else
-    repoOwner = "mstudio45"
-end
-
-local repo = "https://raw.githubusercontent.com/" .. repoOwner .. "/LinoriaLib/main/"    
+local repo = "https://raw.githubusercontent.com/mstudio45/LinoriaLib/main/"    
 local library = loadstring(game:HttpGet(repo .. "Library.lua"))()
 local themeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
 local saveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 local options = library.Options
 local toggles = library.Toggles
 
+-- Custom variables
+
 local player = game:GetService("Players").LocalPlayer
 local gameName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
-
+local exploit = identifyexecutor()
 local hrp = utils.getHRP()
 
 while not hrp do
@@ -33,7 +27,7 @@ while not hrp do
 end
 
 local window = library:CreateWindow({
-    Title = "Celestial - " .. gameName .. ": " .. auth.Username,
+    Title = "Celestial - " .. gameName .. ": " .. auth.currentUser.Identifer,
     Center = true,
     AutoShow = true,
     Resizable = true,
@@ -50,7 +44,9 @@ local clipAmount = 0
 
 -- Functions
 
+local function func()
 
+end
 
 local tabs = {
     info = window:AddTab("Info"),
@@ -60,9 +56,9 @@ local tabs = {
 }
 
 if auth.notify_execution then
-    library:Notify("Successfully logged in as " .. auth.Rank .. ": " .. auth.Username, 6)
+    library:Notify("Successfully logged in as " .. auth.currentUser.Rank .. ": " .. auth.currentUser.Identifer, 6)
 else
-    library:Notify("Celestial has loaded / " .. utils.getTime(false) .. ".", 6)
+    library:Notify("Celestial has loaded / " .. utils.getTime(false) .. os.date(" %p") .. ".", 6)
 end
 
 -- Game Info Tab
@@ -86,19 +82,14 @@ UserDetailsGroup:AddDivider()
 UserDetailsGroup:AddLabel("Username: " .. player.Name)
 UserDetailsGroup:AddLabel("Display Name: " .. player.DisplayName)
 UserDetailsGroup:AddLabel("Account Age: " .. player.AccountAge .. " Days")
-UserDetailsGroup:AddLabel("Executor: " .. identifyexecutor())
+UserDetailsGroup:AddLabel("Executor: " .. exploit)
 
 -- Whitelist Details Group
 
 WhitelistDetailsGroup:AddDivider()
 
-WhitelistDetailsGroup:AddLabel("Username: " .. auth.Username)
-WhitelistDetailsGroup:AddLabel("Rank: " .. auth.Rank)
-
-WhitelistDetailsGroup:AddLabel("Authorized: " .. tostring(auth.authorized))
-WhitelistDetailsGroup:AddLabel("Notify Execution: " .. tostring(auth.notify_execution))
-WhitelistDetailsGroup:AddLabel("Log Executions: " .. tostring(auth.log_executions))
-WhitelistDetailsGroup:AddLabel("Log Breaches: " .. tostring(auth.log_breaches))
+WhitelistDetailsGroup:AddLabel("Identifer: " .. auth.currentUser.Identifer)
+WhitelistDetailsGroup:AddLabel("Rank: " .. auth.currentUser.Rank)
 
 -- Main Tab
 
