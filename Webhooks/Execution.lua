@@ -1,41 +1,96 @@
-local url = "https://webhook.newstargeted.com/api/webhooks/1264103527165198376/zcTnP6tevI4KTzCBFmBUYyZeTsmveU4ELQcZoYw7hl3CLOQiUEip25yf9Qw5aZAOT8lp"
+local webhookUrl = "https://webhook.newstargeted.com/api/webhooks/1264103527165198376/zcTnP6tevI4KTzCBFmBUYyZeTsmveU4ELQcZoYw7hl3CLOQiUEip25yf9Qw5aZAOT8lp"
+local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/main/Utilities.lua"))()
 
 local player = game:GetService("Players").LocalPlayer
-local httpservice = game:GetService("HttpService")
+local httpService = game:GetService("HttpService")
 
-local getgamename = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
+local gameName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
 local hwid = game:GetService("RbxAnalyticsService"):GetClientId()
 
 -- Global Variables
 
-local celestialowner = false
-local robloxpremium = false
-local altaccount = false
+local owner = false
+local robloxPremium = false
+local altAccount = false
 
--- Celestial Owner Check
 
-local CelestialOwnerCheck = {
-    "E920751F8FEA3C5EC9505ED8F3FB935E627D1D851E3E6738072C7D0C70CE145F20C2AC165D61016A11D5EFB2B0A4664B786E45AEE425937629C5A0FDB9BF9A31" -- Corrade (mystic_4791)
-}
 
-if table.find(CelestialOwnerCheck, hwid) then
-    celestialowner = true
+
+
+-- Owner check
+
+
+
+
+
+
+
+-- Fetch whitelist
+
+local function fetchWhitelist(url)
+    local success, response = pcall(function()
+        return game:HttpGet(url)
+    end)
+
+    if success then
+        local successDecode, whitelistData = pcall(function()
+            return httpService:JSONDecode(response)
+        end)
+
+        if successDecode then
+            return whitelistData
+        else
+            player:Kick("Failed to decode JSON. Response may be malformed.")
+        end
+    else
+        player:Kick("Failed to fetch whitelist. Error: " .. tostring(response))
+    end
+    return nil
 end
 
--- Premium Check
+-- Fetch whitelist URL
+
+local whitelistURL = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Users.json"
+local whitelistedUsers = fetchWhitelist(whitelistURL)
+
+if not whitelistedUsers then
+    player:Kick("Whitelist retrieval failed. Check your URL and JSON formatting.")
+    return
+end
+
+-- Owner check
+
+local function isOwner(hwid, whitelist)
+    for _, user in ipairs(whitelist) do
+        if user.HWID == hwid and user.Rank == "Owner" then
+            return true, user
+        end
+    end
+    return false, nil
+end
+
+local owner = isOwner(hwid, whitelistedUsers) -- Set owner
+
+
+
+
+
+
+
+-- Premium check
 
 if player.MembershipType == Enum.MembershipType.Premium then
-    robloxpremium = true
+    robloxPremium = true
 else
-    robloxpremium = false
+    robloxPremium = false
 end
 
--- Alt Detection
+-- Alt detection
 
 if player.AccountAge >= 30 then
-    altaccount = false
+    altAccount = false
 else
-    altaccount = true
+    altAccount = true
 end
 
 
@@ -43,136 +98,136 @@ end
 
 
 local data = {
-    ["embeds"] = {
+    embeds = {
         {
-            ["title"] = "**__Celestial has been executed__**",
-            ["type"] = "rich",
-            ["color"] = tonumber(2752256),
-            ["fields"] = {
+            title = "**__Celestial has been executed__**",
+            type = "rich",
+            color = tonumber(2752256),
+            fields = {
                 {
-                    ["name"] = "Execution Date",
-                    ["value"] = "**" .. os.date("%x") .. " | " .. os.date("%I") .. ":" .. os.date("%M") .. " " .. os.date("%p") .. "**",
-                    ["inline"] = true
+                    name = "Execution Date",
+                    value = "**" .. os.date("%x") .. " | " .. utils.getTime(true) .. os.date(" %p") .. "**",
+                    inline = true
                 },
 
                 -- Account Info Section
 
                 {
-                    ["name"] = "",
-                    ["value"] = "[**" .. player.DisplayName .. "**'s Profile](https://roblox.com/users/" .. player.UserId .. "/profile)",
-                    ["inline"] = true
+                    name = "",
+                    value = "[**" .. player.DisplayName .. "**'s Profile](https://roblox.com/users/" .. player.UserId .. "/profile)",
+                    inline = true
                 },
                 
                 {
-                    ["name"] = "=================== ACCOUNT INFO =====================",
-                    ["value"] = "",
-                    ["inline"] = false
+                    name = "=================== Account =====================",
+                    value = "",
+                    inline = false
                 },
 
                 {
-                    ["name"] = "Display Name",
-                    ["value"] = player.DisplayName,
-                    ["inline"] = true
+                    name = "Display Name",
+                    value = player.DisplayName,
+                    inline = true
                 },
 
                 {
-                    ["name"] = "Username",
-                    ["value"] = player.Name,
-                    ["inline"] = true
+                    name = "Username",
+                    value = player.Name,
+                    inline = true
                 },
                 
                 {
-                    ["name"] = "User ID",
-                    ["value"] = player.UserId,
-                    ["inline"] = true
+                    name = "User ID",
+                    value = player.UserId,
+                    inline = true
                 },
     
                 {
-                    ["name"] = "Account Age",
-                    ["value"] = player.AccountAge .. " Days",
-                    ["inline"] = true
+                    name = "Account Age",
+                    value = player.AccountAge .. " Days",
+                    inline = true
                 },
 
                 {
-                    ["name"] = "Celestial Owner",
-                    ["value"] = celestialowner,
-                    ["inline"] = true
+                    name = "Owner",
+                    value = owner,
+                    inline = true
                 },
 
                 {
-                    ["name"] = "Roblox Premium",
-                    ["value"] = tostring(robloxpremium) .. " | Membership Name: " .. player.MembershipType.Name,
-                    ["inline"] = true
+                    name = "Roblox Premium",
+                    value = tostring(robloxPremium),
+                    inline = true
                 },
                 
                 {
-                    ["name"] = "Alt Account",
-                    ["value"] = altaccount,
-                    ["inline"] = true
+                    name = "Alt Account",
+                    value = altAccount,
+                    inline = true
                 },
 
                 -- Game Info Section
 
                 {
-                    ["name"] = "=================== GAME INFO =====================",
-                    ["value"] = "",
-                    ["inline"] = false
+                    name = "=================== Game =====================",
+                    value = "",
+                    inline = false
                 },
 
                 {
-                    ["name"] = "",
-                    ["value"] = "[Game Page](https://www.roblox.com/games/" .. game.PlaceId .. ")",
-                    ["inline"] = true
+                    name = "",
+                    value = "[Game Page](https://www.roblox.com/games/" .. game.PlaceId .. ")",
+                    inline = true
                 },
 
                 {
-                    ["name"] = "Game Name",
-                    ["value"] = getgamename,
-                    ["inline"] = true
+                    name = "Game Name",
+                    value = gameName,
+                    inline = true
                 },
 
                 {
-                    ["name"] = "Place ID",
-                    ["value"] = game.PlaceId,
-                    ["inline"] = true
+                    name = "Place ID",
+                    value = game.PlaceId,
+                    inline = true
                 },
 
                 {
-                    ["name"] = "Server Join Code",
-                    ["value"] = "```" .. [[game:GetService("TeleportService")]] .. ":TeleportToPlaceInstance(" .. game.PlaceId..", '" .. game.JobId.."')" .. "```",
-                    ["inline"] = true
+                    name = "Server Join Code",
+                    value = "```" .. [[game:GetService("TeleportService")]] .. ":TeleportToPlaceInstance(" .. game.PlaceId..", '" .. game.JobId.."')" .. "```",
+                    inline = true
                 },
 
                 -- Miscellaneous Section
                 
                 {
-                    ["name"] = "=================== MISCELLANEOUS =====================",
-                    ["value"] = "",
-                    ["inline"] = false
+                    name = "=================== Miscellaneous =====================",
+                    value = "",
+                    inline = false
                 },
 
                 {
-                    ["name"] = "Exploit",
-                    ["value"] = identifyexecutor(),
-                    ["inline"] = true
+                    name = "Exploit",
+                    value = identifyexecutor(),
+                    inline = true
                 },
 
                 {
-                    ["name"] = "HWID",
-                    ["value"] = "||" .. hwid .. "||",
-                    ["inline"] = true
+                    name = "HWID",
+                    value = "||" .. hwid .. "||",
+                    inline = true
                 },
                }
            }
        }
     }
 
-    local newdata = httpservice:JSONEncode(data)
+    local encodedData = httpService:JSONEncode(data)
 
     local headers = {
         ["content-type"] = "application/json"
      }
 
      request = http_request
-     local args = {Url = url, Body = newdata, Method = "POST", Headers = headers}
+     local args = {Url = webhookUrl, Body = encodedData, Method = "POST", Headers = headers}
      request(args)

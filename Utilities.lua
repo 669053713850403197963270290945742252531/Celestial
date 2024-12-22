@@ -5,18 +5,22 @@ local utils = {}
 local workspace = game:GetService("Workspace")
 local players = game:GetService("Players")
 local lighting = game:GetService("Lighting")
-local starterpack = game:GetService("StarterPack")
-local soundservice = game:GetService("SoundService")
-local textchatservice = game:GetService("TextChatService")
-local tweenservice = game:GetService("TweenService")
-local teleportservice = game:GetService("TeleportService")
-local startergui = game:GetService("StarterGui")
-local marketplaceservice = game:GetService("MarketplaceService")
+local soundService = game:GetService("SoundService")
+local textChatService = game:GetService("TextChatService")
+local tweenService = game:GetService("TweenService")
+local teleportService = game:GetService("TeleportService")
+local starterGui = game:GetService("StarterGui")
+local marketplaceService = game:GetService("MarketplaceService")
 
 local player = players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
 local humanoid = character:FindFirstChild("Humanoid")
-local humrootpart = character:FindFirstChild("HumanoidRootPart")
+local hrp = character:FindFirstChild("HumanoidRootPart")
+
+while not humanoid and hrp do
+    warn("Player's HumanoidRootPart or Humanoid was not found at runtime. Halting further code execution until found.")
+    task.wait()
+end
 
 -- Function - getPlayers
 
@@ -24,140 +28,16 @@ utils.getPlayerCount = function()
     return #players:GetPlayers()
 end
 
---[[
-
--- Function - fetchServiceInfo
-
-utils.fetchServiceInfo = function(service)
-    local known_properties = {}
-
-    if service == "Workspace" then
-        known_properties = {
-            CurrentCamera = workspace.CurrentCamera,
-            DistributedGameTime = workspace.DistributedGameTime,
-            WorldPivot = workspace.WorldPivot,
-            AllowThirdPartySales = workspace.AllowThirdPartySales,
-            FallenPartsDestroyHeight = workspace.FallenPartsDestroyHeight,
-            GlobalWind = workspace.GlobalWind,
-            Gravity = workspace.Gravity
-        }
-    elseif service == "Players" then
-        known_properties = {
-            BubbleChat = players.BubbleChat,
-            ClassicChat = players.ClassicChat,
-            LocalPlayer = players.LocalPlayer,
-            MaxPlayers = players.MaxPlayers,
-            PreferredPlayers = players.PreferredPlayers,
-            RespawnTime = players.RespawnTime,
-            CharacterAutoLoads = players.CharacterAutoLoads
-        }
-    elseif service == "Lighting" then
-        known_properties = {
-            Ambient = lighting.Ambient,
-            Brightness = lighting.Brightness,
-            ColorShift_Bottom = lighting.ColorShift_Bottom,
-            ColorShift_Top = lighting.ColorShift_Top,
-            EnvironmentDiffuseScale = lighting.EnvironmentDiffuseScale,
-            EnvironmentSpecularScale = lighting.EnvironmentSpecularScale,
-            GlobalShadows = lighting.GlobalShadows,
-            OutdoorAmbient = lighting.OutdoorAmbient,
-            ShadowSoftness = lighting.ShadowSoftness,
-            ClockTime = lighting.ClockTime,
-            GeographicLatitude = lighting.GeographicLatitude,
-            TimeOfDay = lighting.TimeOfDay,
-            FogColor = lighting.FogColor,
-            FogEnd = lighting.FogEnd,
-            FogStart = lighting.FogStart
-        }
-    elseif service == "StarterPack" then
-        local children = starterpack:GetChildren()
-        print("Total Items: " .. #children)
-        for _, child in ipairs(children) do
-            print(child.Name)
-        end
-        return
-    elseif service == "SoundService" then
-        known_properties = {
-            AmbientReverb = soundservice.AmbientReverb,
-            DistanceFactor = soundservice.DistanceFactor,
-            DopplerScale = soundservice.DopplerScale,
-            RespectFilteringEnabled = soundservice.RespectFilteringEnabled,
-            RolloffScale = soundservice.RolloffScale
-        }
-    elseif service == "TextChatService" then
-        local ChatWindowConfiguration = textchatservice.ChatWindowConfiguration
-        known_properties = {
-            ChatTranslationEnabled = textchatservice.ChatTranslationEnabled,
-            ChatVersion = textchatservice.ChatVersion,
-            ChatWindowBackground = ChatWindowConfiguration.BackgroundColor3,
-            ChatWindowTransparency = ChatWindowConfiguration.BackgroundTransparency,
-            ChatWindowFont = ChatWindowConfiguration.FontFace,
-            TextColor = ChatWindowConfiguration.TextColor3,
-            TextSize = ChatWindowConfiguration.TextSize,
-            HeightScale = ChatWindowConfiguration.HeightScale,
-            WidthScale = ChatWindowConfiguration.WidthScale
-        }
-    end
-
-    for prop, value in pairs(known_properties) do
-        print(prop .. ": " .. tostring(value))
-    end
-end
-
--- Function - fetchPlayerDetails
-
-utils.fetchPlayerDetails = function(targetName)
-    local target = players:FindFirstChild(targetName)
-    if not target then
-        print("Target player not found: " .. targetName)
-        return
-    end
-
-    local character = target.Character
-
-    if character and character:FindFirstChild("Humanoid") then
-        local team = target.Team or "None"
-        local known_properties = {
-            DisplayName = target.DisplayName,
-            Name = target.Name,
-            UserId = target.UserId,
-            MembershipType = tostring(target.MembershipType),
-            GameplayPaused = target.GameplayPaused,
-            NameOcclusion = humanoid.NameOcclusion,
-            RigType = humanoid.RigType,
-            MaxHealth = humanoid.MaxHealth,
-            Health = humanoid.Health,
-            HipHeight = humanoid.HipHeight,
-            MaxSlopeAngle = humanoid.MaxSlopeAngle,
-            WalkSpeed = humanoid.WalkSpeed,
-            CameraMode = target.CameraMode,
-            HealthDisplayDistance = target.HealthDisplayDistance,
-            NameDisplayDistance = target.NameDisplayDistance,
-            Neutral = target.Neutral,
-            Team = team,
-            TeamColor = target.TeamColor
-        }
-
-        for prop, value in pairs(known_properties) do
-            print(prop .. ": " .. tostring(value))
-        end
-    else
-        print("Character or Humanoid not found for player: " .. target.Name)
-    end
-end
-
-]]
-
 -- Function - createAudio
 
-utils.createAudio = function(PlayOnRemove, SoundId, Looped, Volume)
-    local audio = Instance.new("Sound", soundservice)
-    audio.PlayOnRemove = PlayOnRemove
-    audio.SoundId = "rbxassetid://" .. SoundId
-    audio.Looped = Looped
-    audio.Volume = Volume
+utils.createAudio = function(playOnRemove, soundId, looped, volume)
+    local audio = Instance.new("Sound", soundService)
+    audio.PlayOnRemove = playOnRemove
+    audio.SoundId = "rbxassetid://" .. soundId
+    audio.Looped = looped
+    audio.Volume = volume
 
-    if PlayOnRemove then
+    if playOnRemove then
         audio:Destroy()
     else
         audio:Play()
@@ -218,10 +98,10 @@ end
 
 utils.partTeleport = function(part)
     local character = game:GetService("Players").LocalPlayer.Character
-    local humrootpart = character:FindFirstChild("HumanoidRootPart")
+    local hrp = character:FindFirstChild("HumanoidRootPart")
 
-    if character and humrootpart then
-        humrootpart.CFrame = part.CFrame
+    if character and hrp then
+        hrp.CFrame = part.CFrame
     else
         warn("Character or PrimaryPart not found")
     end
@@ -240,7 +120,7 @@ local function stringToCFrame(cframeString)
 end
 
 local character = player.Character or player.CharacterAdded:Wait()
-local humrootpart = character:WaitForChild("HumanoidRootPart")
+local hrp = character:WaitForChild("HumanoidRootPart")
 
 local originalCanCollideStates = {}
 local originalGravity
@@ -273,7 +153,7 @@ utils.tweenTeleport = function(duration, cframeString, smooth)
         --print("Gravity set to 0")
     end
 
-    if not humrootpart then
+    if not hrp then
         if smooth then
             restoreOriginalStates()
             workspace.Gravity = originalGravity
@@ -285,7 +165,7 @@ utils.tweenTeleport = function(duration, cframeString, smooth)
     local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Linear)
     local tweenGoal = { CFrame = targetCFrame }
 
-    local tween = tweenservice:Create(humrootpart, tweenInfo, tweenGoal)
+    local tween = tweenService:Create(hrp, tweenInfo, tweenGoal)
     tween:Play()
 
     --print("Tween started")
@@ -310,7 +190,7 @@ utils.tweenPartTeleport = function(duration, targetPart, smooth)
         --print("Gravity set to 0")
     end
 
-    if not humrootpart then
+    if not hrp then
         if smooth then
             restoreOriginalStates()
 
@@ -323,7 +203,7 @@ utils.tweenPartTeleport = function(duration, targetPart, smooth)
     local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Linear)
     local tweenGoal = { CFrame = targetCFrame }
 
-    local tween = tweenservice:Create(humrootpart, tweenInfo, tweenGoal)
+    local tween = tweenService:Create(hrp, tweenInfo, tweenGoal)
     tween:Play()
 
     --print("Tween started")
@@ -357,24 +237,22 @@ utils.gameTeleport = function(mode, placeId)
             return
         end
 
-        teleportservice:Teleport(placeId)
+        teleportService:Teleport(placeId)
     elseif mode == "Rejoin" then
-        teleportservice:TeleportToPlaceInstance(game.PlaceId, game.JobId)
+        teleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId)
     end
-
-    --teleportservice:Teleport(placeId)
 end
 
 -- Function - gameInstanceTeleport
 
 utils.gameInstanceTeleport = function(placeId, instanceId)
-    teleportservice:TeleportToPlaceInstance(placeId, instanceId)
+    teleportService:TeleportToPlaceInstance(placeId, instanceId)
 end
 
 -- Function - positionChatWindow
 
 utils.positionChatWindow = function(horizontalAlignment, verticalAlignment)
-    local chatversion = (textchatservice.ChatVersion == Enum.ChatVersion.TextChatService) and "TextChatService" or
+    local chatversion = (textChatService.ChatVersion == Enum.ChatVersion.TextChatService) and "TextChatService" or
     "Legacy"
 
     local validHorizontalAlignments = {
@@ -391,8 +269,8 @@ utils.positionChatWindow = function(horizontalAlignment, verticalAlignment)
 
     if chatversion == "TextChatService" then
         if validHorizontalAlignments[horizontalAlignment] and validVerticalAlignments[verticalAlignment] then
-            textchatservice.ChatWindowConfiguration.HorizontalAlignment = validHorizontalAlignments[horizontalAlignment]
-            textchatservice.ChatWindowConfiguration.VerticalAlignment = validVerticalAlignments[verticalAlignment]
+            textChatService.ChatWindowConfiguration.HorizontalAlignment = validHorizontalAlignments[horizontalAlignment]
+            textChatService.ChatWindowConfiguration.VerticalAlignment = validVerticalAlignments[verticalAlignment]
         else
             warn("Invalid horizontal or vertical alignment provided.")
         end
@@ -414,13 +292,12 @@ end
 -- Function - resetChatWindow
 
 utils.resetChatWindow = function()
-    local chatversion = (textchatservice.ChatVersion == Enum.ChatVersion.TextChatService) and "TextChatService" or
-    "Legacy"
+    local chatversion = (textChatService.ChatVersion == Enum.ChatVersion.TextChatService) and "TextChatService" or "Legacy"
 
     if chatversion == "TextChatService" then
-        local ChatWindowConfiguration = textchatservice.ChatWindowConfiguration
-        local ChatInputBarConfiguration = textchatservice.ChatInputBarConfiguration
-        local BubbleChatConfiguration = textchatservice.BubbleChatConfiguration
+        local ChatWindowConfiguration = textChatService.ChatWindowConfiguration
+        local ChatInputBarConfiguration = textChatService.ChatInputBarConfiguration
+        local BubbleChatConfiguration = textChatService.BubbleChatConfiguration
 
         ChatWindowConfiguration.BackgroundColor3 = Color3.new(25 / 255, 27 / 255, 29 / 255)
         ChatWindowConfiguration.BackgroundTransparency = 0.5
@@ -495,7 +372,7 @@ utils.setCoreGuiEnabled = function(coreGuiType, state)
     local coreGuiEnum = coreGuiTypes[coreGuiType]
 
     if coreGuiEnum then
-        startergui:SetCoreGuiEnabled(coreGuiEnum, state)
+        starterGui:SetCoreGuiEnabled(coreGuiEnum, state)
     else
         warn("Unknown core GUI type: " .. coreGuiType)
     end
@@ -519,28 +396,28 @@ utils.setElementEnabled = function(element, state)
         return
     end
 
-    local chatversion = (textchatservice.ChatVersion == Enum.ChatVersion.TextChatService) and "TextChatService" or
+    local chatversion = (textChatService.ChatVersion == Enum.ChatVersion.TextChatService) and "TextChatService" or
     "Legacy"
 
     if element == "Chat Window" then
         if chatversion == "TextChatService" then
-            textchatservice.ChatWindowConfiguration.Enabled = state
+            textChatService.ChatWindowConfiguration.Enabled = state
         elseif chatversion == "Legacy" then
             player.PlayerGui.Chat.Frame.Visible = state
         end
     elseif element == "Chat Input Bar" then
-        textchatservice.ChatInputBarConfiguration.Enabled = state
+        textChatService.ChatInputBarConfiguration.Enabled = state
     elseif element == "Chat Bubble" then
-        textchatservice.BubbleChatConfiguration.Enabled = state
+        textChatService.BubbleChatConfiguration.Enabled = state
     elseif element == "Reset Button" then
-        startergui:SetCore("ResetButtonCallback", state)
+        starterGui:SetCore("ResetButtonCallback", state)
     end
 end
 
 -- Function - chatNotif
 
 utils.chatNotif = function(text, colorName, font, size)
-    if textchatservice.ChatVersion ~= Enum.ChatVersion.TextChatService then
+    if textChatService.ChatVersion ~= Enum.ChatVersion.TextChatService then
         utils.error("Cannot process message: TextChatService is not enabled.")
         return
     end
@@ -640,7 +517,7 @@ utils.chatNotif = function(text, colorName, font, size)
 
     local colorHex = string.format("#%02X%02X%02X", color.R * 255, color.G * 255, color.B * 255)
     local richText = string.format('<font color="%s" face="%s" size="%d">%s</font>', colorHex, fontName, size, text)
-    local channel = textchatservice.TextChannels:FindFirstChild("RBXSystem")
+    local channel = textChatService.TextChannels:FindFirstChild("RBXSystem")
 
     if channel then
         channel:DisplaySystemMessage(richText)
@@ -675,20 +552,22 @@ utils.sendNotif = function(title, text, duration, icon)
         return
     end
 
-    -- Check for icon and assign asset ID
+    -- Check for icon and set asset ID
+
     if icon == "Celestial" then
-        icon = 18568429771    -- Only the numerical ID
+        icon = 18568429771
     elseif icon == "Corrade Private" then
-        icon = 96825048421923 -- Only the numerical ID
+        icon = 96825048421923
     end
 
     if icon then
         local asset
         local success, errorMessage = pcall(function()
-            asset = marketplaceservice:GetProductInfo(icon) -- Now correctly using numerical ID
+            asset = marketplaceService:GetProductInfo(icon)
         end)
 
-        -- Error Handling
+        -- Error handling
+
         if not success then
             warn("Failed to get asset info for icon: " .. errorMessage)
             return
@@ -706,26 +585,26 @@ utils.sendNotif = function(title, text, duration, icon)
         end
     end
 
-    -- Sending notification
-    startergui:SetCore("SendNotification", {
+    -- Sending the notification
+
+    starterGui:SetCore("SendNotification", {
         Title = title,
         Text = text,
         Duration = duration,
-        Icon = "rbxassetid://" .. tostring(icon) -- Add rbxassetid:// prefix back for final notification
+        Icon = "rbxassetid://" .. tostring(icon)
     })
 end
 
 -- Function - sendMessage
 
 utils.sendMessage = function(message)
-    local chatVersion = textchatservice.ChatVersion.Name
+    local chatVersion = textChatService.ChatVersion.Name
 
     if chatVersion == "TextChatService" then -- TextChatService
-        local RBXGeneral = textchatservice.TextChannels.RBXGeneral
+        local RBXGeneral = textChatService.TextChannels.RBXGeneral
         RBXGeneral:SendAsync(message)
     else -- LegacyChatService
-        local chatEvent = game:GetService("ReplicatedStorage"):FindFirstChild("DefaultChatSystemChatEvents")
-        .SayMessageRequest
+        local chatEvent = game:GetService("ReplicatedStorage"):FindFirstChild("DefaultChatSystemChatEvents").SayMessageRequest
 
         if chatEvent then
             chatEvent:FireServer(message, "All")
@@ -830,31 +709,31 @@ end
 utils.playerTeleport = function(delay)
     local player = players.LocalPlayer
     local character = player.Character or player.CharacterAdded:Wait()
-    local humrootpart = character:FindFirstChild("HumanoidRootPart")
+    local hrp = character:FindFirstChild("HumanoidRootPart")
 
     if typeof(delay) ~= "number" then
         warn("Argument #1 expected number but got " .. typeof(delay) .. ".")
         return
     end
 
-    if not humrootpart then
+    if not hrp then
         warn("HumanoidRootPart not found for the local player.")
         return
     end
 
-    local originalcframe = humrootpart.CFrame
+    local originalcframe = hrp.CFrame
     --print("Original CFrame: ", originalcframe)
 
     for _, otherPlayer in pairs(players:GetPlayers()) do
         if otherPlayer ~= player then
             local otherCharacter = otherPlayer.Character or otherPlayer.CharacterAdded:Wait()
             if otherCharacter then
-                local otherHumrootpart = otherCharacter:FindFirstChild("HumanoidRootPart")
+                local otherhrp = otherCharacter:FindFirstChild("HumanoidRootPart")
 
-                if otherHumrootpart then
+                if otherhrp then
                     --print("Teleporting to player: ", otherPlayer.Name)
                     humanoid.Sit = false
-                    humrootpart.CFrame = otherHumrootpart.CFrame
+                    hrp.CFrame = otherhrp.CFrame
                     wait(delay)
                 else
                     --print("HumanoidRootPart not found for player: " .. otherPlayer.Name)
@@ -866,7 +745,7 @@ utils.playerTeleport = function(delay)
     end
 
     --print("Teleporting back to original position.")
-    humrootpart.CFrame = originalcframe
+    hrp.CFrame = originalcframe
 end
 
 -- Function - getTime
@@ -931,7 +810,7 @@ utils.kill = function(mode)
             explosion.BlastRadius = 10000
             explosion.DestroyJointRadiusPercent = 1
             explosion.ExplosionType = Enum.ExplosionType.NoCraters
-            explosion.Position = humrootpart.Position
+            explosion.Position = hrp.Position
         elseif mode == "Sit" then
             humanoid.Sit = true
             wait(0.3)
@@ -1360,12 +1239,8 @@ utils.fetchOwnership = function(mode, id)
         return false
     end
 
-    local player = game:GetService("Players").LocalPlayer
-
-    local marketplaceservice = game:GetService("MarketplaceService")
-
     local success, productInfo = pcall(function()
-        return marketplaceservice:GetProductInfo(id)
+        return marketplaceService:GetProductInfo(id)
     end)
 
     if not success then
@@ -1391,7 +1266,7 @@ utils.fetchOwnership = function(mode, id)
         -- Gamepass Mode
     elseif mode == "Gamepass" then
         local success, hasPass = pcall(function()
-            return marketplaceservice:UserOwnsGamePassAsync(player.UserId, id)
+            return marketplaceService:UserOwnsGamePassAsync(player.UserId, id)
         end)
 
         if not success then
@@ -1403,7 +1278,7 @@ utils.fetchOwnership = function(mode, id)
 
         -- Asset Mode
     elseif mode == "Asset" then
-        local success, ownsAsset = pcall(marketplaceservice.PlayerOwnsAsset, marketplaceservice, player, id)
+        local success, ownsAsset = pcall(marketplaceService.PlayerOwnsAsset, marketplaceService, player, id)
 
         if not success then
             warn("Error checking if {player.Name} owns {ASSET_NAME}: {errorMessage}")
@@ -1442,5 +1317,37 @@ else
 end
 
 ]]
+
+utils.hash = function(text, algorithm)
+    local hashLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Secure-Hash-Algorithm/refs/heads/master/sha2.lua"))()
+    
+    -- Valid algorithms
+
+    local validAlgorithms = {
+        ["SHA-224"] = hashLib.sha224,
+        ["SHA-256"] = hashLib.sha256,
+        ["SHA-512/224"] = hashLib.sha512_224,
+        ["SHA-512/256"] = hashLib.sha512_256,
+        ["SHA-384"] = hashLib.sha384,
+        ["SHA-512"] = hashLib.sha512,
+        ["SHA3-224"] = hashLib.sha3_224,
+        ["SHA3-256"] = hashLib.sha3_256,
+        ["SHA3-384"] = hashLib.sha3_384,
+        ["SHA3-512"] = hashLib.sha3_512,
+        ["BLAKE2b"] = hashLib.blake2b,
+        ["BLAKE2s"] = hashLib.blake2s,
+        ["BLAKE2bp"] = hashLib.blake2bp,
+        ["BLAKE2sp"] = hashLib.blake2sp,
+    }
+    
+    local hashFunction = validAlgorithms[algorithm]
+    if not hashFunction then
+        error("Invalid hash algorithm specified: " .. tostring(algorithm))
+    end
+    
+    -- Compute and return the hash
+    return hashFunction(text)
+end
+
 
 return utils
