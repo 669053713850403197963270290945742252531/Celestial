@@ -418,7 +418,7 @@ end
 
 utils.chatNotif = function(text, colorName, font, size)
     if textChatService.ChatVersion ~= Enum.ChatVersion.TextChatService then
-        utils.error("Cannot process message: TextChatService is not enabled.")
+        warn("Cannot process message: TextChatService is not enabled.")
         return
     end
 
@@ -511,7 +511,7 @@ utils.chatNotif = function(text, colorName, font, size)
     end
 
     if size > 30 then
-        utils.error("Exceeded the allowed font size.")
+        warn("Exceeded the allowed font size.")
         return
     end
 
@@ -522,7 +522,7 @@ utils.chatNotif = function(text, colorName, font, size)
     if channel then
         channel:DisplaySystemMessage(richText)
     else
-        utils.error("Cannot send message: TextChannel RBXSystem not found.")
+        warn("Cannot send message: TextChannel RBXSystem not found.")
     end
 end
 
@@ -1172,9 +1172,9 @@ utils.isAlive = function()
         if humanoid then
             humanoid.HealthChanged:Connect(function(health)
                 if health <= 0 then
-                    print("Player has died.")
+                    --print("Player has died.")
                 else
-                    print("Player is alive.")
+                    --print("Player is alive.")
                 end
             end)
 
@@ -1289,34 +1289,15 @@ utils.fetchOwnership = function(mode, id)
     end
 end
 
-utils.getHRP = function(mode)
-    if mode == nil then
-        mode = "Instance"
-    end
+utils.getCharInstance = function(partName)
+    local requestedPart = game:GetService("Players").LocalPlayer.Character:FindFirstChild(partName)
 
-    local hrp = game:GetService("Players").LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-
-    if mode == "Instance" then
-        return hrp
-    elseif mode == "Boolean" then
-
-        if hrp then
-            return true
-        else
-            return false
-        end
+    if requestedPart then
+        return requestedPart
+    else
+        warn(partName .. " was not found inside character.")
     end
 end
-
---[[
-
-if utils.getHRP("Boolean") then
-    utils.getHRP("Instance").CFrame = CFrame.new(0, 0, 0)
-else
-    warn("no hrp")
-end
-
-]]
 
 utils.hash = function(text, algorithm)
     local hashLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Secure-Hash-Algorithm/refs/heads/master/sha2.lua"))()
@@ -1342,7 +1323,7 @@ utils.hash = function(text, algorithm)
     
     local hashFunction = validAlgorithms[algorithm]
     if not hashFunction then
-        error("Invalid hash algorithm specified: " .. tostring(algorithm))
+        warn("Invalid hash algorithm specified: " .. tostring(algorithm))
     end
     
     -- Compute and return the hash

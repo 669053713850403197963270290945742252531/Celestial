@@ -256,9 +256,8 @@ themeManager:SetLibrary(library)
 saveManager:SetLibrary(library)
 
 themeManager:SetFolder("Celestial")
-saveManager:SetFolder("Celestial/Universal")
---saveManager:SetFolder("Celestial/Break In 2")
---saveManager:SetSubFolder("Lobby")
+saveManager:SetFolder("Celestial/Break In 2")
+saveManager:SetSubFolder("Lobby")
 
 saveManager:IgnoreThemeSettings()
 saveManager:SetIgnoreIndexes({"MenuKeybind"})
