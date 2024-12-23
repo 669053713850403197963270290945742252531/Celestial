@@ -65,13 +65,13 @@ else
     library:Notify("Celestial has loaded / " .. utils.getTime(false) .. ".", 6)
 end
 
--- Game Info Tab
+-- Tab: Game Info
 
 local GameDetailsGroup = tabs.info:AddLeftGroupbox("Game Details")
 local UserDetailsGroup = tabs.info:AddRightGroupbox("User Details")
 local WhitelistDetailsGroup = tabs.info:AddLeftGroupbox("Whitelist Details")
 
--- Game Info Group
+-- Group: Game Info
 
 GameDetailsGroup:AddDivider()
 
@@ -79,7 +79,7 @@ GameDetailsGroup:AddLabel("Game Supported: false", true)
 GameDetailsGroup:AddLabel("Game Name: " .. gameName, true)
 GameDetailsGroup:AddLabel("Place ID: " .. game.PlaceId, true)
 
--- User Info Group
+-- Group: User Info
 
 UserDetailsGroup:AddDivider()
 
@@ -88,7 +88,7 @@ UserDetailsGroup:AddLabel("Display Name: " .. player.DisplayName, true)
 UserDetailsGroup:AddLabel("Account Age: " .. player.AccountAge .. " Days", true)
 UserDetailsGroup:AddLabel("Executor: " .. exploit, true)
 
--- Whitelist Details Group
+-- Group: Whitelist Details
 
 WhitelistDetailsGroup:AddDivider()
 
@@ -97,11 +97,11 @@ WhitelistDetailsGroup:AddLabel("Identifer: " .. auth.currentUser.Identifer, true
 WhitelistDetailsGroup:AddLabel("Rank: " .. auth.currentUser.Rank, true)
 WhitelistDetailsGroup:AddLabel("JoinDate: " .. auth.currentUser.JoinDate, true)
 
--- Main Tab
+-- Tab: Main
 
 local mainGroup = tabs.main:AddLeftGroupbox("Main")
 
--- Main Group
+-- Group: Main
 
 mainGroup:AddDivider()
 
@@ -141,7 +141,7 @@ mainGroup:AddInput("clipPositionAmount", {
     end
 })
 
-local clip = mainGroup:AddButton({
+local clipBtn = mainGroup:AddButton({
     Text = "Clip",
     Func = function()
         local hrp = utils.getHRP()
@@ -172,11 +172,11 @@ local clip = mainGroup:AddButton({
     Tooltip = false
 })
 
--- Player Tab
+-- Tab: Player
 
 local localplayerGroup = tabs.player:AddLeftGroupbox("LocalPlayer")
 
--- LocalPlayer Group
+-- Group: LocalPlayer
 
 localplayerGroup:AddDivider()
 
@@ -188,17 +188,17 @@ library:SetWatermarkVisibility(watermarkEnabled)
 
 if watermarkEnabled then
 
-    local FrameTimer = tick()
-    local FrameCounter = 0
-    local FPS = 60
+    local frameTimer = tick()
+    local frameCounter = 0
+    local fps = 60
     
-    local WatermarkConnection = game:GetService("RunService").RenderStepped:Connect(function()
-        FrameCounter += 1
+    local watermarkConnection = game:GetService("RunService").RenderStepped:Connect(function()
+        frameCounter += 1
     
-        if (tick() - FrameTimer) >= 1 then
-            FPS = FrameCounter
-            FrameTimer = tick()
-            FrameCounter = 0
+        if (tick() - frameTimer) >= 1 then
+            fps = frameCounter
+            frameTimer = tick()
+            frameCounter = 0
         end
     
         library:SetWatermark(("Celestial | %s fps | %s ms"):format(
@@ -215,36 +215,32 @@ library:OnUnload(function()
 
     -- Unloading
 
-    if watermarkEnabled and WatermarkConnection then
-        WatermarkConnection:Disconnect()
+    if watermarkEnabled and watermarkConnection then
+        watermarkConnection:Disconnect()
     end
 
     library.Unloaded = true
 end)
 
-local MenuGroup = tabs["UI Settings"]:AddLeftGroupbox("Menu")
-MenuGroup:AddButton("Unload", function()
+-- Group: Menu
+
+local menuGroup = tabs["UI Settings"]:AddLeftGroupbox("Menu")
+
+menuGroup:AddButton("Unload", function()
     library:Unload()
 end)
 
-MenuGroup:AddDivider()
+menuGroup:AddDivider()
 
-MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind",{ Default = "End", NoUI = true, Text = "Menu keybind" })
-
-library.ToggleKeybind = options.MenuKeybind
-
-themeManager:SetLibrary(library)
-saveManager:SetLibrary(library)
-
-MenuGroup:AddToggle("keybindMenuToggle", {
-    Text = "Open Keybind Menu",
+menuGroup:AddToggle("keybindMenuToggle", {
+    Text = "Keybind Menu",
     Default = library.KeybindFrame.Visible,
     Callback = function(state)
         Library.KeybindFrame.Visible = state
     end
 })
 
-MenuGroup:AddToggle("ShowCustomCursor", {
+menuGroup:AddToggle("customCursorToggle", {
     Text = "Custom Cursor",
     Default = true,
     Callback = function(state)
@@ -252,23 +248,12 @@ MenuGroup:AddToggle("ShowCustomCursor", {
     end
 })
 
---[[
+menuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind",{ Default = "End", NoUI = true, Text = "Menu keybind" })
 
-MenuGroup:AddToggle("KeybindsVisible", {
-    Text = "Show Keybind UI",
-    Default = true,
-    Tooltip = "Toggles the visibility of the keybinds",
+library.ToggleKeybind = options.MenuKeybind
 
-    Callback = function(state)
-        if state then
-            library.KeybindFrame.Visible = true
-        else
-            library.KeybindFrame.Visible = false
-        end
-    end
-})
-
-]]
+themeManager:SetLibrary(library)
+saveManager:SetLibrary(library)
 
 themeManager:SetFolder("Celestial")
 saveManager:SetFolder("Celestial/Universal")

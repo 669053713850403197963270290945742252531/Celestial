@@ -144,7 +144,7 @@ if whitelistedUsers then
                 local rank = userData.Rank or "Unknown Rank"  -- Default to "Unknown Rank" if nil
                 local identifier = userData.Identifer or "Unknown Identifier"  -- Default to "Unknown Identifier" if nil
 
-                print("Successfully logged in as " .. rank .. ": " .. identifier .. " / " .. utils.getTime(true))
+                --print("Successfully logged in as " .. rank .. ": " .. identifier .. " / " .. utils.getTime(true))
             end
 
             -- utils.sendNotif("Celestial", "Successfully logged in as " .. userData.Rank .. ": " .. userData.Identifer, 3, 18568429771)
