@@ -34,21 +34,21 @@ local function fetchWhitelist(url)
         if successDecode then
             return whitelistData
         else
-            warn("Failed to decode whitelist.")
+            player:Kick("Failed to decode whitelist.")
         end
     else
-        warn("Failed to fetch whitelist.")
+        player:Kick("Failed to fetch whitelist.")
     end
     return nil
 end
 
 -- Fetch whitelist from the specified URL
 
-local whitelistURL = "https://pastebin.com/raw/uSUpD1yL" --[["https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Users.json"]]
+local whitelistURL = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Users.json"
 local whitelistedUsers = fetchWhitelist(whitelistURL)
 
 if not whitelistedUsers then
-    warn("Failed to retrieve the whitelist.")
+    player:Kick("Failed to retrieve the whitelist.")
     return
 end
 
@@ -84,7 +84,7 @@ auth.fetchConfig = function(configName)
 
     if typeof(configName) ~= "string" or configName == nil then
         warn("Argument #1 (configName) expected a string value and a valid config name but got a " .. typeof(configName) .. " value and an invalid config name.")
-        return "Failed. Check console for more information."
+        return "Failed: Check console for more information."
     end
 
     configName = string.lower(configName) -- Convert to lowercase
@@ -100,7 +100,7 @@ auth.fetchConfig = function(configName)
     -- If no match is found
 
     warn("Argument #1 (configName) expected a valid config name.")
-    return "Failed. Check console for more information."
+    return "Failed: Check console for more information."
 end
 
 -- Logging
@@ -131,9 +131,9 @@ if whitelistedUsers then
 
             
             if userData.TempBan then
-                warn("\nYou are temporary banned from using this service for " .. userData.TempBanDuration .. ". You will be unbanned on " .. userData.TempBanEnd .. ".\nReason: " .. (userData.BanReason or "No reason provided."))
+                player:Kick("\nYou are temporary banned from using this service for " .. userData.TempBanDuration .. ". You will be unbanned on " .. userData.TempBanEnd .. ".\nReason: " .. (userData.BanReason or "No reason provided."))
             else
-                warn("\nYou are permanently banned from using this service.\nReason: " .. (userData.BanReason or "No reason provided."))
+                player:Kick("\nYou are permanently banned from using this service.\nReason: " .. (userData.BanReason or "No reason provided."))
             end
 
 
@@ -144,7 +144,7 @@ if whitelistedUsers then
                 local rank = userData.Rank or "Unknown Rank"  -- Default to "Unknown Rank" if nil
                 local identifier = userData.Identifer or "Unknown Identifier"  -- Default to "Unknown Identifier" if nil
 
-                warn("Successfully logged in as " .. rank .. ": " .. identifier .. " / " .. utils.getTime(true) .. os.date(" %p"))
+                print("Successfully logged in as " .. rank .. ": " .. identifier .. " / " .. utils.getTime(true))
             end
 
             -- utils.sendNotif("Celestial", "Successfully logged in as " .. userData.Rank .. ": " .. userData.Identifer, 3, 18568429771)
@@ -155,14 +155,14 @@ if whitelistedUsers then
         end
     else
         setclipboard(hashedHWID)
-        warn("Invalid HWID: Your hardware ID has been copied to your clipboard.")
+        player:Kick("Invalid HWID: Your hardware ID has been copied to your clipboard.")
 
         if authConfig.logBreaches then
             logEvent("breach")
         end
     end
 else
-    warn("Failed to retrieve whitelist.")
+    player:Kick("Failed to retrieve whitelist.")
 end
 
 return auth

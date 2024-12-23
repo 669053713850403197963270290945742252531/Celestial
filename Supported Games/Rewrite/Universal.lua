@@ -5,6 +5,10 @@ end
 local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/main/Utilities.lua"))()
 local auth = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/main/Authentication.lua"))()
 
+if not auth.isUser() then
+    return
+end
+
 -- Library variables
 
 local repo = "https://raw.githubusercontent.com/mstudio45/LinoriaLib/main/"    
@@ -55,10 +59,10 @@ local tabs = {
     ["UI Settings"] = window:AddTab("Configs"),
 }
 
-if auth.notify_execution then
+if auth.fetchConfig("notifyExecution") then
     library:Notify("Successfully logged in as " .. auth.currentUser.Rank .. ": " .. auth.currentUser.Identifer, 6)
 else
-    library:Notify("Celestial has loaded / " .. utils.getTime(false) .. os.date(" %p") .. ".", 6)
+    library:Notify("Celestial has loaded / " .. utils.getTime(false) .. ".", 6)
 end
 
 -- Game Info Tab
@@ -71,25 +75,27 @@ local WhitelistDetailsGroup = tabs.info:AddLeftGroupbox("Whitelist Details")
 
 GameDetailsGroup:AddDivider()
 
-GameDetailsGroup:AddLabel("Game Supported: true")
+GameDetailsGroup:AddLabel("Game Supported: false", true)
 GameDetailsGroup:AddLabel("Game Name: " .. gameName, true)
-GameDetailsGroup:AddLabel("Place ID: " .. game.PlaceId)
+GameDetailsGroup:AddLabel("Place ID: " .. game.PlaceId, true)
 
 -- User Info Group
 
 UserDetailsGroup:AddDivider()
 
-UserDetailsGroup:AddLabel("Username: " .. player.Name)
-UserDetailsGroup:AddLabel("Display Name: " .. player.DisplayName)
-UserDetailsGroup:AddLabel("Account Age: " .. player.AccountAge .. " Days")
-UserDetailsGroup:AddLabel("Executor: " .. exploit)
+UserDetailsGroup:AddLabel("Username: " .. player.Name, true)
+UserDetailsGroup:AddLabel("Display Name: " .. player.DisplayName, true)
+UserDetailsGroup:AddLabel("Account Age: " .. player.AccountAge .. " Days", true)
+UserDetailsGroup:AddLabel("Executor: " .. exploit, true)
 
 -- Whitelist Details Group
 
 WhitelistDetailsGroup:AddDivider()
 
-WhitelistDetailsGroup:AddLabel("Identifer: " .. auth.currentUser.Identifer)
-WhitelistDetailsGroup:AddLabel("Rank: " .. auth.currentUser.Rank)
+WhitelistDetailsGroup:AddLabel("HWID: " .. auth.currentUser.HWID, true)
+WhitelistDetailsGroup:AddLabel("Identifer: " .. auth.currentUser.Identifer, true)
+WhitelistDetailsGroup:AddLabel("Rank: " .. auth.currentUser.Rank, true)
+WhitelistDetailsGroup:AddLabel("JoinDate: " .. auth.currentUser.JoinDate, true)
 
 -- Main Tab
 
