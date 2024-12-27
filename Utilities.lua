@@ -498,13 +498,13 @@ utils.chatNotif = function(text, colorName, font, size)
         ArimoBold = "ArimoBold"
     }
 
-    local color = colorPresets[colorName]
+    local color = colorPresets[colorName] or "Black"
 
     if not color then
         warn("Invalid color name.")
     end
 
-    local fontName = fontPresets[font]
+    local fontName = fontPresets[font] or "Arial"
 
     if not fontName then
         warn("Invalid font.")
@@ -516,7 +516,7 @@ utils.chatNotif = function(text, colorName, font, size)
     end
 
     local colorHex = string.format("#%02X%02X%02X", color.R * 255, color.G * 255, color.B * 255)
-    local richText = string.format('<font color="%s" face="%s" size="%d">%s</font>', colorHex, fontName, size, text)
+    local richText = string.format('<font color="%s" face="%s" size="%d">%s</font>', colorHex, fontName, size or 16, text or "Unknown message.")
     local channel = textChatService.TextChannels:FindFirstChild("RBXSystem")
 
     if channel then
