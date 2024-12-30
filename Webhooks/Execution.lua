@@ -228,6 +228,5 @@ local data = {
         ["content-type"] = "application/json"
      }
 
-     request = http_request
      local args = {Url = webhookUrl, Body = encodedData, Method = "POST", Headers = headers}
      request(args)
