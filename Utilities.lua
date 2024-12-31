@@ -120,7 +120,11 @@ local function stringToCFrame(cframeString)
 end
 
 local character = player.Character or player.CharacterAdded:Wait()
-local hrp = character:WaitForChild("HumanoidRootPart")
+local hrp = character:FindFirstChild("HumanoidRootPart")
+
+if not hrp then
+    return
+end
 
 local originalCanCollideStates = {}
 local originalGravity
