@@ -5,7 +5,7 @@ local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/6690537
 local player = game:GetService("Players").LocalPlayer
 local hwid = game:GetService("RbxAnalyticsService"):GetClientId()
 local httpService = game:GetService("HttpService")
-local hashedHWID = utils.hash(hwid, "SHA-256")
+local hashedHWID = utils.hash(hwid, "SHA-384")
 
 -- Configuration
 
@@ -20,46 +20,71 @@ auth.currentUser = nil
 
 -- Making the whitelist modular
 
-local function fetchWhitelist(url)
+local function fetchData(url)
     local success, response = pcall(function()
         return game:HttpGet(url)
     end)
 
     if success then
-        local successDecode, whitelistData = pcall(function()
-            --print(response) -- Print the entire whitelist
+        local successDecode, data = pcall(function()
+            --print(response)
             return httpService:JSONDecode(response)
         end)
 
         if successDecode then
-            return whitelistData
+            return data
         else
-            player:Kick("Failed to decode whitelist.")
+            player:Kick("Failed to decode JSON data from URL: ", url)
         end
     else
-        player:Kick("Failed to fetch whitelist.")
+        player:Kick("Failed to fetch data from URL: ", url)
     end
     return nil
 end
 
+
+
 -- Fetch whitelist from the specified URL
 
+
+
 local whitelistURL = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Users.json"
-local whitelistedUsers = fetchWhitelist(whitelistURL)
+local supportedExploitsURL = "https://pastebin.com/raw/FqL17N5y"
+
+local whitelistedUsers = fetchData(whitelistURL)
+local supportedExploits = fetchData(supportedExploitsURL)
 
 if not whitelistedUsers then
     player:Kick("Failed to retrieve the whitelist.")
     return
 end
 
+if not supportedExploits then
+    player:Kick("Failed to retrieve the list of supported exploits.")
+    return
+end
+
+-- Supported exploit function
+
+local currentExploit = identifyexecutor()
+
+local supported = false
+for _, exploit in ipairs(supportedExploits) do
+    if exploit == currentExploit then
+        supported = true
+        break
+    end
+end
+
+if not supported then
+    player:Kick("The current exploit is not supported: " .. currentExploit)
+end
+
+
 -- Authentication functions
 
---[[
 
-isUser = Returns a boolean depending on if the user is currently whitelisted.
-isAuthorized = Returns a boolean depending on if the user's current hwid matches any in the whitelistedUsers.
 
-]]
 
 auth.isUser = function()
     return auth.currentUser ~= nil
@@ -101,6 +126,10 @@ auth.fetchConfig = function(configName)
 
     warn("Argument #1 (configName) expected a valid config name.")
     return "Failed: Check console for more information."
+end
+
+auth.hashedHWID = function()
+
 end
 
 -- Logging

@@ -2,6 +2,10 @@ while not game:IsLoaded() do
     task.wait()
 end
 
+if identifyexecutor() ~= "AWP" then
+    error("no awp 👎❌✖️🧠🤯 gtfo 👍")
+end
+
 local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/main/Utilities.lua"))()
 local auth = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/main/Authentication.lua"))()
 
@@ -30,15 +34,10 @@ local character = player.Character
 local humanoid = utils.getCharInstance("Humanoid")
 local hrp = utils.getCharInstance("HumanoidRootPart")
 
-while not hrp do
-    warn("Player's HumanoidRootPart was not found at runtime. Halting further code execution until found.")
-    task.wait()
-end
-
 -- Window
 
 local window = library:CreateWindow({
-    Title = "Celestial - " .. gameName .. ": " .. auth.currentUser.Identifer,
+    Title = "Celestial - " .. gameName .. " : " .. auth.currentUser.Identifer,
     Center = true,
     AutoShow = true,
     Resizable = true,
@@ -62,6 +61,8 @@ local damageAmountValue = 0
 local teleportDropdownValue = ""
 local weaponDropdownValue = ""
 local antiSlipEnabled = false
+
+--[[
 
 -- Loop Values
 
@@ -340,6 +341,8 @@ function fightSpoof()
     end
 end
 
+]]
+
 -- Functions
 
 local notifSounds = {
@@ -366,35 +369,35 @@ end
 
 -- Tab: Game Info
 
-local GameDetailsGroup = tabs.info:AddLeftGroupbox("Game Details")
-local UserDetailsGroup = tabs.info:AddRightGroupbox("User Details")
-local WhitelistDetailsGroup = tabs.info:AddLeftGroupbox("Whitelist Details")
+local gameDetailsGroup = tabs.info:AddLeftGroupbox("Game Details")
+local serDetailsGroup = tabs.info:AddRightGroupbox("User Details")
+local whitelistDetailsGroup = tabs.info:AddLeftGroupbox("Whitelist Details")
 
 -- Group: Game Info
 
-GameDetailsGroup:AddDivider()
+gameDetailsGroup:AddDivider()
 
-GameDetailsGroup:AddLabel("Game Supported: false", true)
-GameDetailsGroup:AddLabel("Game Name: " .. gameName, true)
-GameDetailsGroup:AddLabel("Place ID: " .. game.PlaceId, true)
+gameDetailsGroup:AddLabel("Game Supported: false", true)
+gameDetailsGroup:AddLabel("Game Name: Break In 2 (Story) - " .. gameName, true)
+gameDetailsGroup:AddLabel("Place ID: " .. game.PlaceId, true)
 
 -- Group: User Info
 
-UserDetailsGroup:AddDivider()
+userDetailsGroup:AddDivider()
 
-UserDetailsGroup:AddLabel("Username: " .. player.Name, true)
-UserDetailsGroup:AddLabel("Display Name: " .. player.DisplayName, true)
-UserDetailsGroup:AddLabel("Account Age: " .. player.AccountAge .. " Days", true)
-UserDetailsGroup:AddLabel("Executor: " .. exploit, true)
+userDetailsGroup:AddLabel("Username: " .. player.Name, true)
+userDetailsGroup:AddLabel("Display Name: " .. player.DisplayName, true)
+userDetailsGroup:AddLabel("Account Age: " .. player.AccountAge .. " Days", true)
+userDetailsGroup:AddLabel("Executor: " .. exploit, true)
 
 -- Group: Whitelist Details
 
-WhitelistDetailsGroup:AddDivider()
+whitelistDetailsGroup:AddDivider()
 
-WhitelistDetailsGroup:AddLabel("HWID: " .. auth.currentUser.HWID, true)
-WhitelistDetailsGroup:AddLabel("Identifer: " .. auth.currentUser.Identifer, true)
-WhitelistDetailsGroup:AddLabel("Rank: " .. auth.currentUser.Rank, true)
-WhitelistDetailsGroup:AddLabel("JoinDate: " .. auth.currentUser.JoinDate, true)
+whitelistDetailsGroup:AddLabel("HWID: " .. auth.currentUser.HWID, true)
+whitelistDetailsGroup:AddLabel("Identifer: " .. auth.currentUser.Identifer, true)
+whitelistDetailsGroup:AddLabel("Rank: " .. auth.currentUser.Rank, true)
+whitelistDetailsGroup:AddLabel("JoinDate: " .. auth.currentUser.JoinDate, true)
 
 -- Tab: Exploits
 
@@ -1180,11 +1183,12 @@ playerModDepBox:AddSlider("sliderWalkspeed", {
 	Callback = function(value)
         if walkspeedEnabled then
             sliderWalkspeedValue = value
-            print(options.sliderWalkspeed.Value)
         end
 	end,
 	Tooltip = false
 })
+
+sliderWalkspeedValue = options.sliderWalkspeed.Value
 
 playerModDepBox:AddSlider("jumppowerSlider", {
 	Text = "JumpPower Value",
@@ -1201,6 +1205,8 @@ playerModDepBox:AddSlider("jumppowerSlider", {
 	end,
 	Tooltip = false
 })
+
+jumppowerSliderValue = options.jumppowerSlider.Value
 
 playerModDepBox:AddInput("customWalkSpeedInput", {
     Default = false,
@@ -1340,15 +1346,42 @@ local getValue = damageGroup:AddButton({
     Tooltip = false
 })
 
-localPlayerGroup:AddToggle("Noclip", {
-	Text = "Noclip",
-	Tooltip = "Allows you to clip through walls.",
-	Default = false,
 
-	Callback = function(state)
-        _G.noclip = state
-        noclip()
-	end
+local noclipEnabled = false
+local originalCanCollideStates = {}
+
+localPlayerGroup:AddToggle("Noclip", {
+    Text = "Noclip",
+    Tooltip = "Allows you to clip through walls.",
+    Default = false,
+
+    Callback = function(state)
+        noclipEnabled = state
+        if noclipEnabled then
+            -- Enable noclip
+            originalCanCollideStates = {} -- Reset the table to avoid overlaps
+            game:GetService("RunService").Stepped:Connect(function()
+                if noclipEnabled and game.Players.LocalPlayer.Character then
+                    for _, part in pairs(game.Players.LocalPlayer.Character:GetDescendants()) do
+                        if part:IsA("BasePart") and not originalCanCollideStates[part] then
+                            originalCanCollideStates[part] = part.CanCollide -- Store original state
+                            part.CanCollide = false
+                        end
+                    end
+                end
+            end)
+        else
+            -- Disable noclip and restore original states
+            if game.Players.LocalPlayer.Character then
+                for _, part in pairs(game.Players.LocalPlayer.Character:GetDescendants()) do
+                    if part:IsA("BasePart") and originalCanCollideStates[part] ~= nil then
+                        part.CanCollide = originalCanCollideStates[part] -- Restore original state
+                    end
+                end
+            end
+            originalCanCollideStates = {} -- Clear stored states
+        end
+    end
 })
 
 -- Group: Damage
@@ -1663,7 +1696,7 @@ if watermarkEnabled then
         end
     
         library:SetWatermark(("Celestial | %s fps | %s ms"):format(
-            math.floor(FPS),
+            math.floor(fps),
             math.floor(game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue())
         ))
     end)

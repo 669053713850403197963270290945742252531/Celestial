@@ -2,7 +2,7 @@ local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/6690537
 
 local player = game:GetService("Players").LocalPlayer
 local hwid = game:GetService("RbxAnalyticsService"):GetClientId()
-local hashedHwid = utils.hash(hwid, "SHA-256")
+local hashedHwid = utils.hash(hwid, "SHA-384")
 
 print("-----------------------------------------------------------")
 setclipboard(hashedHwid)

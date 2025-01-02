@@ -1296,7 +1296,7 @@ utils.getCharInstance = function(partName)
     if requestedPart then
         return requestedPart
     else
-        warn(partName .. " was not found inside character.")
+        --warn(partName .. " was not found inside character.")
     end
 end
 
@@ -1327,8 +1327,16 @@ utils.hash = function(text, algorithm)
         warn("Invalid hash algorithm specified: " .. tostring(algorithm))
     end
     
-    -- Compute and return the hash
     return hashFunction(text)
+end
+
+utils.randomString = function()
+    local array = {}
+    for i = 1, math.random(10, 100) do
+        array[i] = string.char(math.random(32, 126))
+    end
+
+    return table.concat(array)
 end
 
 
