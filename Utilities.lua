@@ -17,9 +17,10 @@ local character = player.Character or player.CharacterAdded:Wait()
 local humanoid = character:FindFirstChild("Humanoid")
 local hrp = character:FindFirstChild("HumanoidRootPart")
 
-while not humanoid and hrp do
-    warn("Player's HumanoidRootPart or Humanoid was not found at runtime. Halting further code execution until found.")
-    task.wait()
+if not hrp then
+    repeat
+        task.wait()
+    until hrp
 end
 
 -- Function - getPlayers
