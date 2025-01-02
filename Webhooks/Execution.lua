@@ -10,7 +10,6 @@ local gameName = game:GetService("MarketplaceService"):GetProductInfo(game.Place
 
 -- Embed
 
-
 local data = {
     embeds = {
         {
@@ -20,15 +19,20 @@ local data = {
             fields = {
                 {
                     name = "Execution Date",
-                    value = "**" .. os.date("%x") .. " | " .. utils.getTime(true) .. os.date(" %p") .. "**",
+                    value = "**" .. os.date("%x") .. " | " .. utils.getTime(true) .. " : " .. os.date("%Z") .. "**",
                     inline = true
                 },
-
-                -- Account Info Section
 
                 {
                     name = "",
                     value = "[**" .. player.DisplayName .. "**'s Profile](https://roblox.com/users/" .. player.UserId .. "/profile)",
+                    inline = true
+                },
+
+
+                {
+                    name = "",
+                    value = "[Game Page](https://www.roblox.com/games/" .. game.PlaceId .. ")",
                     inline = true
                 },
 
@@ -51,18 +55,6 @@ local data = {
                 },
 
                 {
-                    name = "",
-                    value = "[Game Page](https://www.roblox.com/games/" .. game.PlaceId .. ")",
-                    inline = true
-                },
-
-                {
-                    name = "Server Join Code",
-                    value = "```" .. [[game:GetService("TeleportService")]] .. ":TeleportToPlaceInstance(" .. game.PlaceId..", '" .. game.JobId.."')" .. "```",
-                    inline = true
-                },
-
-                {
                     name = "Exploit",
                     value = identifyexecutor(),
                     inline = true
@@ -70,7 +62,19 @@ local data = {
 
                 {
                     name = "HWID",
-                    value = "||" .. "hmmmmmmmmmmmmmmm" .. "||",
+                    value = "||" .. auth.hwid("Normal") .. "||",
+                    inline = true
+                },
+
+                {
+                    name = "HWID [Hashed]",
+                    value = "||" .. auth.hwid("Hashed") .. "||",
+                    inline = true
+                },
+
+                {
+                    name = "Server Join Code",
+                    value = "```" .. [[game:GetService("TeleportService")]] .. ":TeleportToPlaceInstance(" .. game.PlaceId..", '" .. game.JobId.."')" .. "```",
                     inline = true
                 },
                }
