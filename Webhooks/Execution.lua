@@ -3,9 +3,9 @@ local webhookUrl = "https://discord.com/api/webhooks/1264103527165198376/zcTnP6t
 local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/main/Utilities.lua"))()
 local auth = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Authentication.lua"))()
 
-local player = game:GetService("Players").LocalPlayer
+local players = game:GetService("Players")
+local player = players.LocalPlayer
 local httpService = game:GetService("HttpService")
-
 local gameName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
 
 -- Embed

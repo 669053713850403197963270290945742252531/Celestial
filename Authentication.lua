@@ -104,7 +104,11 @@ end
 
 -- Authentication functions
 
-
+for _, user in ipairs(whitelistedUsers) do
+    if user.HWID == hashedHWID then
+        auth.currentUser = user -- Set the current user
+    end
+end
 
 
 auth.isUser = function()
@@ -114,9 +118,11 @@ end
 auth.isAuthorized = function()
     for _, user in ipairs(whitelistedUsers) do
         if user.HWID == hashedHWID then
+            auth.currentUser = user -- Set the current user
             return true, user
         end
     end
+    auth.currentUser = nil -- Reset if not authorized
     return false, nil
 end
 
@@ -185,44 +191,23 @@ auth.trigger = function()
         return
     end
 
-    local isAuthorized, userData = auth.isAuthorized() -- Check auth
+    local isAuthorized, userData = auth.isAuthorized() -- Check authorization
 
     if isAuthorized and userData then
-        auth.currentUser = userData -- Store the current user's data
-
-        -- Ban check
-
+        -- Handle bans
         if userData.Banned and userData.Rank ~= "Owner" then
             if userData.TempBan then
                 player:Kick("\nYou are temporarily banned from using this service for " .. userData.TempBanDuration .. ". You will be unbanned on " .. userData.TempBanEnd .. ".\nReason: " .. (userData.BanReason or "No reason provided."))
             else
                 player:Kick("\nYou are permanently banned from using this service.\nReason: " .. (userData.BanReason or "No reason provided."))
             end
-        else
-            -- Notify execution
-
-            if authConfig.notifyExecution then
-                local rank = userData.Rank or "Unknown Rank"  -- Default to "Unknown Rank" if nil
-                local identifier = userData.Identifer or "Unknown Identifier"  -- Default to "Unknown Identifier" if nil
-                utils.sendNotif("Celestial", "Successfully logged in as " .. rank .. ": " .. identifier, 3, 18568429771)
-            end
-
-            -- Log
-
-            if authConfig.logExecutions then
-                logEvent("execution")
-            end
         end
     else
+        -- Handle invalid HWID
         setclipboard(hashedHWID)
         warn("Invalid HWID: Your hardware ID has been copied to your clipboard.")
-
-        -- Log
-
-        if authConfig.logBreaches then
-            logEvent("breach")
-        end
     end
 end
+
 
 return auth
