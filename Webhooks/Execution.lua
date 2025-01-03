@@ -8,6 +8,11 @@ local player = players.LocalPlayer
 local httpService = game:GetService("HttpService")
 local gameName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
 
+if not auth.isUser() then
+    player:Kick("Not authorized.")
+    return
+end
+
 -- Embed
 
 local data = {
