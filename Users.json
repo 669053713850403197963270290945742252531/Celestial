@@ -24,31 +24,5 @@
         "BanReason": null,
         "TempBanDuration": null,
         "TempBanEnd": null
-    },
-    {
-        "HWID": "f862acf2a277433788a1c268e9143dcfb6be0962a534b98241a08d3e37d16a7430b674f2c76190a8d69d2a8a9843a9df",
-        "Identifier": "captainEz",
-        "Rank": "casual vaper",
-        "JoinDate": "2025-01-03",
-        "DiscordId": "895500903799463976",
-        "Notes": null,
-        "Banned": false,
-        "TempBan": false,
-        "BanReason": null,
-        "TempBanDuration": null,
-        "TempBanEnd": null
-    },
-    {
-        "HWID": "f862acf2a277433788a1c268e9143dcfb6be0962a534b98241a08d3e37d16a7430b674f2c76190a8d69d2a8a9843a9df",
-        "Identifier": "captainEz",
-        "Rank": "casual vaper",
-        "JoinDate": "2025-01-03",
-        "DiscordId": "895500903799463976",
-        "Notes": null,
-        "Banned": false,
-        "TempBan": false,
-        "BanReason": null,
-        "TempBanDuration": null,
-        "TempBanEnd": null
     }
 ]
