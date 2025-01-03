@@ -15,6 +15,21 @@
     },
 
     {
+        "HWID": "a245b97d03d3b45dd4681b8c9393feac5a454b1381ca68cf0b360cfb72febda42c57ab448d635759fe6affc5f4c19a6f",
+        "Identifier": "Cyclone",
+        "Rank": "User",
+        "JoinDate": "2025-01-03",
+        "DiscordId": "717263419237203968",
+        "Notes": "Exploiter.",
+ 
+        "Banned": false,
+        "TempBan": false,
+        "BanReason": null,
+        "TempBanDuration": null,
+        "TempBanEnd": null
+    },
+
+    {
         "HWID": "0000000000000000000000000000000000000000000000000000000000000000",
         "Identifier": null,
         "Rank": null,
