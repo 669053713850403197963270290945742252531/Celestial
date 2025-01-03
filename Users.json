@@ -4,6 +4,7 @@
         "Identifer": "Corrade",
         "Rank": "Owner",
         "JoinDate": "2024-12-18",
+        "DiscordId": "999776749070078004",
         "Notes": "None",
  
         "Banned": false,
@@ -18,6 +19,7 @@
         "Identifer": null,
         "Rank": null,
         "JoinDate": null,
+        "DiscordId": "000000000000000000",
         "Notes": "Blank user table template.",
  
         "Banned": false,
