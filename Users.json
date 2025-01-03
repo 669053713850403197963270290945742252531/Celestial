@@ -24,17 +24,5 @@
         "BanReason": null,
         "TempBanDuration": null,
         "TempBanEnd": null
-    },
-    {
-        "DiscordId": "895500903799463976",
-        "Identifier": "real identifier",
-        "Rank": "user",
-        "JoinDate": "today",
-        "Notes": null,
-        "Banned": false,
-        "TempBan": false,
-        "BanReason": null,
-        "TempBanDuration": null,
-        "TempBanEnd": null
     }
 ]
