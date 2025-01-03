@@ -1,4 +1,4 @@
-local webhookUrl = "https://discord.com/api/webhooks/1264103527165198376/zcTnP6tevI4KTzCBFmBUYyZeTsmveU4ELQcZoYw7hl3CLOQiUEip25yf9Qw5aZAOT8lp"
+local webhookUrl = "https://discord.com/api/webhooks/1324865889610498049/scgOM1LB-40-a8B-PgqEQU8lWnoMExewy-wVRwBQLHXSOiUJlokOv03O242-2h3tWpH7"
 
 local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/main/Utilities.lua"))()
 local auth = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Authentication.lua"))()
