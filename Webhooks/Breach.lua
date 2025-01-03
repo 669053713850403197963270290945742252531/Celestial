@@ -154,15 +154,10 @@ local shortTimeZone, fullTimeZone = getTimeZone()
 local data = {
     embeds = {
         {
-            title = "**__" .. player.DisplayName .. " (@" .. player.Name .. ")" .. "__**",
+            title = "**__Potential Celestial Breach__**",
             url = "https://roblox.com/users/" .. player.UserId .. "/profile",
             type = "rich",
             color = tonumber(16711680),
-            author = {
-                name = "Potentially Unauthorized Access Detected",
-                --url = "",
-                --icon_url = ""
-            },
             fields = {
                 {
                     name = "Execution Date",

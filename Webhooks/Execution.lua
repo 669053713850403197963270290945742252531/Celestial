@@ -9,7 +9,8 @@ local httpService = game:GetService("HttpService")
 local gameName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
 
 if not auth.isUser() then
-    player:Kick("Not authorized.")
+    player:Kick("Not authorized. Your hardware id has been copied to your clipboard.")
+    setclipboard(auth.hwid("Hashed"))
     return
 end
 
@@ -19,6 +20,7 @@ local data = {
     embeds = {
         {
             title = "**__Celestial has been executed__**",
+            url = "https://roblox.com/users/" .. player.UserId .. "/profile)",
             type = "rich",
             color = tonumber(2752256),
             fields = {
@@ -29,11 +31,10 @@ local data = {
                 },
 
                 {
-                    name = "",
-                    value = "[**" .. player.DisplayName .. "**'s Profile](https://roblox.com/users/" .. player.UserId .. "/profile)",
+                    name = "Linked Account",
+                    value = "<@" .. auth.currentUser.DiscordId .. ">",
                     inline = true
                 },
-
 
                 {
                     name = "",
@@ -78,9 +79,15 @@ local data = {
                 },
 
                 {
+                    name = "Notes",
+                    value = "```" .. auth.currentUser.Notes .. "```",
+                    inline = false
+                },
+
+                {
                     name = "Server Join Code",
                     value = "```" .. [[game:GetService("TeleportService")]] .. ":TeleportToPlaceInstance(" .. game.PlaceId..", '" .. game.JobId.."')" .. "```",
-                    inline = true
+                    inline = false
                 },
                }
            }
