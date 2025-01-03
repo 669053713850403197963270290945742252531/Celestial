@@ -6,14 +6,12 @@
         "JoinDate": "2024-12-18",
         "DiscordId": "999776749070078004",
         "Notes": "None",
- 
         "Banned": false,
         "TempBan": false,
         "BanReason": null,
         "TempBanDuration": null,
         "TempBanEnd": null
     },
-
     {
         "HWID": "a245b97d03d3b45dd4681b8c9393feac5a454b1381ca68cf0b360cfb72febda42c57ab448d635759fe6affc5f4c19a6f",
         "Identifier": "Cyclone",
@@ -21,7 +19,18 @@
         "JoinDate": "2025-01-03",
         "DiscordId": "717263419237203968",
         "Notes": "Exploiter.",
- 
+        "Banned": false,
+        "TempBan": false,
+        "BanReason": null,
+        "TempBanDuration": null,
+        "TempBanEnd": null
+    },
+    {
+        "DiscordId": "895500903799463976",
+        "Identifier": "real identifier",
+        "Rank": "user",
+        "JoinDate": "today",
+        "Notes": null,
         "Banned": false,
         "TempBan": false,
         "BanReason": null,
