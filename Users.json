@@ -28,19 +28,4 @@
         "TempBanDuration": null,
         "TempBanEnd": null
     },
-
-    {
-        "HWID": "0000000000000000000000000000000000000000000000000000000000000000",
-        "Identifier": null,
-        "Rank": null,
-        "JoinDate": null,
-        "DiscordId": "000000000000000000",
-        "Notes": "Blank user table template.",
- 
-        "Banned": false,
-        "TempBan": false,
-        "BanReason": null,
-        "TempBanDuration": null,
-        "TempBanEnd": null
-    }
 ]
