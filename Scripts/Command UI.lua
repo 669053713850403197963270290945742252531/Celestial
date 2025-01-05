@@ -1,16 +1,12 @@
 local commandUI = {}
 
-local uiLocation = game:GetService("CoreGui")
-
---[[
+local uiLocation
 
 if typeof(gethui) == "function" then
     uiLocation = gethui()
 else
 	uiLocation = game:GetService("CoreGui")
 end
-
-]]
 
 -- Destroying any existing instances of the ui
 
