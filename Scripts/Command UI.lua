@@ -116,7 +116,7 @@ commandsContainer.BackgroundTransparency = 1
 commandsContainer.Position = UDim2.new(0, 0, 0.238, 0)
 commandsContainer.BorderSizePixel = 0
 commandsContainer.Size = UDim2.new(1, 0, 0.762, 0)
-commandsContainer.AutomaticCanvasSize = "XY"
+commandsContainer.AutomaticCanvasSize = "Y"
 commandsContainer.CanvasSize = UDim2.new(0, 0, 2, 0)
 commandsContainer.ScrollBarImageColor3 = convertRGB(0, 0, 140)
 commandsContainer.ScrollBarThickness = 5
@@ -194,7 +194,8 @@ commandContainerLayout.FillDirectionMaxCells = 2
 
 
 commandUI.createCommand = function(cmdName)
-    -- Create a new TextBox for the command
+    -- Create a new TextBox for each command
+
     local newCommand = Instance.new("TextBox", commandsContainer)
     newCommand.Name = cmdName
     newCommand.AnchorPoint = Vector2.new(0, 0)
@@ -210,12 +211,16 @@ commandUI.createCommand = function(cmdName)
     newCommand.TextWrapped = true
 
     -- Layout & Padding
+
     local newCommandPadding = Instance.new("UIPadding", newCommand)
     newCommandPadding.PaddingLeft = UDim.new(0, 10)
     newCommandPadding.PaddingRight = UDim.new(0, 10)
 
     local newCommandConstraint = Instance.new("UIAspectRatioConstraint", newCommand)
     newCommandConstraint.AspectRatio = 7.54
+
+    local newCommandUICorner = Instance.new("UICorner", newCommand)
+    newCommandUICorner.CornerRadius = UDim.new(0, 10)
 end
 
 

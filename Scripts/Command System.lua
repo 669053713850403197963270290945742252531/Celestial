@@ -670,8 +670,9 @@ textchatservice.OnIncomingMessage = function(message: TextChatMessage)
         -- Help command
 
         if player == localPlayer and message.Text == ";help" then
+            local cmdUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Scripts/Command%20UI.lua"))()
+
             for cmd, _ in pairs(Commands) do
-                local cmdUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Scripts/Command%20UI.lua"))()
                 cmdUI.createCommand(cmd)
             end
         
