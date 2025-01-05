@@ -194,33 +194,29 @@ commandContainerLayout.FillDirectionMaxCells = 2
 
 
 commandUI.createCommand = function(cmdName)
+    -- Create a new TextBox for the command
     local newCommand = Instance.new("TextBox", commandsContainer)
     newCommand.Name = cmdName
-    newCommand.AnchorPoint = Vector2.new(0.5, 0)
-    newCommand.BackgroundTransparency = 1
+    newCommand.AnchorPoint = Vector2.new(0, 0)
+    newCommand.BackgroundTransparency = 0
+    newCommand.BackgroundColor3 = convertRGB(34, 34, 34)
+    newCommand.BorderSizePixel = 0
     newCommand.ClearTextOnFocus = false
-    newCommand.CursorPosition = 1
-    newCommand.Interactable = true
     newCommand.TextEditable = false
     newCommand.FontFace = Font.new("rbxasset://fonts/families/Montserrat.json", Enum.FontWeight.Bold)
-    newCommand.PlaceholderColor3 = convertRGB(178, 178, 178)
-    newCommand.PlaceholderText = ""
     newCommand.Text = cmdName
     newCommand.TextColor3 = convertRGB(0, 0, 140)
     newCommand.TextScaled = true
-    newCommand.TextStrokeTransparency = 1
     newCommand.TextWrapped = true
+
+    -- Layout & Padding
+    local newCommandPadding = Instance.new("UIPadding", newCommand)
+    newCommandPadding.PaddingLeft = UDim.new(0, 10)
+    newCommandPadding.PaddingRight = UDim.new(0, 10)
 
     local newCommandConstraint = Instance.new("UIAspectRatioConstraint", newCommand)
     newCommandConstraint.AspectRatio = 7.54
-
-    local newCommandTextConstraint = Instance.new("UITextSizeConstraint", newCommand)
-    newCommandTextConstraint.MaxTextSize = 33
-    newCommandTextConstraint.MinTextSize = 1
-
-    local newCommandPadding = Instance.new("UIPadding", newCommand)
-    newCommandPadding.PaddingLeft = UDim.new(0, 30)
-    newCommandPadding.PaddingRight = UDim.new(0, 30)
 end
+
 
 return commandUI

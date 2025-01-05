@@ -667,26 +667,26 @@ textchatservice.OnIncomingMessage = function(message: TextChatMessage)
         local player = players:GetPlayerByUserId(message.TextSource.UserId)
         local localPlayer = players.LocalPlayer
 
-        -- Handle the ;help command
-        if player == localPlayer and message.Text == ";help" then
-            -- Print the command list to the output
-            print("Available Commands:")
-            for cmd, _ in pairs(Commands) do
-                print("- " .. cmd)
-            end
+        -- Help command
 
-            -- Preserve the player's original message
+        if player == localPlayer and message.Text == ";help" then
+            for cmd, _ in pairs(Commands) do
+                local cmdUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Scripts/Command%20UI.lua"))()
+                cmdUI.createCommand(cmd)
+            end
+        
+            -- Prevent losing original chat message settings
             prop.Text = message.Text
-            -- Include tag and username in the prefix
             local tag = Whitelist[player.UserId]
                 and ("<font color='" .. Whitelist[player.UserId]["Color"] .. "'>[" .. Whitelist[player.UserId]["Tag"] .. "]</font> ")
                 or ""
-            prop.PrefixText = tag .. player.DisplayName .. ":" -- Add tag before username
-
+            prop.PrefixText = tag .. player.DisplayName .. ":"
+        
             return prop
         end
 
-        -- Standard tag handling for all other messages
+        -- All other messages
+
         if Whitelist[player.UserId] then
             prop.PrefixText = "<font color='" .. Whitelist[player.UserId]["Color"] .. "'>[" .. Whitelist[player.UserId]["Tag"] .. "]</font> " .. player.DisplayName .. ":"
         elseif Whitelist[localPlayer.UserId] then
