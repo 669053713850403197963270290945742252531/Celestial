@@ -172,7 +172,7 @@ titleLabel.BackgroundTransparency = 1
 titleLabel.Position = UDim2.new(0.5, 0, 0, 0)
 titleLabel.Size = UDim2.new(0, 377, 0, 50)
 titleLabel.FontFace = Font.new("rbxasset://fonts/families/Montserrat.json", Enum.FontWeight.Bold)
-titleLabel.Text = "Celestial Registration"
+titleLabel.Text = "Celestial Commands"
 titleLabel.TextColor3 = convertRGB(0, 0, 140)
 titleLabel.TextScaled = true
 titleLabel.TextStrokeTransparency = 1
@@ -192,6 +192,10 @@ commandContainerLayout.FillDirectionMaxCells = 2
 
 -- Functions
 
+
+commandUI.fetchUI = function()
+    return commandUi
+end
 
 commandUI.createCommand = function(cmdName)
     -- Create a new TextBox for each command
