@@ -1,17 +1,12 @@
 local commandUI = {}
 
-local uiLocation
-
-if typeof(gethui) == "function" then
-    uiLocation = gethui()
-else
-	uiLocation = game:GetService("CoreGui")
-end
+local uiLocation = typeof(gethui) == "function" and gethui() or game:GetService("CoreGui")
 
 -- Destroying any existing instances of the ui
 
 if uiLocation:FindFirstChild("Celestial Commands") then
     uiLocation["Celestial Commands"]:Destroy()
+    return
 end
 
 -- Helper functions
@@ -124,10 +119,10 @@ searchBox.BackgroundColor3 = convertRGB(34, 34, 34)
 searchBox.BackgroundTransparency = 0
 searchBox.BorderColor3 = convertRGB(0, 0, 0)
 searchBox.BorderSizePixel = 0
-searchBox.ClearTextOnFocus = true
+searchBox.ClearTextOnFocus = false
 searchBox.CursorPosition = -1
 searchBox.Interactable = 1
-searchBox.MultiLine = true
+searchBox.MultiLine = false
 searchBox.Position = UDim2.new(0.015, 0, 0.131, 0)
 searchBox.SelectionStart = -1
 searchBox.Size = UDim2.new(0.968, 0, 0.091, 0)
@@ -222,6 +217,22 @@ commandUI.createCommand = function(cmdName)
     local newCommandUICorner = Instance.new("UICorner", newCommand)
     newCommandUICorner.CornerRadius = UDim.new(0, 10)
 end
+
+-- Searching
+
+searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+	local searchText = string.lower(searchBox.Text)
+	
+	for _, cmd in pairs(commandsContainer:GetChildren()) do
+		if cmd:IsA("TextBox") then
+			if string.find(string.lower(cmd.Name), searchText) then
+				cmd.Visible = true
+			else
+				cmd.Visible = false
+			end
+		end
+	end
+end)
 
 
 return commandUI

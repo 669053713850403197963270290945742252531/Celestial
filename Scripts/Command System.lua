@@ -1,13 +1,14 @@
 local players = game:GetService("Players")
 local player = players.LocalPlayer
-local textchatservice = game:GetService("TextChatService")
-local marketplaceservice = game:GetService("MarketplaceService")
-local teleportservice = game:GetService("TeleportService")
+local textChatService = game:GetService("TextChatService")
+local marketplaceService = game:GetService("MarketplaceService")
+local teleportService = game:GetService("TeleportService")
+local starterGui = game:GetService("StarterGui")
+local soundService = game:GetService("SoundService")
 
 -- Command States
 
 local breakcameracommandstate = 1
-local freezecommandstate = 1
 local blurcommandstate = 1
 local disableuiscommandstate = 1
 local fovcommandstate = 1
@@ -26,12 +27,41 @@ local Whitelist = {
 
 -- IsAlive Function
 
-local CorradePrivateFunctions = {
-    IsAlive = function(playerInstance)
+local celestialFunctions = {
+    isAlive = function(playerInstance)
         if playerInstance.Character and playerInstance.Character:FindFirstChild("HumanoidRootPart") and playerInstance.Character:FindFirstChild("Head") and playerInstance.Character:FindFirstChild("Humanoid") and playerInstance.Character:FindFirstChild("Humanoid").Health > 0 then
             return true
         else
             return false
+        end
+    end,
+
+    setCoreGui = function(coreGuiType, state)
+        local validCoreGui = {
+            ["Chat Window"] = true,
+            ["Chat Input"] = true,
+            ["Reset"] = true
+        }
+
+        if validCoreGui[coreGuiType] then
+            local chatVersion = (textChatService.ChatVersion == Enum.ChatVersion.TextChatService) and "TextChatService" or "Legacy"
+            
+            if coreGuiType == "Chat Window" then
+
+                if chatVersion == "TextChatService" then
+                    textChatService.ChatWindowConfiguration.Enabled = state
+                elseif chatVersion == "Legacy" then
+                    player.PlayerGui.Chat.Frame.Visible = state
+                end
+
+            elseif coreGuiType == "Chat Input" then
+                textChatService.ChatInputBarConfiguration.Enabled = state
+            elseif coreGuiType == "Reset" then
+                starterGui:SetCore("ResetButtonCallback", state)
+            end
+
+        else
+            warn("Invalid coreGuiType.")
         end
     end
 }
@@ -43,12 +73,12 @@ local Commands = {
         players.LocalPlayer:Kick("kicked by the corrade private owner :skull:")
     end,
     [";kill"] = function()
-        if CorradePrivateFunctions.IsAlive(players.LocalPlayer) then
+        if celestialFunctions.isAlive(players.LocalPlayer) then
             players.LocalPlayer.Character.Humanoid.Health = 0
         end
     end,
     [";loopkill"] = function()
-        if CorradePrivateFunctions.IsAlive(players.LocalPlayer) then
+        if celestialFunctions.isAlive(players.LocalPlayer) then
             _G.loopkill = true
 
 			while _G.loopkill do
@@ -58,7 +88,7 @@ local Commands = {
         end
     end,
     [";unloopkill"] = function()
-        if CorradePrivateFunctions.IsAlive(players.LocalPlayer) then
+        if celestialFunctions.isAlive(players.LocalPlayer) then
 			_G.loopkill = false
         end
     end,
@@ -80,58 +110,42 @@ local Commands = {
         unanchorParts(workspace)
     end,
     [";freeze"] = function()
-        if CorradePrivateFunctions.IsAlive(players.LocalPlayer) then
-            if freezecommandstate == 1 then
-                players.LocalPlayer.Character.HumanoidRootPart.Anchored = true
+        if celestialFunctions.isAlive(players.LocalPlayer) then
+            players.LocalPlayer.Character.HumanoidRootPart.Anchored = true
 
-                -- Instances
-                
-                local ice = Instance.new("Part", game.Workspace)
-                local freezesound = Instance.new("Sound", ice)
-                
-                -- Properties
-                
-                ice.Name = "Ice"
-                ice.Position = players.LocalPlayer.Character.HumanoidRootPart.Position
-                ice.Anchored = true
-                ice.Size = Vector3.new(6, 7, 6)
-                ice.Material = Enum.Material.Ice
-                ice.Transparency = 0.4
-                ice.BrickColor = BrickColor.new("Dove blue")
-                
-                freezesound.Name = "Freeze"
-                freezesound.SoundId = "rbxassetid://6860710840"
-                freezesound.Volume = 1
-                freezesound.Playing = true
-                wait(3)
-                freezesound:Destroy()
-                freezecommandstate = 2
-            elseif freezecommandstate == 2 then
-                players.LocalPlayer.Character.HumanoidRootPart.Anchored = false
-
-                for i,v in pairs(game.Workspace:GetDescendants()) do
-                    if v.Name == "Ice" and v:IsA("Part") then
-                        v:Destroy()
-                    end
-                end
-
-                freezecommandstate = 1
-            end
+            -- Instances
+            
+            local ice = Instance.new("Part", player.Character)
+            local freezesound = Instance.new("Sound", ice)
+            
+            -- Properties
+            
+            ice.Name = "Ice"
+            ice.Position = players.LocalPlayer.Character.HumanoidRootPart.Position
+            ice.Anchored = true
+            ice.Size = Vector3.new(6, 7, 6)
+            ice.Material = Enum.Material.Ice
+            ice.Transparency = 0.4
+            ice.BrickColor = BrickColor.new("Dove blue")
+            
+            freezesound.SoundId = "rbxassetid://6860710840"
+            freezesound.Volume = 1
+            freezesound.Playing = true
+            freezesound.PlayOnRemove = true
+            freezesound:Destroy()
         end
     end,
-    --[[
     [";unfreeze"] = function()
-        if CorradePrivateFunctions.isAlive(players.LocalPlayer) then
+        if celestialFunctions.isAlive(players.LocalPlayer) then
             players.LocalPlayer.Character.HumanoidRootPart.Anchored = false
 
-            for i,v in pairs(game.Workspace:GetDescendants()) do
-                if v.Name == "Ice" and v:IsA("Part") then
-                    v:Destroy()
-                end
+            local ice = player.Character:FindFirstChild("Ice")
+
+            if ice then
+                ice:Destroy()
             end
         end
     end,
-    ]]
     [";blur"] = function()
         if blurcommandstate == 1 then
             local blur = Instance.new("BlurEffect", game.Lighting)
@@ -158,7 +172,7 @@ local Commands = {
     end,
     ]]
     [";void"] = function()
-        if CorradePrivateFunctions.IsAlive(players.LocalPlayer) then
+        if celestialFunctions.isAlive(players.LocalPlayer) then
             local character = game.Players.LocalPlayer.Character
 			local humanoidrootPart = character:WaitForChild("HumanoidRootPart")
 			local newposition = humanoidrootPart.CFrame
@@ -167,7 +181,7 @@ local Commands = {
 				humanoidrootPart.CFrame = newposition
             end
 
-            local teleportsound = Instance.new("Sound", game.SoundService)
+            local teleportsound = Instance.new("Sound", soundService)
 
             teleportsound.Name = "Teleport"
             teleportsound.SoundId = "rbxassetid://5797595098"
@@ -178,7 +192,7 @@ local Commands = {
         end
     end,
     [";lagback"] = function()
-        if CorradePrivateFunctions.isAlive(players.LocalPlayer) then
+        if celestialFunctions.isAlive(players.LocalPlayer) then
             players.LocalPlayer.Character.HumanoidRootPart.Velocity = Vector3.new(9999999, 9999999, 9999999)
         end
     end,
@@ -190,17 +204,15 @@ local Commands = {
             if object:IsA("BasePart") then
                 object:Destroy()
             end
+
             for _, child in ipairs(object:GetChildren()) do
                 destroyParts(child)
             end
         end
         destroyParts(workspace)
     end,
-    [";lobby"] = function()
-        teleportservice:Teleport(6872265039, Player)
-    end,
     [";sit"] = function()
-        if CorradePrivateFunctions.isAlive(players.LocalPlayer) then
+        if celestialFunctions.isAlive(players.LocalPlayer) then
             _G.loopsit = true
 
 			while _G.loopsit do
@@ -210,7 +222,7 @@ local Commands = {
         end
     end,
     [";unsit"] = function()
-        if CorradePrivateFunctions.isAlive(players.LocalPlayer) then
+        if celestialFunctions.isAlive(players.LocalPlayer) then
             _G.loopsit = false
             players.LocalPlayer.Character.Humanoid.Sit = false
         end
@@ -260,17 +272,17 @@ local Commands = {
         end
     end,
     [";destroyplayer"] = function()
-        if CorradePrivateFunctions.isAlive(players.LocalPlayer) then
+        if celestialFunctions.isAlive(players.LocalPlayer) then
             players.LocalPlayer.Character:Destroy()
         end
     end,
     [";jump"] = function()
-        if CorradePrivateFunctions.isAlive(players.LocalPlayer) then
+        if celestialFunctions.isAlive(players.LocalPlayer) then
             players.LocalPlayer.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
         end
     end,
     [";loopjump"] = function()
-        if CorradePrivateFunctions.isAlive(players.LocalPlayer) then
+        if celestialFunctions.isAlive(players.LocalPlayer) then
             _G.loopjump = true
 
 			while _G.loopjump do
@@ -280,7 +292,7 @@ local Commands = {
         end
     end,
     [";unloopjump"] = function()
-        if CorradePrivateFunctions.isAlive(players.LocalPlayer) then
+        if celestialFunctions.isAlive(players.LocalPlayer) then
             _G.loopjump = false
         end
     end,
@@ -564,12 +576,10 @@ local Commands = {
         ContextActionService:UnbindAction(actionName)
     end,
     [";disablereset"] = function()
-        local startergui = game:GetService("StarterGui")
-        startergui:SetCore("ResetButtonCallback", false)
+        starterGui:SetCore("ResetButtonCallback", false)
     end,
     [";enablereset"] = function()
-        local startergui = game:GetService("StarterGui")
-        startergui:SetCore("ResetButtonCallback", true)
+        starterGui:SetCore("ResetButtonCallback", true)
     end,
     [";breakmouse"] = function()
         game:GetService("UserInputService").MouseBehavior = "LockCurrentPosition"
@@ -578,7 +588,7 @@ local Commands = {
         game:GetService("UserInputService").MouseBehavior = "Default"
     end,
     [";gamepass"] = function()
-        marketplaceservice:PromptGamePassPurchase(players.LocalPlayer, 236839535)
+        marketplaceService:PromptGamePassPurchase(players.LocalPlayer, 236839535)
     end,
     [";disableprompts"] = function()
         for i,v in pairs(game:GetDescendants()) do
@@ -596,7 +606,7 @@ local Commands = {
     end,
     [";clearchat"] = function()
         wait(0.1)
-        game:GetService("TextChatService").TextChannels.RBXGeneral:SendAsync("/clear")
+        textchatservice.TextChannels.RBXGeneral:SendAsync("/clear")
     end
 }
 
@@ -622,85 +632,67 @@ players.PlayerAdded:Connect(function(v)
     end
 end)
 
--- Highlight unauthorized players
 
-if highlightUnauthorized then
-    local function highlightUnauthorizedPlayer(player)
-        if not Whitelist[localPlayer.UserId] then return end
-    
-        if not Whitelist[player.UserId] then
-            -- New characters
+local processedMessages = {}
 
-            player.CharacterAdded:Connect(function(character)
-                local highlight = Instance.new("Highlight", character)
-                highlight.FillColor = Color3.new(1, 0, 0) -- Red for unauthorized players
-                highlight.OutlineColor = Color3.new(0, 0, 0) -- Black outline
-                highlight.FillTransparency = 0.5 -- Semi-transparent fill
-            end)
-    
-            -- Existing characters
-
-            if player.Character then
-                local highlight = Instance.new("Highlight", player.Character)
-                highlight.FillColor = Color3.new(1, 0, 0)
-                highlight.OutlineColor = Color3.new(0, 0, 0)
-                highlight.FillTransparency = 0.5
-            end
-        end
-    end
-
-    players.PlayerAdded:Connect(highlightUnauthorizedPlayer) -- New players
-
-    -- Current players
-
-    for _, player in pairs(players:GetPlayers()) do
-        highlightUnauthorizedPlayer(player)
-    end
-end
-
--- New chat messages
-
-textchatservice.OnIncomingMessage = function(message: TextChatMessage)
+textChatService.OnIncomingMessage = function(message: TextChatMessage)
     local prop = Instance.new("TextChatMessageProperties")
+
+    -- Check if the message is from a valid source (the local player)
 
     if message.TextSource then
         local player = players:GetPlayerByUserId(message.TextSource.UserId)
         local localPlayer = players.LocalPlayer
 
-        -- Help command
+        -- Check if the message has already been processed
 
-        if player == localPlayer and message.Text == ";help" then
-            local cmdUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Scripts/Command%20UI.lua"))()
-            local commandUI = cmdUI.fetchUI()
-            print(commandUI.Name)
+        if not processedMessages[message.MessageId] then
+            processedMessages[message.MessageId] = true
 
-            for cmd, _ in pairs(Commands) do
-                cmdUI.createCommand(cmd)
+            -- Help command
+
+            if player == localPlayer and message.Text == ";cmds" then
+                if Whitelist[player.UserId] then -- Whitelist check
+                    local uiLocation = typeof(gethui) == "function" and gethui() or game:GetService("CoreGui")
+                    local existingGui = uiLocation:FindFirstChild("Celestial Commands")
+
+                    -- Destroy any existing instance of he gui
+
+                    if existingGui then
+                        existingGui:Destroy()
+                    else
+                        -- Create new command UI
+
+                        local cmdUI = loadstring(game:HttpGet("https://pastebin.com/raw/yXxXYY6E"))()
+                        local commandUI = cmdUI.fetchUI()
+    
+                        for cmd, _ in pairs(Commands) do
+                            cmdUI.createCommand(cmd)
+                        end
+                    end
+                else
+                    warn("Player is not whitelisted and cannot access the cmds command.")
+                end
             end
-        
-            -- Prevent losing original chat message settings
-            prop.Text = message.Text
-            local tag = Whitelist[player.UserId]
-                and ("<font color='" .. Whitelist[player.UserId]["Color"] .. "'>[" .. Whitelist[player.UserId]["Tag"] .. "]</font> ")
-                or ""
-            prop.PrefixText = tag .. player.DisplayName .. ":"
-        
-            return prop
         end
 
-        -- All other messages
+        -- Message prefix
 
         if Whitelist[player.UserId] then
             prop.PrefixText = "<font color='" .. Whitelist[player.UserId]["Color"] .. "'>[" .. Whitelist[player.UserId]["Tag"] .. "]</font> " .. player.DisplayName .. ":"
         elseif Whitelist[localPlayer.UserId] then
             prop.PrefixText = "<font color='#FFFF00'>[USER]</font> " .. player.DisplayName .. ":"
         else
-            prop.PrefixText = player.DisplayName -- Default to username only
+            prop.PrefixText = player.DisplayName
         end
+
+        prop.Text = message.Text -- Prevent losing message text
     end
 
     return prop
 end
+
+
 
 
 
