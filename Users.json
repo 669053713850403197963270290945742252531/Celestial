@@ -12,5 +12,18 @@
         "BanReason": null,
         "TempBanDuration": null,
         "TempBanEnd": null
+    },
+    {
+        "HWID": "506f45c0a169033472b6f9c92ea2e42ec3efca4f0b759ea13f40b513b346e7632af1e13a673adffa3b2d00a0f70c00af",
+        "Identifier": "sigma lord",
+        "Rank": "user",
+        "JoinDate": "2025-05-18",
+        "DiscordId": "1218229252692906089",
+        "Notes": "fuck you",
+        "Banned": false,
+        "TempBan": false,
+        "BanReason": null,
+        "TempBanDuration": null,
+        "TempBanEnd": null
     }
 ]
