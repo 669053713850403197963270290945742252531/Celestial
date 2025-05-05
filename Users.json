@@ -40,5 +40,19 @@
         "BanReason": "null",
         "TempBanDuration": "null",
         "TempBanEnd": "null"
+    },
+    {
+        "HWID": "f42e8a7cdbd928ad6e28758f21f607c97a635dac8f9a9f3fed6b593088f89f720fbd4d0711dfc201d2579018aa7d8680",
+        "Identifier": "Corrade",
+        "Rank": "Owner",
+        "JoinDate": "2025-05-05",
+        "DiscordId": "999776749070078004",
+        "Key": "lQwkSPLnL29AIKCAxmWuQ91M0gzjPuUugJ0Xd",
+        "Notes": "false",
+        "Banned": "false",
+        "TempBan": "false",
+        "BanReason": "null",
+        "TempBanDuration": "null",
+        "TempBanEnd": "null"
     }
 ]
