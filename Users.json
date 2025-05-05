@@ -40,19 +40,5 @@
         "BanReason": "null",
         "TempBanDuration": "null",
         "TempBanEnd": "null"
-    },
-    {
-        "HWID": "efffd88609830225c69be075ec21c4da84071fca75b69cc99549c16d62cdbf2e8f822ffce948c7d058c545c4d674358f",
-        "Identifier": "CaptainEz",
-        "Rank": "no rank yuo for nn :middle_finger:",
-        "JoinDate": "2025-05-05",
-        "DiscordId": "895500903799463976",
-        "Key": "none",
-        "Notes": "false",
-        "Banned": "false",
-        "TempBan": "false",
-        "BanReason": "null",
-        "TempBanDuration": "null",
-        "TempBanEnd": "null"
     }
 ]
