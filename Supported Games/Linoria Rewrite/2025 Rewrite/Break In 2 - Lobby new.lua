@@ -7,7 +7,7 @@ local isScriptReloadable = true
 if not isScriptReloadable then
 	if shared.scriptLoaded then return end
 	shared.scriptLoaded = true
-end
+endg
 
 local linoria = loadstring(readfile("Celestial/Revamped UI Libraries/Linoria - Library.lua"))()
 local themeManager = loadstring(readfile("Celestial/Revamped UI Libraries/Linoria - Theme Manager.lua"))()
