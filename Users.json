@@ -1,3 +1,16 @@
 [
-
+    {
+        "HWID": "506f45c0a169033472b6f9c92ea2e42ec3efca4f0b759ea13f40b513b346e7632af1e13a673adffa3b2d00a0f70c00af",
+        "Identifier": "new player",
+        "Rank": "new rank",
+        "JoinDate": "2025-05-05",
+        "DiscordId": "939350905923465326",
+        "Key": "key thing",
+        "Notes": "false",
+        "Banned": "false",
+        "TempBan": "false",
+        "BanReason": "null",
+        "TempBanDuration": "null",
+        "TempBanEnd": "null"
+    }
 ]
