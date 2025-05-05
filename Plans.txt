@@ -1,0 +1,3 @@
+saktkia51:
+- field of view
+- lock field of view: use GetPropertyChangedSignal to detect when the FieldOfView property of Camera changes
