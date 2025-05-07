@@ -9,7 +9,7 @@
         "Notes": "false",
         "Banned": "true",
         "TempBan": "false",
-        "BanReason": "no",
+        "BanReason": "null",
         "TempBanDuration": "null",
         "TempBanEnd": "null"
     }
