@@ -6,11 +6,11 @@
         "JoinDate": "2025-05-07",
         "DiscordId": "999776749070078004",
         "Key": "lQwkSPLnL29AIKCAxmWuQ91M0gzjPuUugJ0Xd",
-        "Notes": "false",
+        "Notes": null,
         "Banned": "false",
-        "TempBan": "false",
-        "BanReason": "null",
-        "TempBanDuration": "null",
-        "TempBanEnd": "null"
+        "TempBan": "true",
+        "BanReason": "gtfo",
+        "TempBanDuration": "20",
+        "TempBanEnd": "2025-05-07 00:55:15 AM"
     }
 ]
