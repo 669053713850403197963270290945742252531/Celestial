@@ -9,6 +9,8 @@
         "Notes": null,
         "Banned": "true",
         "TempBan": "false",
-        "BanReason": "no use"
+        "BanReason": "no use",
+        "TempBanDuration": "null",
+        "TempBanEnd": "null"
     }
 ]
