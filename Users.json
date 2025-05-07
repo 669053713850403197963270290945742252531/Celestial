@@ -11,6 +11,6 @@
         "TempBan": "false",
         "BanReason": "null",
         "TempBanDuration": "null",
-        "TempBanEnd": "tomorrow"
+        "TempBanEnd": "null"
     }
 ]
