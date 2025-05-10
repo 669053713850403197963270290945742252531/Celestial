@@ -531,4 +531,4 @@ end
 getgenv().fastLoad = nil
 getgenv().testing = nil
 getgenv().notifyLoad = nil
-getgenv().script_key = nil
+auth.clearStoredKey()

@@ -56,6 +56,8 @@ if not getgenv().fastLoad then
         return
     end
 
+    getgenv().auth.exploitSupported()
+
     getgenv().executionLib = loadstring(game:HttpGet("https://gitlab.com/scripts1463602/Celestial/-/raw/main/Libraries/Execution%20Library.lua?ref_type=heads"))()
 end
 

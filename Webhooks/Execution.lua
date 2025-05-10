@@ -9,12 +9,6 @@ local player = players.LocalPlayer
 local httpService = game:GetService("HttpService")
 local gameName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
 
-if not auth.isUser() or auth.kicked then
-    player:Kick("Not authorized. Your hardware id has been copied to your clipboard.")
-    setclipboard(auth.hwid("Hashed"))
-    return
-end
-
 -- Embed
 
 local data = {

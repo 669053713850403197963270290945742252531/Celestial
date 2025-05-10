@@ -62,14 +62,6 @@ if not whitelistedUsers then
 end
 
 
--- Handling unsupported exploits
-
-if not utils.isSupported() then
-    player:Kick("Celestial does not support " .. identifyexecutor() .. ".")
-    return
-end
-
-
 -- Logging
 
 
@@ -169,6 +161,30 @@ auth.hwid = function(mode)
     end
 end
 
+-- Handling unsupported exploits
+
+auth.exploitSupported = function()
+    local exploits = {
+        ["AWP"] = true,
+        ["Wave"] = true,
+        ["Synapse Z"] = true,
+        ["Zenith"] = true,
+        ["Seliware"] = true,
+        ["Volcano"] = true,
+        
+        ["Visual"] = true,
+        ["Solara"] = true
+    }
+
+    local currentExploit = identifyexecutor()
+
+    if exploits[currentExploit] then
+        return true
+    else
+        player:Kick("Celestial does not support " .. identifyexecutor() .. ".")
+    end
+end
+
 auth.trigger = function()
     if not whitelistedUsers then
         player:Kick("Failed to retrieve whitelist.")
@@ -195,24 +211,34 @@ auth.trigger = function()
 
         -- Handle invalid keys
 
-        if userData.Key ~= getgenv().script_key then
-
+        local scriptKey = getgenv().script_key
+        if userData.Key ~= scriptKey then
             if authConfig.logBreaches then logEvent("breach") end
-
-            player:Kick("The provided key is invalid: " .. getgenv().script_key)
+        
+            local keyDisplay = typeof(scriptKey) == "string" and scriptKey or "None"
+            player:Kick("The provided key is invalid: " .. keyDisplay)
+        
             auth.kicked = true
             return
         else
-
             if authConfig.logExecutions then logEvent("execution") end
-
         end
+        
+        
     else
         -- Handle invalid HWID
 
         setclipboard(hashedHWID)
         warn("Invalid HWID: Your hardware ID has been copied to your clipboard.")
         return
+    end
+end
+
+auth.clearStoredKey = function()
+    if typeof(getgenv().script_key) ~= "nil" then
+        getgenv().script_key = nil
+    else
+        warn("auth.clearRestoredKey: No stored key.")
     end
 end
 

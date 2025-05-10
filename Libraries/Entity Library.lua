@@ -144,9 +144,9 @@ entityLib.teleport = function(targetPosition)
         return
     end
 
-    if typeof(targetPosition) == "CFrame" then -- CFrame tween teleport
+    if typeof(targetPosition) == "CFrame" then -- CFrame teleport
         hrp.CFrame = targetPosition
-    elseif typeof(targetPosition) == "Instance" then -- Part tween teleport
+    elseif typeof(targetPosition) == "Instance" then -- Part teleport
         hrp.CFrame = targetPosition.CFrame
     else
         warn("entityLibrary.teleport: Invalid targetPosition.")
@@ -266,23 +266,6 @@ entityLib.storeData = function(object, propertyName)
     storedData[object][propertyName] = object[propertyName] -- Store the property value in the table
     return storedData[object][propertyName] -- Return the stored value
 end
-
---[[
-
-entityLib.storeData = function(object, propertyName, forceOverwrite)
-    storedData[object] = storedData[object] or {}
-
-    -- Skip storing if the property already exists and overwrite is not forced
-    if not forceOverwrite and storedData[object][propertyName] ~= nil then
-        warn(propertyName .. " is already stored. Skipping.")
-        return storedData[object][propertyName]
-    end
-
-    storedData[object][propertyName] = object[propertyName]
-    return storedData[object][propertyName]
-end
-
-]]
 
 entityLib.restoreData = function(object, propertyName)
     -- Restore the property value if it was saved

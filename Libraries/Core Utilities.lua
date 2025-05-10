@@ -714,27 +714,6 @@ utils.round = function(number, decimalPlaces)
     return tonumber(roundedNumber)
 end
 
-utils.isSupported = function()
-    local exploits = {
-        ["AWP"] = true,
-        ["Wave"] = true,
-        ["Synapse Z"] = true,
-        ["Zenith"] = true,
-        ["Seliware"] = true,
-        
-        ["Visual"] = true,
-        ["Solara"] = true
-    }
-
-    local currentExploit = identifyexecutor()
-
-    if exploits[currentExploit] then
-        return true
-    else
-        return false
-    end
-end
-
 utils.success = function(text)
     if textChatService.ChatVersion ~= Enum.ChatVersion.TextChatService then
         warn("utils.success: Cannot process message: TextChatService is not enabled.")
