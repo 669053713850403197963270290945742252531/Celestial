@@ -1,19 +1,5 @@
 [
     {
-        "HWID": "f42e8a7cdbd928ad6e28758f21f607c97a635dac8f9a9f3fed6b593088f89f720fbd4d0711dfc201d2579018aa7d8680",
-        "Identifier": "Corrade",
-        "Rank": "User",
-        "JoinDate": "2025-05-11",
-        "DiscordId": "999776749070078004",
-        "Key": "lQwkSPLnL29AIKCAxmWuQ91M0gzjPuUugJ0Xd",
-        "Notes": "nigger",
-        "Banned": "false",
-        "TempBan": "false",
-        "BanReason": "null",
-        "TempBanDuration": "null",
-        "TempBanEnd": "null"
-    },
-    {
         "HWID": "400351f8d278fdf7e765ccb2943e8a99548a68ae0235b96fa47cb758a354ddd1201d034199439c49ff22cfc0904bc2e2",
         "Identifier": "CaptainEz",
         "Rank": "Admin",
