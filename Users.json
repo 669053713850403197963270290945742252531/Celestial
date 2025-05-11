@@ -82,5 +82,19 @@
         "BanReason": "null",
         "TempBanDuration": "null",
         "TempBanEnd": "null"
+    },
+    {
+        "HWID": null,
+        "Identifier": null,
+        "Rank": null,
+        "JoinDate": "2025-05-11",
+        "DiscordId": null,
+        "Key": null,
+        "Notes": "",
+        "Banned": "false",
+        "TempBan": "false",
+        "BanReason": "null",
+        "TempBanDuration": "null",
+        "TempBanEnd": "null"
     }
 ]
