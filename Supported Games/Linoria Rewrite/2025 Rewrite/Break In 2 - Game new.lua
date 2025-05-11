@@ -34,7 +34,7 @@ linoria.ShowToggleFrameInKeybinds = true
 --      LINORIA  --
 -------------------------------------
 
-if auth then Title = "Celestial - " .. gameName .. " : " .. auth.currentUser.Identifier else Title = "Celestial - " .. gameName end
+if getgenv().auth then Title = "Celestial - " .. gameName .. " : " .. getgenv().auth.currentUser.Identifier else Title = "Celestial - " .. gameName end
 
 -- Solution to transparent fill on the cursor due to solara's shit drawing lib
 
@@ -203,10 +203,10 @@ local gameGroup = tabs.home:AddRightGroupbox("Game")
 
 informationGroup:AddDivider()
 
-if auth and executionLib then
-	informationGroup:AddLabel("Identifier: " .. auth.currentUser.Identifier)
-	informationGroup:AddLabel("Rank: " .. auth.currentUser.Rank)
-	informationGroup:AddLabel("Discord ID: " .. auth.currentUser.DiscordId)
+if getgenv().auth and executionLib then
+	informationGroup:AddLabel("Identifier: " .. getgenv().auth.currentUser.Identifier)
+	informationGroup:AddLabel("Rank: " .. getgenv().auth.currentUser.Rank)
+	informationGroup:AddLabel("Discord ID: " .. getgenv().auth.currentUser.DiscordId)
 	informationGroup:AddLabel("Executions: " .. executionLib.fetchExecutions())
 
 	informationGroup:AddLabel("Executor: " .. identifyexecutor())
@@ -228,7 +228,8 @@ gameGroup:AddLabel("Shift Lock Allowed: " .. tostring(localplayer.DevEnableMouse
 -- =================================================
 
 local exploitsGroup1 = tabs.exploits:AddLeftGroupbox("Exploits")
-local exploitsGroup2 = tabs.exploits:AddRightGroupbox("Other")
+local exploitsGroup2 = tabs.exploits:AddRightGroupbox("Visuals")
+local exploitsGroup3 = tabs.exploits:AddLeftGroupbox("Other")
 
 -------------------------------------
 --      EXPLOITS: EXPLOITS GROUP  --
@@ -263,41 +264,21 @@ local speedExploitDepbox = exploitsGroup1:AddDependencyBox()
 speedExploitDepbox:AddSlider("speedExploitDelay_Slider", { Text = "Delay", Tooltip = false, Default = 1, Min = 0, Max = 10, Rounding = 2 })
 speedExploitDepbox:AddToggle("speedExploitHideTrail_Toggle", { Text = "Hide Trail (Client-Sided)", Tooltip = false })
 
-
-
 exploitsGroup1:AddToggle("collectCash_Toggle", { Text = "Collect Cash", Tooltip = "Collects all on-ground cash drops." })
-exploitsGroup1:AddToggle("hiddenItemESP_Toggle", { Text = "Hidden Item ESP", Tooltip = "Highlights all the items inside drawers." })
 
-local hiddenItemsDepbox = exploitsGroup1:AddDependencyBox()
+exploitsGroup1:AddToggle("autoKillBadGuys_Toggle", { Text = "Kill Aura", Tooltip = false })
+local autoKillDepbox = exploitsGroup1:AddDependencyBox()
 
-hiddenItemsDepbox:AddLabel("ESP Color"):AddColorPicker("hiddenItemESPColor_Colorpicker", { Title = "ESP Color", Default = Color3.fromRGB(252, 186, 3), Transparency = 0.5 })
-hiddenItemsDepbox:AddToggle("rainbowHiddenItemESP_Toggle", { Text = "Rainbow ESP", Tooltip = false })
-hiddenItemsDepbox:AddToggle("hiddenItemESPEnableLabels_Toggle", { Text = "Enable Labels", Tooltip = false })
+autoKillDepbox:AddSlider("autoKillDelay_Slider", { Text = "Damage Amount", Tooltip = false, Default = 100, Min = 1, Max = 100, Rounding = 0 })
 
-local hiddenItemESPLabelDepbox = hiddenItemsDepbox:AddDependencyBox()
 
-hiddenItemESPLabelDepbox:AddLabel("Label Color"):AddColorPicker("hiddenItemLabelColor_Colorpicker", { Title = "Label Color", Default = Color3.fromRGB(36, 173, 26), Transparency = false })
-hiddenItemESPLabelDepbox:AddToggle("rainbowHiddenItemLabel_Toggle", { Text = "Rainbow ESP", Tooltip = false })
-hiddenItemESPLabelDepbox:AddSlider("hiddenItemLabelSize_Slider", { Text = "Label Size", Tooltip = false, Default = 15, Min = 10, Max = 30, Rounding = 0 })
 
-exploitsGroup1:AddToggle("badGuyESP_Toggle", { Text = "Bad Guy ESP", Tooltip = false })
 
-local badGuyESPDepbox = exploitsGroup1:AddDependencyBox()
-
-badGuyESPDepbox:AddLabel("ESP Color"):AddColorPicker("badGuyESPColor_Colorpicker", { Title = "ESP Color", Default = Color3.fromRGB(255, 0, 0), Transparency = 0.5 })
-badGuyESPDepbox:AddToggle("rainbowBadGuyESP_Toggle", { Text = "Rainbow ESP", Tooltip = false })
 
 godmodeDepbox:SetupDependencies({ { toggles.godmode_Toggle, true } })
-speedExploitDepbox:SetupDependencies({ { toggles.speedExploit_Toggle, true } })
 flyDepbox:SetupDependencies({ { toggles.fly_Toggle, true } })
-hiddenItemsDepbox:SetupDependencies({ { toggles.hiddenItemESP_Toggle, true } })
-hiddenItemESPLabelDepbox:SetupDependencies({ { toggles.hiddenItemESPEnableLabels_Toggle, true } })
-godmodeDepbox:SetupDependencies({ { toggles.godmode_Toggle, true } })
-speedExploitDepbox:SetupDependencies({ { toggles.speedExploit_Toggle, true } })
-flyDepbox:SetupDependencies({ { toggles.fly_Toggle, true } })
-hiddenItemsDepbox:SetupDependencies({ { toggles.hiddenItemESP_Toggle, true } })
-hiddenItemESPLabelDepbox:SetupDependencies({ { toggles.hiddenItemESPEnableLabels_Toggle, true } })
-badGuyESPDepbox:SetupDependencies({ { toggles.badGuyESP_Toggle, true } })
+autoKillDepbox:SetupDependencies({ { toggles.autoKillBadGuys_Toggle, true } })
+
 
 toggles.godmode_Toggle:OnChanged(function(enabled)
     if enabled then
@@ -580,6 +561,80 @@ toggles.collectCash_Toggle:OnChanged(function(enabled)
     end
 end)
 
+toggles.autoKillBadGuys_Toggle:OnChanged(function(enabled)
+    local autoKillAmountSlider = options.autoKillDelay_Slider
+
+    if enabled then
+        task.spawn(function()
+            local hitEvent = events:WaitForChild("HitBadguy")
+            local damage, multiplier = autoKillAmountSlider.Value, 4
+
+            local function attackTargets(folderName)
+                local folder = game:GetService("Workspace"):FindFirstChild(folderName)
+
+                if folder then
+                    for _, enemy in pairs(folder:GetChildren()) do
+                        hitEvent:FireServer(enemy, damage, multiplier)
+                    end
+                end
+            end
+
+            local enemyFolders = {"BadGuys", "BadGuysBoss", "BadGuysFront"}
+
+            repeat
+
+                for _, group in ipairs(enemyFolders) do
+                    attackTargets(group)
+                end
+
+                for _, enemyName in ipairs({"BadGuyPizza", "BadGuyBrute"}) do
+                    local enemy = game:GetService("Workspace"):FindFirstChild(enemyName, true)
+                    if enemy then
+                        hitEvent:FireServer(enemy, damage, multiplier)
+                    end
+                end
+
+                task.wait(0.1)
+            until not autoKillToggle:GetState()
+        end)
+    end
+end)
+
+-------------------------------------
+--      EXPLOITS: VISUALS GROUP  --
+-------------------------------------
+
+exploitsGroup2:AddDivider()
+
+exploitsGroup2:AddToggle("hiddenItemESP_Toggle", { Text = "Hidden Item ESP", Tooltip = "Highlights all the items inside drawers." })
+
+local hiddenItemsDepbox = exploitsGroup2:AddDependencyBox()
+
+hiddenItemsDepbox:AddLabel("ESP Color"):AddColorPicker("hiddenItemESPColor_Colorpicker", { Title = "ESP Color", Default = Color3.fromRGB(252, 186, 3), Transparency = 0.5 })
+hiddenItemsDepbox:AddToggle("rainbowHiddenItemESP_Toggle", { Text = "Rainbow ESP", Tooltip = false })
+hiddenItemsDepbox:AddToggle("hiddenItemESPEnableLabels_Toggle", { Text = "Enable Labels", Tooltip = false })
+
+local hiddenItemESPLabelDepbox = hiddenItemsDepbox:AddDependencyBox()
+
+hiddenItemESPLabelDepbox:AddLabel("Label Color"):AddColorPicker("hiddenItemLabelColor_Colorpicker", { Title = "Label Color", Default = Color3.fromRGB(36, 173, 26), Transparency = false })
+hiddenItemESPLabelDepbox:AddToggle("rainbowHiddenItemLabel_Toggle", { Text = "Rainbow ESP", Tooltip = false })
+hiddenItemESPLabelDepbox:AddSlider("hiddenItemLabelSize_Slider", { Text = "Label Size", Tooltip = false, Default = 15, Min = 10, Max = 30, Rounding = 0 })
+
+exploitsGroup2:AddToggle("badGuyESP_Toggle", { Text = "Bad Guy ESP", Tooltip = false })
+
+local badGuyESPDepbox = exploitsGroup2:AddDependencyBox()
+
+badGuyESPDepbox:AddLabel("ESP Color"):AddColorPicker("badGuyESPColor_Colorpicker", { Title = "ESP Color", Default = Color3.fromRGB(255, 0, 0), Transparency = 0.5 })
+badGuyESPDepbox:AddToggle("rainbowBadGuyESP_Toggle", { Text = "Rainbow ESP", Tooltip = false })
+
+hiddenItemsDepbox:SetupDependencies({ { toggles.hiddenItemESP_Toggle, true } })
+hiddenItemESPLabelDepbox:SetupDependencies({ { toggles.hiddenItemESPEnableLabels_Toggle, true } })
+
+hiddenItemsDepbox:SetupDependencies({ { toggles.hiddenItemESP_Toggle, true } })
+hiddenItemESPLabelDepbox:SetupDependencies({ { toggles.hiddenItemESPEnableLabels_Toggle, true } })
+badGuyESPDepbox:SetupDependencies({ { toggles.badGuyESP_Toggle, true } })
+
+
 local hiddenHighlights = {}
 local hiddenLabels = {}
 
@@ -785,11 +840,11 @@ end)
 --      EXPLOITS: OTHERS GROUP  --
 -------------------------------------
 
-exploitsGroup2:AddDivider()
+exploitsGroup3:AddDivider()
 
-exploitsGroup2:AddDropdown("locationTeleport_Dropdown", { Values = { "Villian Base", "Kitchen", "Fighting Arena", "Gym", "Pizza Boss", "Shop", "Golden Apple Path", "Generator", "Boss Fight Start", "Boss Fight Main", "Kitchen", "Twado", "Detective" }, Searchable = false, Default = 1, Multi = false, Text = "Teleport to Location", Tooltip = false })
+exploitsGroup3:AddDropdown("locationTeleport_Dropdown", { Values = { "Villian Base", "Kitchen", "Fighting Arena", "Gym", "Pizza Boss", "Shop", "Golden Apple Path", "Generator", "Boss Fight Start", "Boss Fight Main", "Kitchen", "Twado", "Detective" }, Searchable = false, Default = 1, Multi = false, Text = "Teleport to Location", Tooltip = false })
 
-local teleportToLocation_Btn = exploitsGroup2:AddButton({ Text = "Teleport", Tooltip = false, DoubleClick = false,
+local teleportToLocation_Btn = exploitsGroup3:AddButton({ Text = "Teleport", Tooltip = false, DoubleClick = false,
 	Func = function()
         local cframeValues = {
             ["Villian Base"] = CFrame.new(-233.926117, 30.4567528, -790.019897, 0.00195977557, -8.22674984e-11, -0.999998093, -2.4766762e-09, 1, -8.71213934e-11, 0.999998093, 2.47684229e-09, 0.00195977557),
@@ -840,19 +895,79 @@ local teleportToLocation_Btn = exploitsGroup2:AddButton({ Text = "Teleport", Too
 	end
 })
 
-local spoof1 = exploitsGroup2:AddButton({ Text = "Spoof Inside", Tooltip = false, DoubleClick = false,
+exploitsGroup3:AddToggle("insideSpoof_Toggle", { Text = "Inside Spoof", Tooltip = false })
+exploitsGroup3:AddToggle("outsideSpoof_Toggle", { Text = "Outside Spoof", Tooltip = false })
+exploitsGroup3:AddToggle("fightSpoof_Toggle", { Text = "Fight Spoof", Tooltip = false })
+
+toggles.insideSpoof_Toggle:OnChanged(function(enabled)
+    if enabled then
+        toggles.outsideSpoof_Toggle:SetValue(false)
+
+        task.spawn(function()
+            repeat
+
+                local hrp = getHRP()
+                getgenv().utils.fireTouchEvent(hrp, game.Workspace.InsideTouchParts.FrontDoor)
+
+                task.wait(0.2)
+            until not toggles.insideSpoof_Toggle.Value
+        end)
+    end
+end)
+
+toggles.outsideSpoof_Toggle:OnChanged(function(enabled)
+    if enabled then
+        toggles.insideSpoof_Toggle:SetValue(false)
+        toggles.fightSpoof_Toggle:SetValue(false)
+
+        task.spawn(function()
+            repeat
+
+                local hrp = getHRP()
+                getgenv().utils.fireTouchEvent(hrp, game.Workspace.OutsideTouchParts.OutsideTouch)
+
+                task.wait(0.2)
+            until not toggles.outsideSpoof_Toggle.Value
+        end)
+    end
+end)
+
+toggles.fightSpoof_Toggle:OnChanged(function(enabled)
+    if enabled then
+        toggles.outsideSpoof_Toggle:SetValue(false)
+
+        task.spawn(function()
+            repeat
+
+                local hrp = getHRP()
+                getgenv().utils.fireTouchEvent(hrp, game.Workspace.EvilArea.EnterPart)
+
+                task.wait(0.2)
+            until not toggles.outsideSpoof_Toggle.Value
+        end)
+    else
+        local hrp = getHRP()
+        getgenv().utils.fireTouchEvent(hrp, game.Workspace.EvilArea.ExitPart2)
+    end
+end)
+
+--[[
+
+local spoof1 = exploitsGroup3:AddButton({ Text = "Spoof Inside", Tooltip = false, DoubleClick = false,
 	Func = function()
         local hrp = getHRP()
         getgenv().utils.fireTouchEvent(hrp, game.Workspace.InsideTouchParts.FrontDoor)
 	end
 })
 
-local spoof2 = exploitsGroup2:AddButton({ Text = "Spoof Outside", Tooltip = false, DoubleClick = false,
+local spoof2 = exploitsGroup3:AddButton({ Text = "Spoof Outside", Tooltip = false, DoubleClick = false,
 	Func = function()
         local hrp = getHRP()
         getgenv().utils.fireTouchEvent(hrp, game.Workspace.OutsideTouchParts.OutsideTouch)
 	end
 })
+
+]]
 
 -- =================================================
 --                   TAB: UTIL                   --
@@ -914,6 +1029,7 @@ local lobby_Btn = miscGroup:AddButton({ Text = "Lobby", Tooltip = false, DoubleC
 
 miscGroup:AddToggle("bypassCutscenes_Toggle", { Text = "Bypass Cutscenes", Tooltip = false })
 
+local lastCutsceneType = nil
 toggles.bypassCutscenes_Toggle:OnChanged(function(enabled)
     local camera = game:GetService("Workspace").CurrentCamera
 
@@ -921,11 +1037,21 @@ toggles.bypassCutscenes_Toggle:OnChanged(function(enabled)
         task.spawn(function()
             repeat
 
-                local char = localplayer.Character
+                local character = localplayer.Character
+                local head = character and character:FindFirstChild("Head")
 
-                camera.CameraType = Enum.CameraType.Custom
-                camera.FieldOfView = 70
-                camera.CFrame = char.Head.CFrame
+                if head then
+                    -- Only reset if something externally changed the camera
+                    if camera.CameraType ~= Enum.CameraType.Custom or (lastCutsceneType and lastCutsceneType ~= camera.CameraType) then
+                        camera.CameraType = Enum.CameraType.Custom
+                        camera.FieldOfView = 70
+                        camera.CFrame = head.CFrame
+                    end
+    
+                    -- Update last known camera type to detect cutscene attempts
+
+                    lastCutsceneType = camera.CameraType
+                end
 
                 task.wait(0.05)
             until not toggles.bypassCutscenes_Toggle.Value
@@ -964,8 +1090,6 @@ local watermarkConnection = runService.RenderStepped:Connect(function()
         else
             print("Failed to retrieve ping value, result:", result)
         end
-    else
-        print("ServerStatsItem not found!")
     end
 
     linoria:SetWatermark(("Celestial | %s fps | %s ms"):format(math.floor(fps), pingValue))
@@ -1041,7 +1165,7 @@ options.rainbowSpeedSlider:OnChanged(function(val)
 end)
 
 local function unloadModules()
-    local modules = { "" }
+    local modules = { "noclip_Toggle", "fly_Toggle" }
 
     for _, moduleName in ipairs(modules) do
         if toggles[moduleName] then
@@ -1052,6 +1176,8 @@ local function unloadModules()
 	if not isScriptReloadable then
 		shared.scriptLoaded = false
 	end
+
+    task.wait(0.1)
 
     getgenv().assetLib = nil
     getgenv().utils = nil
@@ -1113,4 +1239,6 @@ end
 getgenv().fastLoad = nil
 getgenv().testing = nil
 getgenv().notifyLoad = nil
-auth.clearStoredKey()
+if getgenv().auth then
+    getgenv().auth.clearStoredKey()
+end

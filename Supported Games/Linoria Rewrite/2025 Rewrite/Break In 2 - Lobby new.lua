@@ -32,7 +32,7 @@ linoria.ShowToggleFrameInKeybinds = true
 --      LINORIA  --
 -------------------------------------
 
-if auth then Title = "Celestial - " .. gameName .. " : " .. auth.currentUser.Identifier else Title = "Celestial - " .. gameName end
+if auth then Title = "Celestial - " .. gameName .. " : " .. getgenv().auth.currentUser.Identifier else Title = "Celestial - " .. gameName end
 
 -- Solution to transparent fill on the cursor due to solara's shit drawing lib
 
@@ -165,10 +165,10 @@ local gameGroup = tabs.home:AddRightGroupbox("Game")
 
 informationGroup:AddDivider()
 
-if auth and executionLib then
-	informationGroup:AddLabel("Identifier: " .. auth.currentUser.Identifier)
-	informationGroup:AddLabel("Rank: " .. auth.currentUser.Rank)
-	informationGroup:AddLabel("Discord ID: " .. auth.currentUser.DiscordId)
+if getgenv().auth and executionLib then
+	informationGroup:AddLabel("Identifier: " .. getgenv().auth.currentUser.Identifier)
+	informationGroup:AddLabel("Rank: " .. getgenv().auth.currentUser.Rank)
+	informationGroup:AddLabel("Discord ID: " .. getgenv().auth.currentUser.DiscordId)
 	informationGroup:AddLabel("Executions: " .. executionLib.fetchExecutions())
 
 	informationGroup:AddLabel("Executor: " .. identifyexecutor())
@@ -382,8 +382,6 @@ local watermarkConnection = game:GetService("RunService").RenderStepped:Connect(
         else
             print("Failed to retrieve ping value, result:", result)
         end
-    else
-        print("ServerStatsItem not found!")
     end
 
     linoria:SetWatermark(("Celestial | %s fps | %s ms"):format(math.floor(fps), pingValue))
@@ -531,4 +529,6 @@ end
 getgenv().fastLoad = nil
 getgenv().testing = nil
 getgenv().notifyLoad = nil
-auth.clearStoredKey()
+if getgenv().auth then
+    getgenv().auth.clearStoredKey()
+end
