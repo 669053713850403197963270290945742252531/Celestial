@@ -12,5 +12,19 @@
         "BanReason": "null",
         "TempBanDuration": "null",
         "TempBanEnd": "null"
+    },
+    {
+        "HWID": "gthgttg",
+        "Identifier": "rtge",
+        "Rank": "rge",
+        "JoinDate": "2025-05-11",
+        "DiscordId": "reg",
+        "Key": "erg",
+        "Notes": "erg",
+        "Banned": "false",
+        "TempBan": "false",
+        "BanReason": "null",
+        "TempBanDuration": "null",
+        "TempBanEnd": "null"
     }
 ]
