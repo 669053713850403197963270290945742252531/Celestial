@@ -38,8 +38,8 @@ getgenv().assetLib.createAssets("Sounds")
 getgenv().utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Core%20Utilities.lua"))()
 getgenv().entityLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Entity%20Library.lua"))()
 
-getgenv().fastLoad = true
-getgenv().testing = true
+getgenv().fastLoad = false
+getgenv().testing = false
 
 if getgenv().testing then
     getgenv().script_key = "lQwkSPLnL29AIKCAxmWuQ91M0gzjPuUugJ0Xd"

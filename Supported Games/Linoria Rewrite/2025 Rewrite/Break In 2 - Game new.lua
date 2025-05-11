@@ -9,9 +9,15 @@ if not isScriptReloadable then
 	shared.scriptLoaded = true
 end
 
+local linoria = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Revamped%20UI%20Libraries/Linoria%20-%20Library.lua"))()
+local themeManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Revamped%20UI%20Libraries/Linoria%20-%20Theme%20Manager.lua"))()
+local saveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Revamped%20UI%20Libraries/Linoria%20-%20Save%20Manager.lua"))()
+
+--[[
 local linoria = loadstring(readfile("Celestial/Revamped UI Libraries/Linoria - Library.lua"))()
 local themeManager = loadstring(readfile("Celestial/Revamped UI Libraries/Linoria - Theme Manager.lua"))()
 local saveManager = loadstring(readfile("Celestial/Revamped UI Libraries/Linoria - Save Manager.lua"))()
+]]
 
 local startTime
 if getgenv().notifyLoad == true then
