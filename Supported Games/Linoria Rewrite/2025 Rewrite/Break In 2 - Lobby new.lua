@@ -23,6 +23,14 @@ local players = game:GetService("Players")
 local localplayer = players.LocalPlayer
 local remoteEvents = game:GetService("ReplicatedStorage").RemoteEvents
 
+if auth then
+    
+    if getgenv().auth.kicked then
+        return
+    end
+
+end
+
 local options = linoria.Options
 local toggles = linoria.Toggles
 
@@ -163,8 +171,6 @@ local gameGroup = tabs.home:AddRightGroupbox("Game")
 --      HOME: INFORMATION GROUP  --
 -------------------------------------
 
-informationGroup:AddDivider()
-
 if getgenv().auth and executionLib then
 	informationGroup:AddLabel("Identifier: " .. getgenv().auth.currentUser.Identifier)
 	informationGroup:AddLabel("Rank: " .. getgenv().auth.currentUser.Rank)
@@ -177,8 +183,6 @@ end
 -------------------------------------
 --      HOME: GAME GROUP  --
 -------------------------------------
-
-gameGroup:AddDivider()
 
 gameGroup:AddLabel("Game Name: " .. gameName)
 gameGroup:AddLabel("Server Instance: " .. game.JobId, true)
@@ -196,8 +200,6 @@ local rolesGroup = tabs.main:AddRightGroupbox("Roles")
 --      MAIN: UTILITIES GROUP  --
 -------------------------------------
 
-utilGroup:AddDivider()
-
 local truckTeleportDisabled = false
 
 if not getgenv().utils.checkFunction(firetouchinterest) then
@@ -206,7 +208,7 @@ end
 
 utilGroup:AddDropdown("truckTeleport_Dropdown", { Values = { "Truck 1", "Truck 2"}, Searchable = false, Default = 1, Multi = false, Text = "Teleport to Truck", Tooltip = false, Disabled = truckTeleportDisabled, DisabledTooltip = "Your exploit does not support this feature."})
 
-local teleportToTruck_Btn = utilGroup:AddButton({ Text = "Teleport", Tooltip = false, DoubleClick = false, Disabled = truckTeleportDisabled, DisabledTooltip = "Your exploit does not support this feature.",
+utilGroup:AddButton({ Text = "Teleport", Tooltip = false, DoubleClick = false, Disabled = truckTeleportDisabled, DisabledTooltip = "Your exploit does not support this feature.",
 	Func = function()
 		local hrp = getHRP()
         local humanoid = getHumanoid()
@@ -249,13 +251,11 @@ local teleportToTruck_Btn = utilGroup:AddButton({ Text = "Teleport", Tooltip = f
 --      MAIN: ROLES GROUP  --
 -------------------------------------
 
-rolesGroup:AddDivider()
-
 rolesGroup:AddToggle("useCostume_Toggle", { Text = "Use Custome", Tooltip = false, Default = false })
 rolesGroup:AddToggle("useKidHeight_Toggle", { Text = "Kid Height", Tooltip = false, Default = false })
 rolesGroup:AddDropdown("role_Dropdown", { Values = { "The Hyper (Lollipop)", "The Sporty (Sports Drink)", "The Protecter (Bat)", "The Medic (MedKit)" }, Searchable = false, Default = 1, Multi = false, Text = "Role", Tooltip = false })
 
-local updateRole_Btn = rolesGroup:AddButton({ Text = "Update Role", Tooltip = false, DoubleClick = false,
+rolesGroup:AddButton({ Text = "Update Role", Tooltip = false, DoubleClick = false,
 	Func = function()
         local basicRoleDropdownValue = options.roleDropdown.Value
         local useKidHeight = toggles.useKidHeightToggle.Value
@@ -278,8 +278,6 @@ local updateRole_Btn = rolesGroup:AddButton({ Text = "Update Role", Tooltip = fa
 -- =================================================
 
 local gameInterfaceGroup = tabs.gui:AddLeftGroupbox("Game Interface")
-
-gameInterfaceGroup:AddDivider()
 
 gameInterfaceGroup:AddToggle("disableBreakIn1Recap_Toggle", { Text = "Disable Break In 1 Recap", Tooltip = "Disables the Break In 1 recap button on the right center of the screen.", Default = false })
 gameInterfaceGroup:AddToggle("toggleTheHuntMenu_Toggle", { Text = "The Hunt Event Menu", Tooltip = false, Default = false })
@@ -326,30 +324,13 @@ end)
 
 local miscGroup = tabs.misc:AddLeftGroupbox("Miscellaneous")
 
-miscGroup:AddDivider()
-
-local rejoin_Btn = miscGroup:AddButton({ Text = "Rejoin", Tooltip = false, DoubleClick = true,
+miscGroup:AddButton({ Text = "Rejoin", Tooltip = false, DoubleClick = true,
 	Func = function()
 		getgenv().utils.gameTeleport("Rejoin")
 
 		notify("Rejoining server...\n" .. game.JobId, 100)
 	end
 })
-
---[[
-
-miscGroup:AddDropdown("players_Dropdown", { Text = "Player Dropdown", Tooltip = "A list of all player's in the server.", SpecialType = "Player", ExcludeLocalPlayer = true,
-	Callback = function(player)
-		print("player:" .. tostring(player) .. " | type: " .. typeof(player))
-
-        if typeof(player) == "Instance" then
-            warn("player health: " .. player.Character.Humanoid.Health)
-            warn("player is an Instance")
-        end
-	end
-})
-
-]]
 
 -------------------------------------
 --      LINORIA / CONFIG  --
@@ -412,7 +393,7 @@ Library.KeybindFrame.Visible = false
 menuGroup:AddToggle("keybindMenu_Toggle", { Default = linoria.KeybindFrame.Visible, Text = "Keybind Menu", Disabled = true, Callback = function(enabled) linoria.KeybindFrame.Visible = enabled end })
 menuGroup:AddToggle("customCursor_Toggle", { Text = "Custom Cursor", Default = useCustomCursor, Callback = function(enabled) linoria.ShowCustomCursor = enabled end })
 menuGroup:AddToggle("autoResetRainbowColor_Toggle", { Text = "Auto Reset Color", Tooltip = "Resets the colorpicker color back to its default color once a rainbow toggle is disabled.", Default = true, Disabled = true, Callback = function(enabled) window.autoResetRainbowColor = enabled end })
-menuGroup:AddToggle("executeOnTeleport_Toggle", { Text = "Execute on Teleport", Tooltip = "Runs the script when a game teleport is detected. Once the script is queued, it cannot be unqueued.", Default = false, Callback = function(enabled) end })
+menuGroup:AddToggle("executeOnTeleport_Toggle", { Text = "Execute on Teleport", Tooltip = "Runs the script when a game teleport is detected. Once the script is queued, it cannot be unqueued.", Default = false })
 menuGroup:AddToggle("notifSound_Toggle", { Text = "Notification Alert Sounds", Tooltip = false, Default = true, Callback = function(enabled) window.notifSoundEnabled = enabled end })
 
 local notifSoundDepbox = menuGroup:AddDependencyBox()

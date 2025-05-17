@@ -9,9 +9,9 @@ if not isScriptReloadable then
 	shared.scriptLoaded = true
 end
 
-local linoria = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Revamped%20UI%20Libraries/Linoria%20-%20Library.lua"))()
-local themeManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Revamped%20UI%20Libraries/Linoria%20-%20Theme%20Manager.lua"))()
-local saveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Revamped%20UI%20Libraries/Linoria%20-%20Save%20Manager.lua"))()
+local linoria = loadstring(readfile("Celestial/Revamped UI Libraries/Linoria - Library.lua"))()
+local themeManager = loadstring(readfile("Celestial/Revamped UI Libraries/Linoria - Theme Manager.lua"))()
+local saveManager = loadstring(readfile("Celestial/Revamped UI Libraries/Linoria - Save Manager.lua"))()
 
 --[[
 local linoria = loadstring(readfile("Celestial/Revamped UI Libraries/Linoria - Library.lua"))()
@@ -30,6 +30,14 @@ local localplayer = players.LocalPlayer
 local events = game:GetService("ReplicatedStorage").Events
 local sounds = game:GetService("Workspace").Sounds
 local runService = game:GetService("RunService")
+
+if auth then
+    
+    if getgenv().auth.kicked then
+        return
+    end
+
+end
 
 local options = linoria.Options
 local toggles = linoria.Toggles
@@ -207,8 +215,6 @@ local gameGroup = tabs.home:AddRightGroupbox("Game")
 --      HOME: INFORMATION GROUP  --
 -------------------------------------
 
-informationGroup:AddDivider()
-
 if getgenv().auth and executionLib then
 	informationGroup:AddLabel("Identifier: " .. getgenv().auth.currentUser.Identifier)
 	informationGroup:AddLabel("Rank: " .. getgenv().auth.currentUser.Rank)
@@ -221,8 +227,6 @@ end
 -------------------------------------
 --      HOME: GAME GROUP  --
 -------------------------------------
-
-gameGroup:AddDivider()
 
 gameGroup:AddLabel("Game Name: " .. gameName)
 gameGroup:AddLabel("Server Instance: " .. game.JobId, true)
@@ -241,19 +245,17 @@ local exploitsGroup3 = tabs.exploits:AddLeftGroupbox("Other")
 --      EXPLOITS: EXPLOITS GROUP  --
 -------------------------------------
 
-exploitsGroup1:AddDivider()
-
 exploitsGroup1:AddToggle("godmode_Toggle", { Text = "Godmode", Tooltip = false })
 local godmodeDepbox = exploitsGroup1:AddDependencyBox()
 
 godmodeDepbox:AddSlider("godmodeDelay_Slider", { Text = "Delay", Tooltip = false, Default = 0.05, Min = 0, Max = 10, Rounding = 2 })
 godmodeDepbox:AddToggle("godmodeHideEnergyGain_Toggle", { Text = "Hide Energy Gain", Tooltip = 'Hides the "+x" text above the energy bar while keeping the "-x" text.' })
 
-exploitsGroup1:AddToggle("noclip_Toggle", { Text = "Noclip", Tooltip = "Enables the noclip keybind.", Default = false })
-:AddKeyPicker("noclip_KeyPicker", { Default = "G", SyncToggleState = true, Mode = "Toggle", Text = "Noclip", NoUI = false, Callback = function(keybindState) end })
+exploitsGroup1:AddToggle("noclip_Toggle", { Text = "Noclip", Tooltip = false, Default = false })
+:AddKeyPicker("noclip_KeyPicker", { Default = "G", SyncToggleState = true, Mode = "Toggle", Text = "Noclip", NoUI = false })
 
-exploitsGroup1:AddToggle("fly_Toggle", { Text = "Fly", Tooltip = "Enables the fly keybind.", Default = false })
-:AddKeyPicker("fly_KeyPicker", { Default = "F", SyncToggleState = true, Mode = "Toggle", Text = "Fly", NoUI = false, Callback = function(keybindState) end })
+exploitsGroup1:AddToggle("fly_Toggle", { Text = "Fly", Tooltip = false, Default = false })
+:AddKeyPicker("fly_KeyPicker", { Default = "F", SyncToggleState = true, Mode = "Toggle", Text = "Fly", NoUI = false })
 
 local flyDepbox = exploitsGroup1:AddDependencyBox()
 
@@ -277,12 +279,9 @@ local autoKillDepbox = exploitsGroup1:AddDependencyBox()
 
 autoKillDepbox:AddSlider("autoKillDelay_Slider", { Text = "Damage Amount", Tooltip = false, Default = 100, Min = 1, Max = 100, Rounding = 0 })
 
-
-
-
-
 godmodeDepbox:SetupDependencies({ { toggles.godmode_Toggle, true } })
 flyDepbox:SetupDependencies({ { toggles.fly_Toggle, true } })
+speedExploitDepbox:SetupDependencies({ { toggles.speedExploit_Toggle, true } })
 autoKillDepbox:SetupDependencies({ { toggles.autoKillBadGuys_Toggle, true } })
 
 
@@ -601,7 +600,7 @@ toggles.autoKillBadGuys_Toggle:OnChanged(function(enabled)
                 end
 
                 task.wait(0.1)
-            until not autoKillToggle:GetState()
+            until not toggles.autoKillBadGuys_Toggle.Value
         end)
     end
 end)
@@ -609,8 +608,6 @@ end)
 -------------------------------------
 --      EXPLOITS: VISUALS GROUP  --
 -------------------------------------
-
-exploitsGroup2:AddDivider()
 
 exploitsGroup2:AddToggle("hiddenItemESP_Toggle", { Text = "Hidden Item ESP", Tooltip = "Highlights all the items inside drawers." })
 
@@ -632,6 +629,8 @@ local badGuyESPDepbox = exploitsGroup2:AddDependencyBox()
 
 badGuyESPDepbox:AddLabel("ESP Color"):AddColorPicker("badGuyESPColor_Colorpicker", { Title = "ESP Color", Default = Color3.fromRGB(255, 0, 0), Transparency = 0.5 })
 badGuyESPDepbox:AddToggle("rainbowBadGuyESP_Toggle", { Text = "Rainbow ESP", Tooltip = false })
+
+exploitsGroup2:AddToggle("disableVignette_Toggle", { Text = "Disable Vignette", Tooltip = false })
 
 hiddenItemsDepbox:SetupDependencies({ { toggles.hiddenItemESP_Toggle, true } })
 hiddenItemESPLabelDepbox:SetupDependencies({ { toggles.hiddenItemESPEnableLabels_Toggle, true } })
@@ -842,15 +841,30 @@ toggles.rainbowBadGuyESP_Toggle:OnChanged(function(enabled)
     toggleRainbow(enabled, "badGuyESPColor_Colorpicker")
 end)
 
+toggles.disableVignette_Toggle:OnChanged(function(enabled)
+    local vignette = localplayer.PlayerGui.Assets.Vig
+
+    if enabled then
+        task.spawn(function()
+            repeat
+                vignette.Visible = false
+                
+                task.wait()
+            until not toggles.disableVignette_Toggle.Value
+        end)
+    else
+        vignette.Visible = true
+    end
+end)
+
 -------------------------------------
 --      EXPLOITS: OTHERS GROUP  --
 -------------------------------------
 
-exploitsGroup3:AddDivider()
+exploitsGroup3:AddDropdown("locationTeleport_Dropdown", { Values = { "Villian Base", "Kitchen", "Fighting Arena", "Gym", "Pizza Boss", "Shop", "Golden Apple Path", "Generator", "Boss Fight Start",
+"Boss Fight Main", "Kitchen", "Twado", "Detective" }, Searchable = false, Default = 1, Multi = false, Text = "Teleport to Location", Tooltip = false })
 
-exploitsGroup3:AddDropdown("locationTeleport_Dropdown", { Values = { "Villian Base", "Kitchen", "Fighting Arena", "Gym", "Pizza Boss", "Shop", "Golden Apple Path", "Generator", "Boss Fight Start", "Boss Fight Main", "Kitchen", "Twado", "Detective" }, Searchable = false, Default = 1, Multi = false, Text = "Teleport to Location", Tooltip = false })
-
-local teleportToLocation_Btn = exploitsGroup3:AddButton({ Text = "Teleport", Tooltip = false, DoubleClick = false,
+exploitsGroup3:AddButton({ Text = "Teleport", Tooltip = false, DoubleClick = false,
 	Func = function()
         local cframeValues = {
             ["Villian Base"] = CFrame.new(-233.926117, 30.4567528, -790.019897, 0.00195977557, -8.22674984e-11, -0.999998093, -2.4766762e-09, 1, -8.71213934e-11, 0.999998093, 2.47684229e-09, 0.00195977557),
@@ -893,6 +907,12 @@ local teleportToLocation_Btn = exploitsGroup3:AddButton({ Text = "Teleport", Too
                 if clickDetector then
                     getgenv().utils.fireClickEvent(clickDetector)
                 end
+            end
+
+            -- If value is NOT "Fighting Arena", remove the strength overhead
+
+            if dropdown.Value ~= "Fighting Arena" then
+                getgenv().utils.fireTouchEvent(hrp, game.Workspace.EvilArea.ExitPart2)
             end
 
         else
@@ -957,37 +977,165 @@ toggles.fightSpoof_Toggle:OnChanged(function(enabled)
     end
 end)
 
---[[
+-- =================================================
+--                   TAB: UTILITY                   --
+-- =================================================
 
-local spoof1 = exploitsGroup3:AddButton({ Text = "Spoof Inside", Tooltip = false, DoubleClick = false,
+local itemsGroup2 = tabs.util:AddLeftGroupbox("Items")
+
+-------------------------------------
+--      UTIL: ITEMS GROUP  --
+-------------------------------------
+
+itemsGroup2:AddDropdown("itemList_Dropdown", { Values = { "GoldPizza", "GoldenApple", "RainbowPizzaBox", "RainbowPizza", "GoldKey",
+"Bottle", "Armor", "Louise", "Lollipop", "Ladder", "MedKit", "Chips", "Cookie", "BloxyCola", "Apple", "Pizza", "ExpiredBloxyCola" }, Searchable = true, Default = 1, Multi = true, Text = "Item", Tooltip = false })
+
+itemsGroup2:AddSlider("giveItemAmount_Slider", { Text = "Amount", Tooltip = false, Default = 10, Min = 1, Max = 800, Rounding = 0 })
+
+itemsGroup2:AddButton({ Text = "Give Item", Tooltip = false, DoubleClick = false,
 	Func = function()
-        local hrp = getHRP()
-        getgenv().utils.fireTouchEvent(hrp, game.Workspace.InsideTouchParts.FrontDoor)
+        local selectedItems = 0
+        local playerInventoryBefore = {}
+
+        local itemDropdown = options.itemList_Dropdown
+        local amountSlider = options.giveItemAmount_Slider
+
+        -- Save inventory count before giving items
+
+        for _, tool in ipairs(localplayer.Backpack:GetChildren()) do
+            playerInventoryBefore[tool.Name] = (playerInventoryBefore[tool.Name] or 0) + 1
+        end
+
+        for item, isSelected in pairs(itemDropdown.Value) do
+            if isSelected then
+                selectedItems += 1
+
+                if not localplayer.Character:FindFirstChild("Desert Storm Army Vest") then
+                    events.Vending:FireServer(3, "Armor2", "Armor", localplayer.Name, true, 1)
+                    task.wait(0.03)
+                    if localplayer.Character:FindFirstChild("Desert Storm Army Vest") then
+                        notify("You have been given armor.", 4)
+                    else
+                        notify("Armor detection failed.", 6)
+                    end
+                else
+                    for _ = 1, amountSlider.Value do
+                        events.GiveTool:FireServer(item)
+                    end
+                end
+            
+                task.wait()
+            end
+        end
+
+        task.wait(0.2)
+
+        -- Save inventory count after giving items
+
+        local playerInventoryAfter = {}
+        for _, tool in ipairs(localplayer.Backpack:GetChildren()) do
+            playerInventoryAfter[tool.Name] = (playerInventoryAfter[tool.Name] or 0) + 1
+        end
+
+        -- Compare the stored inventories before and after to detect new items and their quantities
+
+        local newItems = {}
+        for itemName, afterCount in pairs(playerInventoryAfter) do
+            local beforeCount = playerInventoryBefore[itemName] or 0
+            local quantityAdded = afterCount - beforeCount
+
+            if quantityAdded > 0 then
+                table.insert(newItems, quantityAdded .. "x " .. itemName)
+            end
+        end
+
+        -- Notify new items
+
+        if #newItems > 0 then
+            notify("You have received: " .. table.concat(newItems, ", "), 4)
+        else
+            notify("No new items were detected.", 6)
+        end
 	end
 })
 
-local spoof2 = exploitsGroup3:AddButton({ Text = "Spoof Outside", Tooltip = false, DoubleClick = false,
+itemsGroup2:AddDivider()
+
+itemsGroup2:AddDropdown("weaponList_Dropdown", { Values = { "Crowbar 1", "Crowbar 2", "Bat", "Pitchfork", "Hammer", "Wrench", "Broom" }, Searchable = true, Default = 1, Multi = false, Text = "Weapon", Tooltip = false })
+
+local giveWeapon_Btn = itemsGroup2:AddButton({ Text = "Give Weapon", Tooltip = false, DoubleClick = false,
 	Func = function()
-        local hrp = getHRP()
-        getgenv().utils.fireTouchEvent(hrp, game.Workspace.OutsideTouchParts.OutsideTouch)
+        local weapon = options.weaponList_Dropdown.Value
+
+        -- Weapon existence check
+
+        if getgenv().entityLib.getTool("Specific", weapon) then
+            notify("You already have: " .. weapon .. ".", 6)
+            return
+        end
+
+        -- Save current inventory
+
+        local inventoryBefore = {}
+        for _, tool in ipairs(localplayer.Backpack:GetChildren()) do
+            inventoryBefore[tool.Name] = true
+        end
+
+        for _, tool in ipairs(localplayer.Character:GetChildren()) do
+            if tool:IsA("Tool") then
+                inventoryBefore[tool.Name] = true
+            end
+        end
+
+        events.Vending:FireServer(3, weapon, "Weapons", localplayer.Name, 1)
+        task.wait(0.5)
+
+        -- Check inventory, determine successful give attempt
+
+        if getgenv().entityLib.getTool("Specific", weapon) then
+            notify("You have received: " .. weapon .. ".", 4)
+        else
+            notify("Weapon could not be given: " .. weapon .. ".", 6)
+        end
 	end
 })
 
-]]
+local giveBestWeapon_Btn = itemsGroup2:AddButton({ Text = "Give Best Weapon", Tooltip = false, DoubleClick = false,
+	Func = function()
+        local bestWeapon = localplayer.PlayerGui.Phone.Phone.Phone.Background.InfoScreen.WeaponInfo.TwadoWants.Text
 
--- =================================================
---                   TAB: UTIL                   --
--- =================================================
+        -- Check if the player already has the weapon
 
-local testGroup2 = tabs.util:AddLeftGroupbox("Groupbox Title")
+        if getgenv().entityLib.getTool("Specific", bestWeapon) then
+            notify("You already have: " .. bestWeapon .. ".", 6)
+            return
+        end
 
--------------------------------------
---      UTIL: TEST GROUP  --
--------------------------------------
+        -- Save current inventory
 
-testGroup2:AddDivider()
+        local inventoryBefore = {}
+        for _, tool in ipairs(localplayer.Backpack:GetChildren()) do
+            inventoryBefore[tool.Name] = true
+        end
 
---print("code here")
+        for _, tool in ipairs(localplayer.Character:GetChildren()) do
+            if tool:IsA("Tool") then
+                inventoryBefore[tool.Name] = true
+            end
+        end
+
+        events.Vending:FireServer(3, bestWeapon, "Weapons", localplayer.Name, 1)
+        task.wait(0.5)
+
+        -- Check inventory, determine successful give attempt
+
+        if getgenv().entityLib.getTool("Specific", bestWeapon) then
+            notify("You have received: " .. bestWeapon .. ".", 4)
+        else
+            notify("Weapon could not be given: " .. bestWeapon .. ".", 6)
+        end
+	end
+})
 
 -- =================================================
 --                   TAB: PLAYER                   --
@@ -998,8 +1146,6 @@ local testGroup3 = tabs.player:AddLeftGroupbox("Groupbox Title")
 -------------------------------------
 --      PLAYER: TEST GROUP  --
 -------------------------------------
-
-testGroup3:AddDivider()
 
 --print("code here")
 
@@ -1013,8 +1159,6 @@ local testGroup4 = tabs.endings:AddLeftGroupbox("Groupbox Title")
 --      ENDINGS: TEST GROUP  --
 -------------------------------------
 
-testGroup4:AddDivider()
-
 --print("code here")
 
 -- =================================================
@@ -1023,9 +1167,7 @@ testGroup4:AddDivider()
 
 local miscGroup = tabs.misc:AddLeftGroupbox("Miscellaneous")
 
-miscGroup:AddDivider()
-
-local lobby_Btn = miscGroup:AddButton({ Text = "Lobby", Tooltip = false, DoubleClick = true,
+miscGroup:AddButton({ Text = "Lobby", Tooltip = false, DoubleClick = true,
 	Func = function()
 		getgenv().utils.gameTeleport(13864661000)
 
@@ -1126,7 +1268,7 @@ Library.KeybindFrame.Visible = true
 menuGroup:AddToggle("keybindMenu_Toggle", { Default = linoria.KeybindFrame.Visible, Text = "Keybind Menu", Callback = function(enabled) linoria.KeybindFrame.Visible = enabled end })
 menuGroup:AddToggle("customCursor_Toggle", { Text = "Custom Cursor", Default = useCustomCursor, Callback = function(enabled) linoria.ShowCustomCursor = enabled end })
 menuGroup:AddToggle("autoResetRainbowColor_Toggle", { Text = "Auto Reset Color", Tooltip = "Resets the colorpicker color back to its default color once a rainbow toggle is disabled.", Default = true, Callback = function(enabled) window.autoResetRainbowColor = enabled end })
-menuGroup:AddToggle("executeOnTeleport_Toggle", { Text = "Execute on Teleport", Tooltip = "Runs the script when a game teleport is detected. Once the script is queued, it cannot be unqueued.", Default = false, Callback = function(enabled) end })
+menuGroup:AddToggle("executeOnTeleport_Toggle", { Text = "Execute on Teleport", Tooltip = "Runs the script when a game teleport is detected. Once the script is queued, it cannot be unqueued.", Default = false })
 menuGroup:AddToggle("notifSound_Toggle", { Text = "Notification Alert Sounds", Tooltip = false, Default = true, Callback = function(enabled) window.notifSoundEnabled = enabled end })
 
 local notifSoundDepbox = menuGroup:AddDependencyBox()

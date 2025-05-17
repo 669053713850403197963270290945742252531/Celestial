@@ -16,8 +16,31 @@ local GetHUI = gethui or (function() return CoreGui end);
 
 local IsBadDrawingLib = false;
 
-local ScreenGui = Instance.new('ScreenGui');
-pcall(ProtectGui, ScreenGui);
+local function SafeParentUI(Instance: Instance, Parent: Instance | () -> Instance)
+    if not pcall(function()
+        local DestinationParent
+        if typeof(Parent) == "function" then
+            DestinationParent = Parent()
+        else
+            DestinationParent = Parent
+        end
+
+        Instance.Parent = DestinationParent
+    end) then
+        Instance.Parent = LocalPlayer:WaitForChild("PlayerGui", math.huge)
+    end
+end
+
+local function ParentUI(UI: Instance, SkipHiddenUI: boolean?)
+    if SkipHiddenUI then
+        SafeParentUI(UI, CoreGui)
+        return
+    end
+
+    pcall(ProtectGui, UI)
+    SafeParentUI(UI, GetHUI)
+end
+
 
 -- Destroy previous instances
 
@@ -27,10 +50,25 @@ for _, prevUI in pairs(GetHUI():GetChildren()) do
     end
 end
 
+local ScreenGui = Instance.new('ScreenGui');
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global;
+ScreenGui.DisplayOrder = 999;
+ScreenGui.ResetOnSpawn = false;
 ScreenGui.Name = "Linoria"
-local Parented = pcall(function() ScreenGui.Parent = GetHUI(); end);
-if not Parented then ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui", 9e9) end;
+ParentUI(ScreenGui);
+
+local ModalScreenGui = Instance.new("ScreenGui");
+ModalScreenGui.DisplayOrder = 999;
+ModalScreenGui.ResetOnSpawn = false;
+ParentUI(ModalScreenGui, true);
+
+local ModalElement = Instance.new("TextButton");
+ModalElement.BackgroundTransparency = 1
+ModalElement.Modal = false
+ModalElement.Size = UDim2.fromScale(0, 0)
+ModalElement.Text = ""
+ModalElement.ZIndex = -999
+ModalElement.Parent = ModalScreenGui
 
 getgenv().assetLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Asset%20Library.lua"))()
 getgenv().assetLib.createAssets("Sounds")
@@ -38,12 +76,12 @@ getgenv().assetLib.createAssets("Sounds")
 getgenv().utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Core%20Utilities.lua"))()
 getgenv().entityLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Entity%20Library.lua"))()
 
-getgenv().fastLoad = false
+getgenv().fastLoad = true
 getgenv().testing = false
 
 if getgenv().testing then
     getgenv().script_key = "lQwkSPLnL29AIKCAxmWuQ91M0gzjPuUugJ0Xd"
-    getgenv().notifyLoad = false
+    getgenv().notifyLoad = true
 end
 
 getgenv().script_key = getgenv().script_key or ""
@@ -179,32 +217,51 @@ local function GetTableSize(t)
     return n;
 end;
 
-local function GetPlayers(ExcludeLocalPlayer: boolean?)
-	local PlayerList = Players:GetPlayers()
+local function GetPlayers(ExcludeLocalPlayer, ReturnInstances)
+    local PlayerList = Players:GetPlayers();
 
-	if ExcludeLocalPlayer then
-		local Idx = table.find(PlayerList, LocalPlayer)
-		if Idx then
-			table.remove(PlayerList, Idx)
-		end
-	end
+    if ExcludeLocalPlayer then
+        local Idx = table.find(PlayerList, LocalPlayer);
 
-	table.sort(PlayerList, function(Player1, Player2)
-		return Player1.Name:lower() < Player2.Name:lower()
-	end)
+        if Idx then
+            table.remove(PlayerList, Idx);
+        end
+    end
 
-	return PlayerList
-end
+    table.sort(PlayerList, function(Player1, Player2)
+        return Player1.Name:lower() < Player2.Name:lower();
+    end)
 
-local function GetTeams()
-	local TeamList = Teams:GetTeams()
+    if ReturnInstances == true then
+        return PlayerList;
+    end;
 
-	table.sort(TeamList, function(Team1, Team2)
-		return Team1.Name:lower() < Team2.Name:lower()
-	end)
+    local FixedPlayerList = {};
+    for _, player in next, PlayerList do
+        FixedPlayerList[#FixedPlayerList + 1] = player.Name;
+    end;
 
-	return TeamList
-end
+    return FixedPlayerList;
+end;
+
+local function GetTeams(ReturnInstances)
+    local TeamList = Teams:GetTeams();
+
+    table.sort(TeamList, function(Team1, Team2)
+        return Team1.Name:lower() < Team2.Name:lower();
+    end)
+
+    if ReturnInstances == true then
+        return TeamList;
+    end;
+
+    local FixedTeamList = {};
+    for _, team in next, TeamList do
+        FixedTeamList[#FixedTeamList + 1] = team.Name;
+    end;
+
+    return FixedTeamList;
+end;
 
 function Library:SetDPIScale(value: number) 
     assert(type(value) == "number", "Expected type number for DPI scale but got " .. typeof(value))
@@ -783,8 +840,10 @@ function Library:Unload()
         Library:SafeCallback(UnloadCallback)
     end
 
-    getgenv().Linoria = nil
     ScreenGui:Destroy()
+    ModalScreenGui:Destroy()
+    Library.Unloaded = true
+    getgenv().Linoria = nil
 end
 
 function Library:OnUnload(Callback)
@@ -1242,40 +1301,30 @@ do
             ColorPicker:Display()
         end)
 
-        function round(num)
-            return math.floor(num * 10 + 0.5) / 10
-        end
-
         function ColorPicker:Display()
-            ColorPicker.Value = Color3.fromHSV(ColorPicker.Hue, ColorPicker.Sat, ColorPicker.Vib)
-            SatVibMap.BackgroundColor3 = Color3.fromHSV(ColorPicker.Hue, 1, 1)
-
-            if ColorPicker.Transparency ~= nil then
-                ColorPicker.Transparency = round(ColorPicker.Transparency)
-            end
+            ColorPicker.Value = Color3.fromHSV(ColorPicker.Hue, ColorPicker.Sat, ColorPicker.Vib);
+            SatVibMap.BackgroundColor3 = Color3.fromHSV(ColorPicker.Hue, 1, 1);
 
             Library:Create(DisplayFrame, {
-                BackgroundColor3 = ColorPicker.Value,
-                BackgroundTransparency = ColorPicker.Transparency,
-                BorderColor3 = Library:GetDarkerColor(ColorPicker.Value),
-            })
+                BackgroundColor3 = ColorPicker.Value;
+                BackgroundTransparency = ColorPicker.Transparency;
+                BorderColor3 = Library:GetDarkerColor(ColorPicker.Value);
+            });
 
             if TransparencyBoxInner then
-                TransparencyBoxInner.BackgroundColor3 = ColorPicker.Value
-                TransparencyCursor.Position = UDim2.new(1 - ColorPicker.Transparency, 0, 0, 0)
-            end
+                TransparencyBoxInner.BackgroundColor3 = ColorPicker.Value;
+                TransparencyCursor.Position = UDim2.new(1 - ColorPicker.Transparency, 0, 0, 0);
+            end;
 
-            CursorOuter.Position = UDim2.new(ColorPicker.Sat, 0, 1 - ColorPicker.Vib, 0)
-            HueCursor.Position = UDim2.new(0, 0, ColorPicker.Hue, 0)
+            CursorOuter.Position = UDim2.new(ColorPicker.Sat, 0, 1 - ColorPicker.Vib, 0);
+            HueCursor.Position = UDim2.new(0, 0, ColorPicker.Hue, 0);
 
             HueBox.Text = '#' .. ColorPicker.Value:ToHex()
             RgbBox.Text = table.concat({ math.floor(ColorPicker.Value.R * 255), math.floor(ColorPicker.Value.G * 255), math.floor(ColorPicker.Value.B * 255) }, ', ')
 
-            Library:SafeCallback(ColorPicker.Callback, ColorPicker.Value, ColorPicker.Transparency)
-            Library:SafeCallback(ColorPicker.Changed, ColorPicker.Value, ColorPicker.Transparency)
-
-            --print("Rounded Transparency:", ColorPicker.Transparency)
-        end
+            Library:SafeCallback(ColorPicker.Callback, ColorPicker.Value, ColorPicker.Transparency);
+            Library:SafeCallback(ColorPicker.Changed, ColorPicker.Value, ColorPicker.Transparency);
+        end;
 
         function ColorPicker:OnChanged(Func)
             ColorPicker.Changed = Func;
@@ -1306,23 +1355,17 @@ do
 
         function ColorPicker:SetValue(HSV, Transparency)
             local Color = Color3.fromHSV(HSV[1], HSV[2], HSV[3]);
-        
-            if Transparency ~= nil then
-                ColorPicker.Transparency = Transparency
-            end
-        
+
+            ColorPicker.Transparency = Transparency or 0;
             ColorPicker:SetHSVFromRGB(Color);
             ColorPicker:Display();
         end;
-        
+
         function ColorPicker:SetValueRGB(Color, Transparency)
-            if Transparency ~= nil then
-                ColorPicker.Transparency = Transparency
-            end
-        
+            ColorPicker.Transparency = Transparency or 0;
             ColorPicker:SetHSVFromRGB(Color);
             ColorPicker:Display();
-        end;        
+        end;
 
         SatVibMap.InputBegan:Connect(function(Input)
             if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
@@ -1594,7 +1637,7 @@ do
                 KeybindsToggleInner.BackgroundColor3 = State and Library.AccentColor or Library.MainColor;
                 KeybindsToggleInner.BorderColor3 = State and Library.AccentColorDark or Library.OutlineColor;
                 KeybindsToggleLabel.TextColor3 = State and Library.AccentColor or Library.FontColor;
-                
+
                 if Library.RegistryMap[KeybindsToggleInner] then
                     Library.RegistryMap[KeybindsToggleInner].Properties.BackgroundColor3 = State and 'AccentColor' or 'MainColor';
                     Library.RegistryMap[KeybindsToggleInner].Properties.BorderColor3 = State and 'AccentColorDark' or 'OutlineColor';
@@ -1893,11 +1936,13 @@ do
         Info.ReturnInstanceInstead = if typeof(Info.ReturnInstanceInstead) == "boolean" then Info.ReturnInstanceInstead else false;
 
         if Info.SpecialType == 'Player' then
-            Info.Values = GetPlayers(Info.ExcludeLocalPlayer)
-            Info.AllowNull = true
+            Info.ExcludeLocalPlayer = if typeof(Info.ExcludeLocalPlayer) == "boolean" then Info.ExcludeLocalPlayer else false;
+
+            Info.Values = GetPlayers(Info.ExcludeLocalPlayer, Info.ReturnInstanceInstead);
+            Info.AllowNull = true;
         elseif Info.SpecialType == 'Team' then
-			Info.Values = GetTeams()
-			Info.AllowNull = true
+            Info.Values = GetTeams(Info.ReturnInstanceInstead);
+            Info.AllowNull = true;
         end;
 
         assert(Info.Values, 'AddDropdown: Missing dropdown value list.');
@@ -3283,12 +3328,10 @@ do
             ToggleInner.BackgroundColor3 = Toggle.Value and Library.AccentColor or Library.MainColor;
             ToggleInner.BorderColor3 = Toggle.Value and Library.AccentColorDark or Library.OutlineColor;
 
-            if Library.RegistryMap[ToggleInner] then
-                Library.RegistryMap[ToggleInner].Properties.BackgroundColor3 = Toggle.Value and 'AccentColor' or 'MainColor';
-                Library.RegistryMap[ToggleInner].Properties.BorderColor3 = Toggle.Value and 'AccentColorDark' or 'OutlineColor';
-    
-                Library.RegistryMap[ToggleLabel].Properties.TextColor3 = Toggle.Risky and 'RiskColor' or nil;
-            end
+            Library.RegistryMap[ToggleInner].Properties.BackgroundColor3 = Toggle.Value and 'AccentColor' or 'MainColor';
+            Library.RegistryMap[ToggleInner].Properties.BorderColor3 = Toggle.Value and 'AccentColorDark' or 'OutlineColor';
+
+            Library.RegistryMap[ToggleLabel].Properties.TextColor3 = Toggle.Risky and 'RiskColor' or nil;
         end;
 
         function Toggle:OnChanged(Func)
@@ -5044,6 +5087,8 @@ function Library:CreateWindow(...)
             Parent = TabContainer;
         });
 
+        local TopBarLabelStroke
+        local TopBarHighlight
         local TopBar, TopBarInner, TopBarLabel, TopBarTextLabel; do
             TopBar = Library:Create('Frame', {
                 BackgroundColor3 = Library.BackgroundColor;
@@ -5066,7 +5111,7 @@ function Library:CreateWindow(...)
                 Parent = TopBar;
             });
 
-            local TopBarHighlight = Library:Create('Frame', {
+            TopBarHighlight = Library:Create('Frame', {
                 BackgroundColor3 = Color3.fromRGB(255, 75, 75);
                 BorderSizePixel = 0;
                 Size = UDim2.new(1, 0, 0, 2);
@@ -5089,7 +5134,7 @@ function Library:CreateWindow(...)
                 Parent = TopBarInner;
             });
 
-            local TopBarLabelStroke = Library:ApplyTextStroke(TopBarLabel);
+            TopBarLabelStroke = Library:ApplyTextStroke(TopBarLabel);
             TopBarLabelStroke.Color = Color3.fromRGB(174, 3, 3);
 
             TopBarTextLabel = Library:CreateLabel({
@@ -5242,6 +5287,26 @@ function Library:CreateWindow(...)
 
                 Tab:Resize();
             end;
+
+            TopBar.BorderColor3 = Info.IsNormal == true and Color3.fromRGB(27, 42, 53) or Color3.fromRGB(248, 51, 51)
+            TopBarInner.BorderColor3 = Info.IsNormal == true and Library.OutlineColor or Color3.fromRGB(0, 0, 0)
+            TopBarInner.BackgroundColor3 = Info.IsNormal == true and Library.BackgroundColor or Color3.fromRGB(117, 22, 17)
+            TopBarHighlight.BackgroundColor3 = Info.IsNormal == true and Library.AccentColor or Color3.fromRGB(255, 75, 75)
+             
+            TopBarLabel.TextColor3 = Info.IsNormal == true and Library.FontColor or Color3.fromRGB(255, 55, 55)
+            TopBarLabelStroke.Color = Info.IsNormal == true and Library.Black or Color3.fromRGB(174, 3, 3)
+
+            if not Library.RegistryMap[TopBarInner] then Library:AddToRegistry(TopBarInner, {}) end
+            if not Library.RegistryMap[TopBarHighlight] then Library:AddToRegistry(TopBarHighlight, {}) end
+            if not Library.RegistryMap[TopBarLabel] then Library:AddToRegistry(TopBarLabel, {}) end
+            if not Library.RegistryMap[TopBarLabelStroke] then Library:AddToRegistry(TopBarLabelStroke, {}) end
+
+            Library.RegistryMap[TopBarInner].Properties.BorderColor3 = Info.IsNormal == true and "OutlineColor" or nil;
+            Library.RegistryMap[TopBarInner].Properties.BackgroundColor3 = Info.IsNormal == true and "BackgroundColor" or nil;
+            Library.RegistryMap[TopBarHighlight].Properties.BackgroundColor3 = Info.IsNormal == true and "AccentColor" or nil;
+
+            Library.RegistryMap[TopBarLabel].Properties.TextColor3 = Info.IsNormal == true and "FontColor" or nil;
+            Library.RegistryMap[TopBarLabelStroke].Properties.Color = Info.IsNormal == true and "Black" or nil;
         end;
 
         function Tab:ShowTab()
@@ -5603,15 +5668,6 @@ function Library:CreateWindow(...)
         return Tab;
     end;
 
-    local ModalElement = Library:Create('TextButton', {
-        BackgroundTransparency = 1;
-        Size = UDim2.new(0, 0, 0, 0);
-        Visible = true;
-        Text = '';
-        Modal = false;
-        Parent = ScreenGui;
-    });
-
     local TransparencyCache = {};
     local Toggled = false;
     local Fading = false;
@@ -5623,6 +5679,7 @@ function Library:CreateWindow(...)
         local FadeTime = Config.MenuFadeTime;
         Fading = true;
         Toggled = (not Toggled);
+
         Library.Toggled = Toggled;
         ModalElement.Modal = Toggled;
 
@@ -5883,8 +5940,8 @@ function Library:CreateWindow(...)
 end;
 
 local function OnPlayerChange()
-    local PlayerList, ExcludedPlayerList = GetPlayers(false, false), GetPlayers(true, false);
-    local StringPlayerList, StringExcludedPlayerList = GetPlayers(false, true), GetPlayers(true, true);
+    local PlayerList, ExcludedPlayerList = GetPlayers(false, true), GetPlayers(true, true);
+    local StringPlayerList, StringExcludedPlayerList = GetPlayers(false, false), GetPlayers(true, false);
 
     for _, Value in next, Options do
         if Value.SetValues and Value.Type == 'Dropdown' and Value.SpecialType == 'Player' then
@@ -5915,5 +5972,5 @@ Library:GiveSignal(Players.PlayerRemoving:Connect(OnPlayerChange));
 Library:GiveSignal(Teams.ChildAdded:Connect(OnTeamChange));
 Library:GiveSignal(Teams.ChildRemoved:Connect(OnTeamChange));
 
-getgenv().Library = Library
+if getgenv().skip_getgenv_linoria ~= true then getgenv().Library = Library end
 return Library
