@@ -7,10 +7,10 @@
         "DiscordId": "999776749070078004",
         "Key": "lQwkSPLnL29AIKCAxmWuQ91M0gzjPuUugJ0Xd",
         "Notes": "false",
-        "Banned": "true",
-        "TempBan": "false",
-        "BanReason": "fuck this ban",
-        "TempBanDuration": "null",
-        "TempBanEnd": "null"
+        "Banned": "false",
+        "TempBan": "true",
+        "BanReason": "null",
+        "TempBanDuration": "60",
+        "TempBanEnd": "2025-5-19 12:31 AM"
     }
 ]
