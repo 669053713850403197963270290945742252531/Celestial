@@ -26,5 +26,19 @@
         "BanReason": "null",
         "TempBanDuration": "null",
         "TempBanEnd": "null"
+    },
+    {
+        "HWID": "400351f8d278fdf7e765ccb2943e8a99548a68ae0235b96fa47cb758a354ddd1201d034199439c49ff22cfc0904bc2e2",
+        "Identifier": "Dyno",
+        "Rank": "User",
+        "JoinDate": "2025-05-20",
+        "DiscordId": "999776749070078004",
+        "Key": "cA97QRQAJs1OLB7y7KnGfTNZnJK8cpdYnFIB",
+        "Notes": "false",
+        "Banned": "false",
+        "TempBan": "false",
+        "BanReason": "null",
+        "TempBanDuration": "null",
+        "TempBanEnd": "null"
     }
 ]
