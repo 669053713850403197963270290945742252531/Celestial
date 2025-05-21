@@ -31,9 +31,25 @@ local events = game:GetService("ReplicatedStorage").Events
 local sounds = game:GetService("Workspace").Sounds
 local runService = game:GetService("RunService")
 
+local function getLib(libraryName)
+    local validLibraries = {
+        assetLib = true,
+        utils = true,
+        entityLib = true,
+        auth = true,
+        executionLib = true
+    }
+
+    if not validLibraries[libraryName] then
+        warn(libraryName .. " is not a valid library.")
+    else
+        return getgenv()[libraryName]
+    end
+end
+
 if auth then
     
-    if getgenv().auth.kicked then
+    if getLib("auth").kicked then
         return
     end
 
@@ -48,7 +64,7 @@ linoria.ShowToggleFrameInKeybinds = true
 --      LINORIA  --
 -------------------------------------
 
-if getgenv().auth then Title = "Celestial - " .. gameName .. " : " .. getgenv().auth.currentUser.Identifier else Title = "Celestial - " .. gameName end
+if getLib("auth") then Title = "Celestial - " .. gameName .. " : " .. getLib("auth").currentUser.Identifier else Title = "Celestial - " .. gameName end
 
 -- Solution to transparent fill on the cursor due to solara's shit drawing lib
 
@@ -109,8 +125,12 @@ local function notify(message, duration)
     end
 
     if window.notifSoundEnabled then
-        local notifSound = getgenv().assetLib.fetchAsset("Assets/Sounds/Notification Main.mp3", window.alertVolume)
+        print(getLib("assetLib"))
+        
+        --[[
+        local notifSound = getLib("assetLib").fetchAsset("Assets/Sounds/Notification Main.mp3", window.alertVolume)
 		linoria:Notify(message, duration, notifSound)
+        ]]
 	else
 		linoria:Notify(message, duration)
     end
@@ -127,7 +147,7 @@ local function toggleRainbow(enabled, colorPickerName)
 				hues[colorPickerName] = (hues[colorPickerName] + deltaTime * window.RainbowSpeed) % 1
 
 				if not options[colorPickerName] or not defaults[colorPickerName] then
-					window.notifSoundPath = getgenv().assetLib.fetchAsset("Assets/Sounds/Notification Main.mp3")
+					window.notifSoundPath = getLib("assetLib").fetchAsset("Assets/Sounds/Notification Main.mp3")
 
 					notify("Invalid colorpicker object and/or no valid default was found.", 99999)
 					return
@@ -144,7 +164,7 @@ local function toggleRainbow(enabled, colorPickerName)
 
 		if window.autoResetRainbowColor then
 			if not options[colorPickerName] or not defaults[colorPickerName] then
-				window.notifSoundPath = getgenv().assetLib.fetchAsset("Assets/Sounds/Notification Main.mp3")
+				window.notifSoundPath = getLib("assetLib").fetchAsset("Assets/Sounds/Notification Main.mp3")
 
 				notify("Invalid colorpicker object and/or no valid default was found.", 99999)
 				return
@@ -215,10 +235,10 @@ local gameGroup = tabs.home:AddRightGroupbox("Game")
 --      HOME: INFORMATION GROUP  --
 -------------------------------------
 
-if getgenv().auth and executionLib then
-	informationGroup:AddLabel("Identifier: " .. getgenv().auth.currentUser.Identifier)
-	informationGroup:AddLabel("Rank: " .. getgenv().auth.currentUser.Rank)
-	informationGroup:AddLabel("Discord ID: " .. getgenv().auth.currentUser.DiscordId)
+if getLib("auth") and executionLib then
+	informationGroup:AddLabel("Identifier: " .. getLib("auth").currentUser.Identifier)
+	informationGroup:AddLabel("Rank: " .. getLib("auth").currentUser.Rank)
+	informationGroup:AddLabel("Discord ID: " .. getLib("auth").currentUser.DiscordId)
 	informationGroup:AddLabel("Executions: " .. executionLib.fetchExecutions())
 
 	informationGroup:AddLabel("Executor: " .. identifyexecutor())
@@ -325,11 +345,11 @@ toggles.godmodeHideEnergyGain_Toggle:OnChanged(function(enabled)
 end)
 
 toggles.noclip_Toggle:OnChanged(function(enabled)
-    getgenv().entityLib.toggleNoclip(enabled)
+    getLib("entityLib").toggleNoclip(enabled)
 end)
 
 toggles.fly_Toggle:OnChanged(function(enabled)
-    getgenv().entityLib.toggleFly(enabled)
+    getLib("entityLib").toggleFly(enabled)
 end)
 
 options.flyHorizontalSpeed_Slider:OnChanged(function(val)
@@ -620,7 +640,7 @@ hiddenItemsDepbox:AddToggle("hiddenItemESPEnableLabels_Toggle", { Text = "Enable
 local hiddenItemESPLabelDepbox = hiddenItemsDepbox:AddDependencyBox()
 
 hiddenItemESPLabelDepbox:AddLabel("Label Color"):AddColorPicker("hiddenItemLabelColor_Colorpicker", { Title = "Label Color", Default = Color3.fromRGB(36, 173, 26), Transparency = false })
-hiddenItemESPLabelDepbox:AddToggle("rainbowHiddenItemLabel_Toggle", { Text = "Rainbow ESP", Tooltip = false })
+hiddenItemESPLabelDepbox:AddToggle("rainbowHiddenItemLabel_Toggle", { Text = "Rainbow Label", Tooltip = false })
 hiddenItemESPLabelDepbox:AddSlider("hiddenItemLabelSize_Slider", { Text = "Label Size", Tooltip = false, Default = 15, Min = 10, Max = 30, Rounding = 0 })
 
 exploitsGroup2:AddToggle("badGuyESP_Toggle", { Text = "Bad Guy ESP", Tooltip = false })
@@ -886,33 +906,33 @@ exploitsGroup3:AddButton({ Text = "Teleport", Tooltip = false, DoubleClick = fal
         local cframeDestination = cframeValues[dropdown.Value]
         local hrp = getHRP()
 
-        getgenv().entityLib.teleport(cframeDestination)
+        getLib("entityLib").teleport(cframeDestination)
 
-        if getgenv().entityLib.checkTeleport(hrp, cframeDestination, 5) then
+        if getLib("entityLib").checkTeleport(hrp, cframeDestination, 5) then
             notify("Successfully teleported to " .. dropdown.Value .. ".", 6)
 
             -- If the teleport was successful, perform additional actions
 
             if dropdown.Value == "Villian Base" then
-                getgenv().utils.fireTouchEvent(hrp, game.Workspace.InsideTouchParts.FrontDoor)
+                getLib("utils").fireTouchEvent(hrp, game.Workspace.InsideTouchParts.FrontDoor)
                 print("fired touch: base")
 
             elseif dropdown.Value == "Fighting Arena" then
-                getgenv().utils.fireTouchEvent(hrp, game:GetService("Workspace").EvilArea.EnterPart)
+                getLib("utils").fireTouchEvent(hrp, game:GetService("Workspace").EvilArea.EnterPart)
                 print("fired touch: arena")
 
             elseif dropdown.Value == "Detective" then
                 local clickDetector = game.Workspace.TheHouse.OfficeDoor.ClosedDoor.Handle:FindFirstChildOfClass("ClickDetector")
 
                 if clickDetector then
-                    getgenv().utils.fireClickEvent(clickDetector)
+                    getLib("utils").fireClickEvent(clickDetector)
                 end
             end
 
             -- If value is NOT "Fighting Arena", remove the strength overhead
 
             if dropdown.Value ~= "Fighting Arena" then
-                getgenv().utils.fireTouchEvent(hrp, game.Workspace.EvilArea.ExitPart2)
+                getLib("utils").fireTouchEvent(hrp, game.Workspace.EvilArea.ExitPart2)
             end
 
         else
@@ -933,7 +953,7 @@ toggles.insideSpoof_Toggle:OnChanged(function(enabled)
             repeat
 
                 local hrp = getHRP()
-                getgenv().utils.fireTouchEvent(hrp, game.Workspace.InsideTouchParts.FrontDoor)
+                getLib("utils").fireTouchEvent(hrp, game.Workspace.InsideTouchParts.FrontDoor)
 
                 task.wait(0.2)
             until not toggles.insideSpoof_Toggle.Value
@@ -950,7 +970,7 @@ toggles.outsideSpoof_Toggle:OnChanged(function(enabled)
             repeat
 
                 local hrp = getHRP()
-                getgenv().utils.fireTouchEvent(hrp, game.Workspace.OutsideTouchParts.OutsideTouch)
+                getLib("utils").fireTouchEvent(hrp, game.Workspace.OutsideTouchParts.OutsideTouch)
 
                 task.wait(0.2)
             until not toggles.outsideSpoof_Toggle.Value
@@ -966,14 +986,14 @@ toggles.fightSpoof_Toggle:OnChanged(function(enabled)
             repeat
 
                 local hrp = getHRP()
-                getgenv().utils.fireTouchEvent(hrp, game.Workspace.EvilArea.EnterPart)
+                getLib("utils").fireTouchEvent(hrp, game.Workspace.EvilArea.EnterPart)
 
                 task.wait(0.2)
             until not toggles.outsideSpoof_Toggle.Value
         end)
     else
         local hrp = getHRP()
-        getgenv().utils.fireTouchEvent(hrp, game.Workspace.EvilArea.ExitPart2)
+        getLib("utils").fireTouchEvent(hrp, game.Workspace.EvilArea.ExitPart2)
     end
 end)
 
@@ -992,6 +1012,27 @@ itemsGroup2:AddDropdown("itemList_Dropdown", { Values = { "GoldPizza", "GoldenAp
 
 itemsGroup2:AddSlider("giveItemAmount_Slider", { Text = "Amount", Tooltip = false, Default = 10, Min = 1, Max = 800, Rounding = 0 })
 
+notify("erghregthehrteh", 10)
+
+itemsGroup2:AddInput("customGiveAmount_Input", { Default = "", Numeric = true, Finished = false, ClearTextOnFocus = true, Text = "Custom Value", Tooltip = false, Placeholder = "Number (###)", MaxLength = 3,
+	Callback = function(val)
+		local amountSlider = options.giveItemAmount_Slider
+        local amountSliderMin = options.giveItemAmount_Slider.Min
+        local amountSliderMax = options.giveItemAmount_Slider.Max
+        local NumeratedVal = tonumber(val)
+
+        if NumeratedVal < amountSliderMin then
+            notify("Cannot have values less than the minimum.", 6)
+        end
+
+        if NumeratedVal > amountSliderMax then
+            notify("Cannot have values greater than the maximum", 6)
+        end
+
+        amountSlider:SetValue(NumeratedVal)
+	end
+})
+
 itemsGroup2:AddButton({ Text = "Give Item", Tooltip = false, DoubleClick = false,
 	Func = function()
         local selectedItems = 0
@@ -1009,24 +1050,29 @@ itemsGroup2:AddButton({ Text = "Give Item", Tooltip = false, DoubleClick = false
         for item, isSelected in pairs(itemDropdown.Value) do
             if isSelected then
                 selectedItems += 1
-
-                if not localplayer.Character:FindFirstChild("Desert Storm Army Vest") then
-                    events.Vending:FireServer(3, "Armor2", "Armor", localplayer.Name, true, 1)
-                    task.wait(0.03)
-                    if localplayer.Character:FindFirstChild("Desert Storm Army Vest") then
-                        notify("You have been given armor.", 4)
+        
+                if item == "Armor" then
+                    if not localplayer.Character:FindFirstChild("Desert Storm Army Vest") then
+                        events.Vending:FireServer(3, "Armor2", "Armor", localplayer.Name, true, 1)
+                        task.wait(0.03)
+                        if localplayer.Character:FindFirstChild("Desert Storm Army Vest") then
+                            notify("You have been given armor.", 4)
+                        else
+                            notify("Armor detection failed.", 6)
+                        end
                     else
-                        notify("Armor detection failed.", 6)
+                        notify("You already have armor.", 4)
                     end
                 else
                     for _ = 1, amountSlider.Value do
                         events.GiveTool:FireServer(item)
                     end
                 end
-            
+        
                 task.wait()
             end
         end
+        
 
         task.wait(0.2)
 
@@ -1069,7 +1115,7 @@ local giveWeapon_Btn = itemsGroup2:AddButton({ Text = "Give Weapon", Tooltip = f
 
         -- Weapon existence check
 
-        if getgenv().entityLib.getTool("Specific", weapon) then
+        if getLib("entityLib").getTool("Specific", weapon) then
             notify("You already have: " .. weapon .. ".", 6)
             return
         end
@@ -1092,7 +1138,7 @@ local giveWeapon_Btn = itemsGroup2:AddButton({ Text = "Give Weapon", Tooltip = f
 
         -- Check inventory, determine successful give attempt
 
-        if getgenv().entityLib.getTool("Specific", weapon) then
+        if getLib("entityLib").getTool("Specific", weapon) then
             notify("You have received: " .. weapon .. ".", 4)
         else
             notify("Weapon could not be given: " .. weapon .. ".", 6)
@@ -1106,7 +1152,7 @@ local giveBestWeapon_Btn = itemsGroup2:AddButton({ Text = "Give Best Weapon", To
 
         -- Check if the player already has the weapon
 
-        if getgenv().entityLib.getTool("Specific", bestWeapon) then
+        if getLib("entityLib").getTool("Specific", bestWeapon) then
             notify("You already have: " .. bestWeapon .. ".", 6)
             return
         end
@@ -1129,7 +1175,7 @@ local giveBestWeapon_Btn = itemsGroup2:AddButton({ Text = "Give Best Weapon", To
 
         -- Check inventory, determine successful give attempt
 
-        if getgenv().entityLib.getTool("Specific", bestWeapon) then
+        if getLib("entityLib").getTool("Specific", bestWeapon) then
             notify("You have received: " .. bestWeapon .. ".", 4)
         else
             notify("Weapon could not be given: " .. bestWeapon .. ".", 6)
@@ -1169,7 +1215,7 @@ local miscGroup = tabs.misc:AddLeftGroupbox("Miscellaneous")
 
 miscGroup:AddButton({ Text = "Lobby", Tooltip = false, DoubleClick = true,
 	Func = function()
-		getgenv().utils.gameTeleport(13864661000)
+		getLib("utils").gameTeleport(13864661000)
 
 		notify("Teleporting to lobby...", 100)
 	end
@@ -1326,12 +1372,14 @@ local function unloadModules()
 	end
 
     task.wait(0.1)
-
+ 
+    --[[
     getgenv().assetLib = nil
     getgenv().utils = nil
     getgenv().entityLib = nil
     getgenv().auth = nil
     getgenv().executionLib = nil
+    ]]
 end
 
 menuGroup:AddDivider()

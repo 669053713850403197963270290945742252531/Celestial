@@ -71,7 +71,6 @@ ModalElement.ZIndex = -999
 ModalElement.Parent = ModalScreenGui
 
 getgenv().assetLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Asset%20Library.lua"))()
-print(getgenv().assetLib)
 getgenv().assetLib.createAssets("Sounds")
 
 getgenv().utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Core%20Utilities.lua"))()
