@@ -129,12 +129,8 @@ local function notify(message, duration)
 	end
 
 	if window.notifSoundEnabled then
-		print(getLib("assetLib"))
-
-		--[[
         local notifSound = getLib("assetLib").fetchAsset("Assets/Sounds/Notification Main.mp3", window.alertVolume)
 		linoria:Notify(message, duration, notifSound)
-        ]]
 	else
 		linoria:Notify(message, duration)
 	end
@@ -270,45 +266,19 @@ local exploitsGroup3 = tabs.exploits:AddLeftGroupbox("Other")
 exploitsGroup1:AddToggle("godmode_Toggle", { Text = "Godmode", Tooltip = false })
 local godmodeDepbox = exploitsGroup1:AddDependencyBox()
 
-godmodeDepbox:AddSlider(
-	"godmodeDelay_Slider",
-	{ Text = "Delay", Tooltip = false, Default = 0.05, Min = 0, Max = 10, Rounding = 2 }
-)
-godmodeDepbox:AddToggle(
-	"godmodeHideEnergyGain_Toggle",
-	{ Text = "Hide Energy Gain", Tooltip = 'Hides the "+x" text above the energy bar while keeping the "-x" text.' }
+godmodeDepbox:AddSlider("godmodeDelay_Slider", { Text = "Delay", Tooltip = false, Default = 0.05, Min = 0, Max = 10, Rounding = 2 })
+godmodeDepbox:AddToggle("godmodeHideEnergyGain_Toggle", { Text = "Hide Energy Gain", Tooltip = 'Hides the "+x" text above the energy bar while keeping the "-x" text.' })
+
+exploitsGroup1:AddToggle("noclip_Toggle", { Text = "Noclip", Tooltip = false, Default = false }):AddKeyPicker("noclip_KeyPicker", { Default = "G", SyncToggleState = true, Mode = "Toggle", Text = "Noclip", NoUI = false }
 )
 
-exploitsGroup1:AddToggle("noclip_Toggle", { Text = "Noclip", Tooltip = false, Default = false }):AddKeyPicker(
-	"noclip_KeyPicker",
-	{ Default = "G", SyncToggleState = true, Mode = "Toggle", Text = "Noclip", NoUI = false }
-)
-
-exploitsGroup1
-	:AddToggle("fly_Toggle", { Text = "Fly", Tooltip = false, Default = false })
-	:AddKeyPicker(
-		"fly_KeyPicker",
-		{ Default = "F", SyncToggleState = true, Mode = "Toggle", Text = "Fly", NoUI = false }
-	)
+exploitsGroup1:AddToggle("fly_Toggle", { Text = "Fly", Tooltip = false, Default = false })
+:AddKeyPicker("fly_KeyPicker", { Default = "F", SyncToggleState = true, Mode = "Toggle", Text = "Fly", NoUI = false })
 
 local flyDepbox = exploitsGroup1:AddDependencyBox()
 
-flyDepbox:AddSlider("flyHorizontalSpeed_Slider", {
-	Text = "Horizontal Speed",
-	Tooltip = "How fast you fly in all directions.",
-	Default = 50,
-	Min = 10,
-	Max = 300,
-	Rounding = 1,
-})
-flyDepbox:AddSlider("flyVerticalSpeed_Slider", {
-	Text = "Vertical Speed",
-	Tooltip = "How fast you fly ascending/descending.",
-	Default = 30,
-	Min = 5,
-	Max = 150,
-	Rounding = 1,
-})
+flyDepbox:AddSlider("flyHorizontalSpeed_Slider", { Text = "Horizontal Speed", Tooltip = "How fast you fly in all directions.", Default = 50, Min = 10, Max = 300, Rounding = 1 })
+flyDepbox:AddSlider("flyVerticalSpeed_Slider", {Text = "Vertical Speed", Tooltip = "How fast you fly ascending/descending.", Default = 30, Min = 5, Max = 150, Rounding = 1 })
 
 exploitsGroup1:AddToggle("doorNoclip_Toggle", { Text = "Door Noclip", Tooltip = false, Default = false })
 
@@ -317,24 +287,15 @@ exploitsGroup1:AddDivider()
 exploitsGroup1:AddToggle("speedExploit_Toggle", { Text = "Speed Exploit", Tooltip = false })
 local speedExploitDepbox = exploitsGroup1:AddDependencyBox()
 
-speedExploitDepbox:AddSlider(
-	"speedExploitDelay_Slider",
-	{ Text = "Delay", Tooltip = false, Default = 1, Min = 0, Max = 10, Rounding = 2 }
-)
+speedExploitDepbox:AddSlider("speedExploitDelay_Slider", { Text = "Delay", Tooltip = false, Default = 1, Min = 0, Max = 10, Rounding = 2 })
 speedExploitDepbox:AddToggle("speedExploitHideTrail_Toggle", { Text = "Hide Trail (Client-Sided)", Tooltip = false })
 
-exploitsGroup1:AddToggle(
-	"collectCash_Toggle",
-	{ Text = "Collect Cash", Tooltip = "Collects all on-ground cash drops." }
-)
+exploitsGroup1:AddToggle("collectCash_Toggle", { Text = "Collect Cash", Tooltip = "Collects all on-ground cash drops." })
 
 exploitsGroup1:AddToggle("autoKillBadGuys_Toggle", { Text = "Kill Aura", Tooltip = false })
 local autoKillDepbox = exploitsGroup1:AddDependencyBox()
 
-autoKillDepbox:AddSlider(
-	"autoKillDelay_Slider",
-	{ Text = "Damage Amount", Tooltip = false, Default = 100, Min = 1, Max = 100, Rounding = 0 }
-)
+autoKillDepbox:AddSlider("autoKillDelay_Slider", { Text = "Damage Amount", Tooltip = false, Default = 100, Min = 1, Max = 100, Rounding = 0 })
 
 godmodeDepbox:SetupDependencies({ { toggles.godmode_Toggle, true } })
 flyDepbox:SetupDependencies({ { toggles.fly_Toggle, true } })
@@ -659,40 +620,25 @@ end)
 --      EXPLOITS: VISUALS GROUP  --
 -------------------------------------
 
-exploitsGroup2:AddToggle(
-	"hiddenItemESP_Toggle",
-	{ Text = "Hidden Item ESP", Tooltip = "Highlights all the items inside drawers." }
-)
+exploitsGroup2:AddToggle("hiddenItemESP_Toggle", { Text = "Hidden Item ESP", Tooltip = "Highlights all the items inside drawers." })
 
 local hiddenItemsDepbox = exploitsGroup2:AddDependencyBox()
 
-hiddenItemsDepbox:AddLabel("ESP Color"):AddColorPicker(
-	"hiddenItemESPColor_Colorpicker",
-	{ Title = "ESP Color", Default = Color3.fromRGB(252, 186, 3), Transparency = 0.5 }
-)
+hiddenItemsDepbox:AddLabel("ESP Color"):AddColorPicker("hiddenItemESPColor_Colorpicker",{ Title = "ESP Color", Default = Color3.fromRGB(252, 186, 3), Transparency = 0.5 })
 hiddenItemsDepbox:AddToggle("rainbowHiddenItemESP_Toggle", { Text = "Rainbow ESP", Tooltip = false })
 hiddenItemsDepbox:AddToggle("hiddenItemESPEnableLabels_Toggle", { Text = "Enable Labels", Tooltip = false })
 
 local hiddenItemESPLabelDepbox = hiddenItemsDepbox:AddDependencyBox()
 
-hiddenItemESPLabelDepbox:AddLabel("Label Color"):AddColorPicker(
-	"hiddenItemLabelColor_Colorpicker",
-	{ Title = "Label Color", Default = Color3.fromRGB(36, 173, 26), Transparency = false }
-)
+hiddenItemESPLabelDepbox:AddLabel("Label Color"):AddColorPicker("hiddenItemLabelColor_Colorpicker", { Title = "Label Color", Default = Color3.fromRGB(36, 173, 26), Transparency = false })
 hiddenItemESPLabelDepbox:AddToggle("rainbowHiddenItemLabel_Toggle", { Text = "Rainbow Label", Tooltip = false })
-hiddenItemESPLabelDepbox:AddSlider(
-	"hiddenItemLabelSize_Slider",
-	{ Text = "Label Size", Tooltip = false, Default = 15, Min = 10, Max = 30, Rounding = 0 }
-)
+hiddenItemESPLabelDepbox:AddSlider("hiddenItemLabelSize_Slider", { Text = "Label Size", Tooltip = false, Default = 15, Min = 10, Max = 30, Rounding = 0 })
 
 exploitsGroup2:AddToggle("badGuyESP_Toggle", { Text = "Bad Guy ESP", Tooltip = false })
 
 local badGuyESPDepbox = exploitsGroup2:AddDependencyBox()
 
-badGuyESPDepbox:AddLabel("ESP Color"):AddColorPicker(
-	"badGuyESPColor_Colorpicker",
-	{ Title = "ESP Color", Default = Color3.fromRGB(255, 0, 0), Transparency = 0.5 }
-)
+badGuyESPDepbox:AddLabel("ESP Color"):AddColorPicker("badGuyESPColor_Colorpicker", { Title = "ESP Color", Default = Color3.fromRGB(255, 0, 0), Transparency = 0.5 })
 badGuyESPDepbox:AddToggle("rainbowBadGuyESP_Toggle", { Text = "Rainbow ESP", Tooltip = false })
 
 exploitsGroup2:AddToggle("disableVignette_Toggle", { Text = "Disable Vignette", Tooltip = false })
@@ -934,254 +880,64 @@ end)
 --      EXPLOITS: OTHERS GROUP  --
 -------------------------------------
 
-exploitsGroup3:AddDropdown("locationTeleport_Dropdown", {
-	Values = {
-		"Villian Base",
-		"Kitchen",
-		"Fighting Arena",
-		"Gym",
-		"Pizza Boss",
-		"Shop",
-		"Golden Apple Path",
-		"Generator",
-		"Boss Fight Start",
-		"Boss Fight Main",
-		"Kitchen",
-		"Twado",
-		"Detective",
-	},
-	Searchable = false,
-	Default = 1,
-	Multi = false,
-	Text = "Teleport to Location",
-	Tooltip = false,
-})
+exploitsGroup3:AddDropdown("locationTeleport_Dropdown", { Values = { "Villian Base", "Kitchen", "Fighting Arena", "Gym", "Pizza Boss", "Shop", "Golden Apple Path", "Generator", "Boss Fight Start",
+"Boss Fight Main", "Kitchen", "Twado", "Detective" }, Searchable = false, Default = 1, Multi = false, Text = "Teleport to Location", Tooltip = false })
 
-exploitsGroup3:AddButton({
-	Text = "Teleport",
-	Tooltip = false,
-	DoubleClick = false,
+exploitsGroup3:AddButton({ Text = "Teleport", Tooltip = false, DoubleClick = false,
 	Func = function()
-		local cframeValues = {
-			["Villian Base"] = CFrame.new(
-				-233.926117,
-				30.4567528,
-				-790.019897,
-				0.00195977557,
-				-8.22674984e-11,
-				-0.999998093,
-				-2.4766762e-09,
-				1,
-				-8.71213934e-11,
-				0.999998093,
-				2.47684229e-09,
-				0.00195977557
-			),
-			["Kitchen"] = CFrame.new(
-				-216.701218,
-				30.4702568,
-				-722.335327,
-				0.00404609647,
-				1.23633853e-07,
-				0.999991834,
-				-7.18327664e-09,
-				1,
-				-1.23605801e-07,
-				-0.999991834,
-				-6.68309719e-09,
-				0.00404609647
-			),
-			["Fighting Arena"] = CFrame.new(
-				-262.294586,
-				62.7116394,
-				-735.916199,
-				-1,
-				-7.62224133e-08,
-				-0.000201582094,
-				-7.6233647e-08,
-				1,
-				5.5719358e-08,
-				0.000201582094,
-				5.57347235e-08,
-				-1
-			),
-			["Gym"] = CFrame.new(
-				-257.281738,
-				63.4477501,
-				-843.258362,
-				0.999999464,
-				-6.6242154e-09,
-				0.00105193094,
-				6.52111609e-09,
-				1,
-				9.80127126e-08,
-				-0.00105193094,
-				-9.8005799e-08,
-				0.999999464
-			),
-			["Pizza Boss"] = CFrame.new(
-				-287.475769,
-				30.4527531,
-				-721.746277,
-				-0.00427152216,
-				-8.6121041e-08,
-				0.99999088,
-				2.21573924e-08,
-				1,
-				8.6216474e-08,
-				-0.99999088,
-				2.25254659e-08,
-				-0.00427152216
-			),
-			["Shop"] = CFrame.new(
-				-251.009491,
-				30.4477539,
-				-851.509705,
-				0.0225389507,
-				7.41174511e-10,
-				-0.999745965,
-				2.19171417e-10,
-				1,
-				7.46304019e-10,
-				0.999745965,
-				-2.35936659e-10,
-				0.0225389507
-			),
-			["Golden Apple Path"] = CFrame.new(
-				85.6087112,
-				29.4477024,
-				-804.023926,
-				-0.999134541,
-				1.15144616e-09,
-				0.0415947847,
-				4.49046622e-09,
-				1,
-				8.01815432e-08,
-				-0.0415947847,
-				8.02989319e-08,
-				-0.999134541
-			),
-			["Generator"] = CFrame.new(
-				-114.484352,
-				30.0235462,
-				-790.053833,
-				-0.656062722,
-				0,
-				-0.754706323,
-				0,
-				1,
-				0,
-				0.754706323,
-				0,
-				-0.656062722
-			),
-			["Boss Fight Start"] = CFrame.new(
-				-1328.85242,
-				-346.249146,
-				-810.092285,
-				0.00456922129,
-				5.69967078e-08,
-				0.999989569,
-				1.76120984e-08,
-				1,
-				-5.70777772e-08,
-				-0.999989569,
-				1.78727166e-08,
-				0.00456922129
-			),
-			["Boss Fight Main"] = CFrame.new(
-				-1589.43518,
-				-368.714264,
-				-1009.18408,
-				0.00910976715,
-				-2.96539877e-08,
-				-0.999958515,
-				2.42480613e-09,
-				1,
-				-2.9633128e-08,
-				0.999958515,
-				-2.15475482e-09,
-				0.00910976715
-			),
-			["Kitchen"] = CFrame.new(
-				-244.960632,
-				30.4702587,
-				-735.684692,
-				-0.998042107,
-				7.45045003e-09,
-				-0.0625452921,
-				1.36177949e-08,
-				1,
-				-9.81797754e-08,
-				0.0625452921,
-				-9.88392799e-08,
-				-0.998042107
-			),
-			["Twado"] = CFrame.new(
-				-273.23111,
-				30.2200623,
-				-907.456665,
-				-0.214113176,
-				-1.13417443e-07,
-				0.976808846,
-				-8.10850675e-09,
-				1,
-				1.14332813e-07,
-				-0.976808846,
-				1.65597012e-08,
-				-0.214113176
-			),
-			["Detective"] = CFrame.new(
-				-278.495697,
-				95.4477386,
-				-790.951477,
-				0.00650879554,
-				-5.40658984e-09,
-				0.99997884,
-				2.86954238e-10,
-				1,
-				5.40483658e-09,
-				-0.99997884,
-				2.51769161e-10,
-				0.00650879554
-			),
-		}
+        local cframeValues = {
+            ["Villian Base"] = CFrame.new(-233.926117, 30.4567528, -790.019897, 0.00195977557, -8.22674984e-11, -0.999998093, -2.4766762e-09, 1, -8.71213934e-11, 0.999998093, 2.47684229e-09, 0.00195977557),
+            ["Kitchen"] = CFrame.new(-216.701218, 30.4702568, -722.335327, 0.00404609647, 1.23633853e-07, 0.999991834, -7.18327664e-09, 1, -1.23605801e-07, -0.999991834, -6.68309719e-09, 0.00404609647),
+            ["Fighting Arena"] = CFrame.new(-262.294586, 62.7116394, -735.916199, -1, -7.62224133e-08, -0.000201582094, -7.6233647e-08, 1, 5.5719358e-08, 0.000201582094, 5.57347235e-08, -1),
+            ["Gym"] = CFrame.new(-257.281738, 63.4477501, -843.258362, 0.999999464, -6.6242154e-09, 0.00105193094, 6.52111609e-09, 1, 9.80127126e-08, -0.00105193094, -9.8005799e-08, 0.999999464),
+            ["Pizza Boss"] = CFrame.new(-287.475769, 30.4527531, -721.746277, -0.00427152216, -8.6121041e-08, 0.99999088, 2.21573924e-08, 1, 8.6216474e-08, -0.99999088, 2.25254659e-08, -0.00427152216),
+            ["Shop"] = CFrame.new(-251.009491, 30.4477539, -851.509705, 0.0225389507, 7.41174511e-10, -0.999745965, 2.19171417e-10, 1, 7.46304019e-10, 0.999745965, -2.35936659e-10, 0.0225389507),
+            ["Golden Apple Path"] = CFrame.new(85.6087112, 29.4477024, -804.023926, -0.999134541, 1.15144616e-09, 0.0415947847, 4.49046622e-09, 1, 8.01815432e-08, -0.0415947847, 8.02989319e-08, -0.999134541),
+            ["Generator"] = CFrame.new(-114.484352, 30.0235462, -790.053833, -0.656062722, 0, -0.754706323, 0, 1, 0, 0.754706323, 0, -0.656062722),
+            ["Boss Fight Start"] = CFrame.new(-1328.85242, -346.249146, -810.092285, 0.00456922129, 5.69967078e-08, 0.999989569, 1.76120984e-08, 1, -5.70777772e-08, -0.999989569, 1.78727166e-08, 0.00456922129),
+            ["Boss Fight Main"] = CFrame.new(-1589.43518, -368.714264, -1009.18408, 0.00910976715, -2.96539877e-08, -0.999958515, 2.42480613e-09, 1, -2.9633128e-08, 0.999958515, -2.15475482e-09, 0.00910976715),
+            ["Kitchen"] = CFrame.new(-244.960632, 30.4702587, -735.684692, -0.998042107, 7.45045003e-09, -0.0625452921, 1.36177949e-08, 1, -9.81797754e-08, 0.0625452921, -9.88392799e-08, -0.998042107),
+            ["Twado"] = CFrame.new(-273.23111, 30.2200623, -907.456665, -0.214113176, -1.13417443e-07, 0.976808846, -8.10850675e-09, 1, 1.14332813e-07, -0.976808846, 1.65597012e-08, -0.214113176),
+            ["Detective"] = CFrame.new(-278.495697, 95.4477386, -790.951477, 0.00650879554, -5.40658984e-09, 0.99997884, 2.86954238e-10, 1, 5.40483658e-09, -0.99997884, 2.51769161e-10, 0.00650879554)
+        }
 
-		local dropdown = options.locationTeleport_Dropdown
-		local cframeDestination = cframeValues[dropdown.Value]
-		local hrp = getHRP()
+        local dropdown = options.locationTeleport_Dropdown
+        local cframeDestination = cframeValues[dropdown.Value]
+        local hrp = getHRP()
 
-		getLib("entityLib").teleport(cframeDestination)
+        getLib("entityLib").teleport(cframeDestination)
 
-		if getLib("entityLib").checkTeleport(hrp, cframeDestination, 5) then
-			notify("Successfully teleported to " .. dropdown.Value .. ".", 6)
+        if getLib("entityLib").checkTeleport(hrp, cframeDestination, 5) then
+            notify("Successfully teleported to " .. dropdown.Value .. ".", 6)
 
-			-- If the teleport was successful, perform additional actions
+            -- If the teleport was successful, perform additional actions
 
-			if dropdown.Value == "Villian Base" then
-				getLib("utils").fireTouchEvent(hrp, game.Workspace.InsideTouchParts.FrontDoor)
-				print("fired touch: base")
-			elseif dropdown.Value == "Fighting Arena" then
-				getLib("utils").fireTouchEvent(hrp, game:GetService("Workspace").EvilArea.EnterPart)
-				print("fired touch: arena")
-			elseif dropdown.Value == "Detective" then
-				local clickDetector =
-					game.Workspace.TheHouse.OfficeDoor.ClosedDoor.Handle:FindFirstChildOfClass("ClickDetector")
+            if dropdown.Value == "Villian Base" then
+                getLib("utils").fireTouchEvent(hrp, game.Workspace.InsideTouchParts.FrontDoor)
+                print("fired touch: base")
 
-				if clickDetector then
-					getLib("utils").fireClickEvent(clickDetector)
-				end
-			end
+            elseif dropdown.Value == "Fighting Arena" then
+                getLib("utils").fireTouchEvent(hrp, game:GetService("Workspace").EvilArea.EnterPart)
+                print("fired touch: arena")
 
-			-- If value is NOT "Fighting Arena", remove the strength overhead
+            elseif dropdown.Value == "Detective" then
+                local clickDetector = game.Workspace.TheHouse.OfficeDoor.ClosedDoor.Handle:FindFirstChildOfClass("ClickDetector")
 
-			if dropdown.Value ~= "Fighting Arena" then
-				getLib("utils").fireTouchEvent(hrp, game.Workspace.EvilArea.ExitPart2)
-			end
-		else
-			notify("Failed to teleport to " .. dropdown.Value .. ".", 7)
-		end
-	end,
+                if clickDetector then
+                    getLib("utils").fireClickEvent(clickDetector)
+                end
+            end
+
+            -- If value is NOT "Fighting Arena", remove the strength overhead
+
+            if dropdown.Value ~= "Fighting Arena" then
+                getLib("utils").fireTouchEvent(hrp, game.Workspace.EvilArea.ExitPart2)
+            end
+
+        else
+            notify("Failed to teleport to " .. dropdown.Value .. ".", 7)
+        end
+	end
 })
 
 exploitsGroup3:AddToggle("insideSpoof_Toggle", { Text = "Inside Spoof", Tooltip = false })
@@ -1247,65 +1003,28 @@ local itemsGroup2 = tabs.util:AddLeftGroupbox("Items")
 --      UTIL: ITEMS GROUP  --
 -------------------------------------
 
-itemsGroup2:AddDropdown("itemList_Dropdown", {
-	Values = {
-		"GoldPizza",
-		"GoldenApple",
-		"RainbowPizzaBox",
-		"RainbowPizza",
-		"GoldKey",
-		"Bottle",
-		"Armor",
-		"Louise",
-		"Lollipop",
-		"Ladder",
-		"MedKit",
-		"Chips",
-		"Cookie",
-		"BloxyCola",
-		"Apple",
-		"Pizza",
-		"ExpiredBloxyCola",
-	},
-	Searchable = true,
-	Default = 1,
-	Multi = true,
-	Text = "Item",
-	Tooltip = false,
-})
+itemsGroup2:AddDropdown("itemList_Dropdown", { Values = { "GoldPizza", "GoldenApple", "RainbowPizzaBox", "RainbowPizza", "GoldKey",
+"Bottle", "Armor", "Louise", "Lollipop", "Ladder", "MedKit", "Chips", "Cookie", "BloxyCola", "Apple", "Pizza", "ExpiredBloxyCola" }, Searchable = true, Default = 1, Multi = true, Text = "Item", Tooltip = false })
 
-itemsGroup2:AddSlider(
-	"giveItemAmount_Slider",
-	{ Text = "Amount", Tooltip = false, Default = 10, Min = 1, Max = 800, Rounding = 0 }
-)
+itemsGroup2:AddSlider("giveItemAmount_Slider", { Text = "Amount", Tooltip = false, Default = 10, Min = 1, Max = 800, Rounding = 0 })
 
-notify("erghregthehrteh", 10)
-
-itemsGroup2:AddInput("customGiveAmount_Input", {
-	Default = "",
-	Numeric = true,
-	Finished = false,
-	ClearTextOnFocus = true,
-	Text = "Custom Value",
-	Tooltip = false,
-	Placeholder = "Number (###)",
-	MaxLength = 3,
+itemsGroup2:AddInput("customGiveAmount_Input", { Default = "", Numeric = true, Finished = false, ClearTextOnFocus = true, Text = "Custom Value", Tooltip = false, Placeholder = "Number (###)", MaxLength = 3,
 	Callback = function(val)
 		local amountSlider = options.giveItemAmount_Slider
-		local amountSliderMin = options.giveItemAmount_Slider.Min
-		local amountSliderMax = options.giveItemAmount_Slider.Max
-		local NumeratedVal = tonumber(val)
+        local amountSliderMin = options.giveItemAmount_Slider.Min
+        local amountSliderMax = options.giveItemAmount_Slider.Max
+        local NumeratedVal = tonumber(val)
 
-		if NumeratedVal < amountSliderMin then
-			notify("Cannot have values less than the minimum.", 6)
-		end
+        if NumeratedVal < amountSliderMin then
+            notify("Cannot have values less than the minimum.", 6)
+        end
 
-		if NumeratedVal > amountSliderMax then
-			notify("Cannot have values greater than the maximum", 6)
-		end
+        if NumeratedVal > amountSliderMax then
+            notify("Cannot have values greater than the maximum", 6)
+        end
 
-		amountSlider:SetValue(NumeratedVal)
-	end,
+        amountSlider:SetValue(NumeratedVal)
+	end
 })
 
 itemsGroup2:AddButton({
@@ -1384,93 +1103,80 @@ itemsGroup2:AddButton({
 
 itemsGroup2:AddDivider()
 
-itemsGroup2:AddDropdown("weaponList_Dropdown", {
-	Values = { "Crowbar 1", "Crowbar 2", "Bat", "Pitchfork", "Hammer", "Wrench", "Broom" },
-	Searchable = true,
-	Default = 1,
-	Multi = false,
-	Text = "Weapon",
-	Tooltip = false,
+itemsGroup2:AddDropdown("weaponList_Dropdown", { Values = { "Crowbar 1", "Crowbar 2", "Bat", "Pitchfork", "Hammer", "Wrench", "Broom" }, Searchable = true, Default = 1, Multi = false, Text = "Weapon", Tooltip = false })
+
+local giveWeapon_Btn = itemsGroup2:AddButton({ Text = "Give Weapon", Tooltip = false, DoubleClick = false,
+	Func = function()
+        local weapon = options.weaponList_Dropdown.Value
+
+        -- Weapon existence check
+
+        if getLib("entityLib").getTool("Specific", weapon) then
+            notify("You already have: " .. weapon .. ".", 6)
+            return
+        end
+
+        -- Save current inventory
+
+        local inventoryBefore = {}
+        for _, tool in ipairs(localplayer.Backpack:GetChildren()) do
+            inventoryBefore[tool.Name] = true
+        end
+
+        for _, tool in ipairs(localplayer.Character:GetChildren()) do
+            if tool:IsA("Tool") then
+                inventoryBefore[tool.Name] = true
+            end
+        end
+
+        events.Vending:FireServer(3, weapon, "Weapons", localplayer.Name, 1)
+        task.wait(0.5)
+
+        -- Check inventory, determine successful give attempt
+
+        if getLib("entityLib").getTool("Specific", weapon) then
+            notify("You have received: " .. weapon .. ".", 4)
+        else
+            notify("Weapon could not be given: " .. weapon .. ".", 6)
+        end
+	end
 })
 
-local giveWeapon_Btn = itemsGroup2:AddButton({
-	Text = "Give Weapon",
-	Tooltip = false,
-	DoubleClick = false,
+local giveBestWeapon_Btn = itemsGroup2:AddButton({ Text = "Give Best Weapon", Tooltip = false, DoubleClick = false,
 	Func = function()
-		local weapon = options.weaponList_Dropdown.Value
+        local bestWeapon = localplayer.PlayerGui.Phone.Phone.Phone.Background.InfoScreen.WeaponInfo.TwadoWants.Text
 
-		-- Weapon existence check
+        -- Check if the player already has the weapon
 
-		if getLib("entityLib").getTool("Specific", weapon) then
-			notify("You already have: " .. weapon .. ".", 6)
-			return
-		end
+        if getLib("entityLib").getTool("Specific", bestWeapon) then
+            notify("You already have: " .. bestWeapon .. ".", 6)
+            return
+        end
 
-		-- Save current inventory
+        -- Save current inventory
 
-		local inventoryBefore = {}
-		for _, tool in ipairs(localplayer.Backpack:GetChildren()) do
-			inventoryBefore[tool.Name] = true
-		end
+        local inventoryBefore = {}
+        for _, tool in ipairs(localplayer.Backpack:GetChildren()) do
+            inventoryBefore[tool.Name] = true
+        end
 
-		for _, tool in ipairs(localplayer.Character:GetChildren()) do
-			if tool:IsA("Tool") then
-				inventoryBefore[tool.Name] = true
-			end
-		end
+        for _, tool in ipairs(localplayer.Character:GetChildren()) do
+            if tool:IsA("Tool") then
+                inventoryBefore[tool.Name] = true
+            end
+        end
 
-		events.Vending:FireServer(3, weapon, "Weapons", localplayer.Name, 1)
-		task.wait(0.5)
+        events.Vending:FireServer(3, bestWeapon, "Weapons", localplayer.Name, 1)
+        task.wait(0.5)
 
-		-- Check inventory, determine successful give attempt
+        -- Check inventory, determine successful give attempt
 
-		if getLib("entityLib").getTool("Specific", weapon) then
-			notify("You have received: " .. weapon .. ".", 4)
-		else
-			notify("Weapon could not be given: " .. weapon .. ".", 6)
-		end
-	end,
-})
-
-local giveBestWeapon_Btn = itemsGroup2:AddButton({
-	Text = "Give Best Weapon",
-	Tooltip = false,
-	DoubleClick = false,
-	Func = function()
-		local bestWeapon = localplayer.PlayerGui.Phone.Phone.Phone.Background.InfoScreen.WeaponInfo.TwadoWants.Text
-
-		-- Check if the player already has the weapon
-
-		if getLib("entityLib").getTool("Specific", bestWeapon) then
-			notify("You already have: " .. bestWeapon .. ".", 6)
-			return
-		end
-
-		-- Save current inventory
-
-		local inventoryBefore = {}
-		for _, tool in ipairs(localplayer.Backpack:GetChildren()) do
-			inventoryBefore[tool.Name] = true
-		end
-
-		for _, tool in ipairs(localplayer.Character:GetChildren()) do
-			if tool:IsA("Tool") then
-				inventoryBefore[tool.Name] = true
-			end
-		end
-
-		events.Vending:FireServer(3, bestWeapon, "Weapons", localplayer.Name, 1)
-		task.wait(0.5)
-
-		-- Check inventory, determine successful give attempt
-
-		if getLib("entityLib").getTool("Specific", bestWeapon) then
-			notify("You have received: " .. bestWeapon .. ".", 4)
-		else
-			notify("Weapon could not be given: " .. bestWeapon .. ".", 6)
-		end
-	end,
+        if getLib("entityLib").getTool("Specific", bestWeapon) then
+            notify("You have received: " .. bestWeapon .. ".", 4)
+        else
+            notify("Weapon could not be given: " .. bestWeapon .. ".", 6)
+        end
+	end
 })
 
 -- =================================================
@@ -1503,15 +1209,12 @@ local testGroup4 = tabs.endings:AddLeftGroupbox("Groupbox Title")
 
 local miscGroup = tabs.misc:AddLeftGroupbox("Miscellaneous")
 
-miscGroup:AddButton({
-	Text = "Lobby",
-	Tooltip = false,
-	DoubleClick = true,
+miscGroup:AddButton({ Text = "Lobby", Tooltip = false, DoubleClick = true,
 	Func = function()
 		getLib("utils").gameTeleport(13864661000)
 
 		notify("Teleporting to lobby...", 100)
-	end,
+	end
 })
 
 miscGroup:AddToggle("bypassCutscenes_Toggle", { Text = "Bypass Cutscenes", Tooltip = false })
@@ -1528,6 +1231,7 @@ toggles.bypassCutscenes_Toggle:OnChanged(function(enabled)
 
 				if head then
 					-- Only reset if something externally changed the camera
+					
 					if
 						camera.CameraType ~= Enum.CameraType.Custom
 						or (lastCutsceneType and lastCutsceneType ~= camera.CameraType)
@@ -1607,74 +1311,19 @@ local menuGroup = tabs.config:AddLeftGroupbox("Menu")
 
 Library.KeybindFrame.Visible = true
 
-menuGroup:AddToggle("keybindMenu_Toggle", {
-	Default = linoria.KeybindFrame.Visible,
-	Text = "Keybind Menu",
-	Callback = function(enabled)
-		linoria.KeybindFrame.Visible = enabled
-	end,
-})
-menuGroup:AddToggle("customCursor_Toggle", {
-	Text = "Custom Cursor",
-	Default = useCustomCursor,
-	Callback = function(enabled)
-		linoria.ShowCustomCursor = enabled
-	end,
-})
-menuGroup:AddToggle("autoResetRainbowColor_Toggle", {
-	Text = "Auto Reset Color",
-	Tooltip = "Resets the colorpicker color back to its default color once a rainbow toggle is disabled.",
-	Default = true,
-	Callback = function(enabled)
-		window.autoResetRainbowColor = enabled
-	end,
-})
-menuGroup:AddToggle("executeOnTeleport_Toggle", {
-	Text = "Execute on Teleport",
-	Tooltip = "Runs the script when a game teleport is detected. Once the script is queued, it cannot be unqueued.",
-	Default = false,
-})
-menuGroup:AddToggle("notifSound_Toggle", {
-	Text = "Notification Alert Sounds",
-	Tooltip = false,
-	Default = true,
-	Callback = function(enabled)
-		window.notifSoundEnabled = enabled
-	end,
-})
+menuGroup:AddToggle("keybindMenu_Toggle", { Default = linoria.KeybindFrame.Visible, Text = "Keybind Menu", Callback = function(enabled) linoria.KeybindFrame.Visible = enabled end })
+menuGroup:AddToggle("customCursor_Toggle", { Text = "Custom Cursor", Default = useCustomCursor, Callback = function(enabled) linoria.ShowCustomCursor = enabled end })
+menuGroup:AddToggle("autoResetRainbowColor_Toggle", { Text = "Auto Reset Color", Tooltip = "Resets the colorpicker color back to its default color once a rainbow toggle is disabled.", Default = true, Callback = function(enabled) window.autoResetRainbowColor = enabled end })
+menuGroup:AddToggle("executeOnTeleport_Toggle", { Text = "Execute on Teleport", Tooltip = "Runs the script when a game teleport is detected. Once the script is queued, it cannot be unqueued.", Default = false })
+menuGroup:AddToggle("notifSound_Toggle", { Text = "Notification Alert Sounds", Tooltip = false, Default = true, Callback = function(enabled) window.notifSoundEnabled = enabled end })
 
 local notifSoundDepbox = menuGroup:AddDependencyBox()
 
-notifSoundDepbox:AddSlider("notifAlertVolumeSlider", {
-	Text = "Alert Volume",
-	Tooltip = false,
-	Default = 1,
-	Min = 0.1,
-	Max = 6,
-	Rounding = 1,
-	Compact = false,
-	HideMax = false,
-})
+notifSoundDepbox:AddSlider("notifAlertVolumeSlider", { Text = "Alert Volume", Tooltip = false, Default = 1, Min = 0.1, Max = 6, Rounding = 1, Compact = false, HideMax = false })
 notifSoundDepbox:SetupDependencies({ { toggles.notifSound_Toggle, true } })
 
-menuGroup:AddDropdown("notifSide", {
-	Values = { "Left", "Right" },
-	Searchable = false,
-	Default = 1,
-	Multi = false,
-	Text = "Notification Side",
-	Tooltip = "The side of the screen notifications will appear on.",
-})
-menuGroup:AddSlider("rainbowSpeedSlider", {
-	Text = "Rainbow Speed",
-	Tooltip = false,
-	Default = 0.1,
-	Min = 0.1,
-	Max = 1,
-	Rounding = 1,
-	Compact = false,
-	HideMax = true,
-})
+menuGroup:AddDropdown("notifSide", { Values = { "Left", "Right" }, Searchable = false, Default = 1, Multi = false, Text = "Notification Side", Tooltip = "The side of the screen notifications will appear on." })
+menuGroup:AddSlider("rainbowSpeedSlider", { Text = "Rainbow Speed", Tooltip = false, Default = 0.1, Min = 0.1, Max = 1, Rounding = 1, Compact = false, HideMax = true })
 
 if getgenv().scriptQueued == nil then
 	getgenv().scriptQueued = false
@@ -1730,17 +1379,12 @@ local function unloadModules()
     getgenv().entityLib = nil
     getgenv().auth = nil
     getgenv().executionLib = nil
-    ]]
+	]]
 end
 
 menuGroup:AddDivider()
-menuGroup
-	:AddLabel("Menu bind")
-	:AddKeyPicker("MenuKeybind", { Default = "RightShift", NoUI = true, Text = "Menu keybind" })
-menuGroup:AddButton("Unload", function()
-	linoria:Unload()
-	unloadModules()
-end)
+menuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", { Default = "RightShift", NoUI = true, Text = "Menu keybind" })
+menuGroup:AddButton("Unload", function() linoria:Unload() unloadModules() end)
 
 linoria.ToggleKeybind = options.MenuKeybind
 
@@ -1787,6 +1431,7 @@ end
 getgenv().fastLoad = nil
 getgenv().testing = nil
 getgenv().notifyLoad = nil
+
 if getgenv().auth then
 	getgenv().auth.clearStoredKey()
 end

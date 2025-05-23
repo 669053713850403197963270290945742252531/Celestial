@@ -1,11 +1,13 @@
 while not game:IsLoaded() do
-    task.wait()
+	task.wait()
 end
 
 local isScriptReloadable = true
 
 if not isScriptReloadable then
-	if shared.scriptLoaded then return end
+	if shared.scriptLoaded then
+		return
+	end
 	shared.scriptLoaded = true
 end
 
@@ -15,7 +17,7 @@ local saveManager = loadstring(readfile("Celestial/Revamped UI Libraries/Linoria
 
 local startTime
 if getgenv().notifyLoad == true then
-    startTime = tick()
+	startTime = tick()
 end
 
 local gameName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
@@ -24,11 +26,9 @@ local localplayer = players.LocalPlayer
 local remoteEvents = game:GetService("ReplicatedStorage").RemoteEvents
 
 if auth then
-    
-    if getgenv().auth.kicked then
-        return
-    end
-
+	if getgenv().auth.kicked then
+		return
+	end
 end
 
 local options = linoria.Options
@@ -40,14 +40,18 @@ linoria.ShowToggleFrameInKeybinds = true
 --      LINORIA  --
 -------------------------------------
 
-if auth then Title = "Celestial - " .. gameName .. " : " .. getgenv().auth.currentUser.Identifier else Title = "Celestial - " .. gameName end
+if auth then
+	Title = "Celestial - " .. gameName .. " : " .. getgenv().auth.currentUser.Identifier
+else
+	Title = "Celestial - " .. gameName
+end
 
 -- Solution to transparent fill on the cursor due to solara's shit drawing lib
 
 local useCustomCursor = true
 
 if identifyexecutor() == "Solara" then
-    useCustomCursor = false
+	useCustomCursor = false
 end
 
 local window = linoria:CreateWindow({
@@ -59,7 +63,7 @@ local window = linoria:CreateWindow({
 	NotifySide = "Left",
 	TabPadding = 8,
 	MenuFadeTime = 0.2,
-	RainbowSpeed = 0.1
+	RainbowSpeed = 0.1,
 })
 
 window.autoResetRainbowColor = true
@@ -72,7 +76,7 @@ local tabs = {
 	main = window:AddTab("Main"),
 	gui = window:AddTab("GUI"),
 	misc = window:AddTab("Misc"),
-	config = window:AddTab("Config")
+	config = window:AddTab("Config"),
 }
 
 -- Function things
@@ -80,30 +84,30 @@ local tabs = {
 local defaults = {
 	ESPColorPicker = Color3.new(1, 0, 0),
 	NametagColorPicker = Color3.new(0, 1, 0),
-	ChamsColorPicker = Color3.new(0, 0, 1)
+	ChamsColorPicker = Color3.new(0, 0, 1),
 }
 
 local function notify(message, duration)
-    if typeof(message) ~= "string" then
-        linoria:Notify("Argument #1 (message) expected a string value but got a " .. typeof(message) .. " value.", 20)
-        return
-    end
+	if typeof(message) ~= "string" then
+		linoria:Notify("Argument #1 (message) expected a string value but got a " .. typeof(message) .. " value.", 20)
+		return
+	end
 
-    if duration ~= nil and typeof(duration) ~= "number" then
-        linoria:Notify("Argument #2 (duration) expected a number value but got a " .. typeof(duration) .. " value.", 20)
-        return
-    end
+	if duration ~= nil and typeof(duration) ~= "number" then
+		linoria:Notify("Argument #2 (duration) expected a number value but got a " .. typeof(duration) .. " value.", 20)
+		return
+	end
 
-    if duration == nil then
-        duration = 5
-    end
+	if duration == nil then
+		duration = 5
+	end
 
-    if window.notifSoundEnabled then
-        local notifSound = getgenv().assetLib.fetchAsset("Assets/Sounds/Notification Main.mp3", window.alertVolume)
+	if window.notifSoundEnabled then
+		local notifSound = getgenv().assetLib.fetchAsset("Assets/Sounds/Notification Main.mp3", window.alertVolume)
 		linoria:Notify(message, duration, notifSound)
 	else
 		linoria:Notify(message, duration)
-    end
+	end
 end
 
 local rainbowConnections = {}
@@ -113,18 +117,19 @@ local function toggleRainbow(enabled, colorPickerName)
 	if enabled then
 		if not rainbowConnections[colorPickerName] then
 			hues[colorPickerName] = hues[colorPickerName] or 0
-			rainbowConnections[colorPickerName] = game:GetService("RunService").RenderStepped:Connect(function(deltaTime)
-				hues[colorPickerName] = (hues[colorPickerName] + deltaTime * window.RainbowSpeed) % 1
+			rainbowConnections[colorPickerName] = game:GetService("RunService").RenderStepped
+				:Connect(function(deltaTime)
+					hues[colorPickerName] = (hues[colorPickerName] + deltaTime * window.RainbowSpeed) % 1
 
-				if not options[colorPickerName] or not defaults[colorPickerName] then
-					window.notifSoundPath = getgenv().assetLib.fetchAsset("Assets/Sounds/Notification Main.mp3")
+					if not options[colorPickerName] or not defaults[colorPickerName] then
+						window.notifSoundPath = getgenv().assetLib.fetchAsset("Assets/Sounds/Notification Main.mp3")
 
-					notify("Invalid colorpicker object and/or no valid default was found.", 99999)
-					return
-				else
-					options[colorPickerName]:SetValueRGB(Color3.fromHSV(hues[colorPickerName], 1, 1))
-				end
-			end)
+						notify("Invalid colorpicker object and/or no valid default was found.", 99999)
+						return
+					else
+						options[colorPickerName]:SetValueRGB(Color3.fromHSV(hues[colorPickerName], 1, 1))
+					end
+				end)
 		end
 	else
 		if rainbowConnections[colorPickerName] then
@@ -146,19 +151,18 @@ local function toggleRainbow(enabled, colorPickerName)
 end
 
 local function getHRP()
-    return getgenv().entityLib.getCharInstance("HumanoidRootPart") or nil
+	return getgenv().entityLib.getCharInstance("HumanoidRootPart") or nil
 end
 
 local function getHumanoid()
-    local humanoid = getgenv().entityLib.getCharInstance("Humanoid")
+	local humanoid = getgenv().entityLib.getCharInstance("Humanoid")
 
-    if not humanoid then
-        return
-    end
+	if not humanoid then
+		return
+	end
 
-    return humanoid
+	return humanoid
 end
-
 
 -- =================================================
 --                   TAB: HOME                   --
@@ -203,7 +207,7 @@ local rolesGroup = tabs.main:AddRightGroupbox("Roles")
 local truckTeleportDisabled = false
 
 if not getgenv().utils.checkFunction(firetouchinterest) then
-    truckTeleportDisabled = true
+	truckTeleportDisabled = true
 end
 
 utilGroup:AddDropdown("truckTeleport_Dropdown", { Values = { "Truck 1", "Truck 2"}, Searchable = false, Default = 1, Multi = false, Text = "Teleport to Truck", Tooltip = false, Disabled = truckTeleportDisabled, DisabledTooltip = "Your exploit does not support this feature."})
@@ -343,31 +347,32 @@ local frameCounter = 0
 local fps = 60
 
 local watermarkConnection = game:GetService("RunService").RenderStepped:Connect(function()
-    frameCounter += 1
+	frameCounter = frameCounter + 1
 
-    if (tick() - frameTimer) >= 1 then
-        fps = frameCounter
-        frameTimer = tick()
-        frameCounter = 0
-    end
+	if (tick() - frameTimer) >= 1 then
+		fps = frameCounter
+		frameTimer = tick()
+		frameCounter = 0
+	end
 
-    local stats = game:GetService("Stats")
-    local network = stats and stats:FindFirstChild("Network")
-    local serverStats = network and network:FindFirstChild("ServerStatsItem")
+	local stats = game:GetService("Stats")
+	local network = stats and stats:FindFirstChild("Network")
+	local serverStats = network and network:FindFirstChild("ServerStatsItem")
 
-    local pingValue = "N/A"
-    if serverStats then
-        local success, result = pcall(function() return serverStats["Data Ping"]:GetValue() end)
-        if success and typeof(result) == "number" then
-            pingValue = math.floor(result)
-        else
-            print("Failed to retrieve ping value, result:", result)
-        end
-    end
+	local pingValue = "N/A"
+	if serverStats then
+		local success, result = pcall(function()
+			return serverStats["Data Ping"]:GetValue()
+		end)
+		if success and typeof(result) == "number" then
+			pingValue = math.floor(result)
+		else
+			print("Failed to retrieve ping value:", result)
+		end
+	end
 
-    linoria:SetWatermark(("Celestial | %s fps | %s ms"):format(math.floor(fps), pingValue))
+	linoria:SetWatermark(("Celestial | %s fps | %s ms"):format(math.floor(fps), pingValue))
 end)
-
 
 linoria:OnUnload(function()
 	watermarkConnection:Disconnect()
@@ -405,24 +410,24 @@ menuGroup:AddDropdown("notifSide", { Values = { "Left", "Right" }, Searchable = 
 menuGroup:AddSlider("rainbowSpeedSlider", { Text = "Rainbow Speed", Tooltip = false, Default = 0.1, Min = 0.1, Max = 1, Rounding = 1, Compact = false, HideMax = true, Disabled = true, })
 
 if getgenv().scriptQueued == nil then
-    getgenv().scriptQueued = false
+	getgenv().scriptQueued = false
 end
 
 toggles.executeOnTeleport_Toggle:OnChanged(function(enabled)
-    if enabled then
-        if not getgenv().scriptQueued then
-            queue_on_teleport([[
+	if enabled then
+		if not getgenv().scriptQueued then
+			queue_on_teleport([[
                 loadstring(readfile("Celestial/Supported Games/Linoria Rewrite/2025 Rewrite/Break In 2 - Lobby new.lua"))()
             ]])
-    
-            --notify("Successfully queued script.", 5)
-            getgenv().scriptQueued = true
 
-            toggles.executeOnTeleport_Toggle.Disabled = true
-        else
-            notify("Script is already queued.", 6)
-        end
-    end
+			--notify("Successfully queued script.", 5)
+			getgenv().scriptQueued = true
+
+			toggles.executeOnTeleport_Toggle.Disabled = true
+		else
+			notify("Script is already queued.", 6)
+		end
+	end
 end)
 
 options.notifAlertVolumeSlider:OnChanged(function(val)
@@ -438,23 +443,25 @@ options.rainbowSpeedSlider:OnChanged(function(val)
 end)
 
 local function unloadModules()
-    local modules = { "disableBreakIn1Recap_Toggle", "toggleTheHuntMenu_Toggle" }
+	local modules = { "disableBreakIn1Recap_Toggle", "toggleTheHuntMenu_Toggle" }
 
-    for _, moduleName in ipairs(modules) do
-        if toggles[moduleName] then
-            toggles[moduleName]:SetValue(false)
-        end
-    end
+	for _, moduleName in ipairs(modules) do
+		if toggles[moduleName] then
+			toggles[moduleName]:SetValue(false)
+		end
+	end
 
 	if not isScriptReloadable then
 		shared.scriptLoaded = false
 	end
 
-    getgenv().assetLib = nil
-    getgenv().utils = nil
-    getgenv().entityLib = nil
-    getgenv().auth = nil
-    getgenv().executionLib = nil
+	--[[
+	getgenv().assetLib = nil
+	getgenv().utils = nil
+	getgenv().entityLib = nil
+	getgenv().auth = nil
+	getgenv().executionLib = nil
+	]]
 end
 
 menuGroup:AddDivider()
@@ -466,21 +473,17 @@ linoria.ToggleKeybind = options.MenuKeybind
 -- Handle any case were the Linoria interface is destroyed abruptly
 
 for _, newUI in pairs(gethui():GetDescendants()) do
-    if newUI:IsA("ScreenGui") then
-        if newUI.Name == "Linoria" then
-            
-            task.spawn(function()
-
-                newUI.AncestryChanged:Connect(function(_, parent)
-                    if not parent then
-                        unloadModules()
-                    end
-                end)
-
-            end)
-
-        end
-    end
+	if newUI:IsA("ScreenGui") then
+		if newUI.Name == "Linoria" then
+			task.spawn(function()
+				newUI.AncestryChanged:Connect(function(_, parent)
+					if not parent then
+						unloadModules()
+					end
+				end)
+			end)
+		end
+	end
 end
 
 themeManager:SetLibrary(linoria)
@@ -496,20 +499,20 @@ saveManager:BuildConfigSection(tabs.config)
 saveManager:LoadAutoloadConfig()
 
 if getgenv().notifyLoad == true then
-    local endTime = tick()
-    local loadTime = getgenv().utils.round(endTime - startTime, 2)
+	local endTime = tick()
+	local loadTime = getgenv().utils.round(endTime - startTime, 2)
 	window.notifSoundPath = getgenv().assetLib.fetchAsset("Assets/Sounds/Notification Main.mp3")
 
-    if loadTime >= 5 then
-        notify("⚠️ Delayed execution.\nCelestial loaded in " .. loadTime .. " seconds.", 5)
-    else
-        notify("Celestial loaded in " .. loadTime .. " seconds.", 6)
-    end
+	if loadTime >= 5 then
+		notify("⚠️ Delayed execution.\nCelestial loaded in " .. loadTime .. " seconds.", 5)
+	else
+		notify("Celestial loaded in " .. loadTime .. " seconds.", 6)
+	end
 end
 
 getgenv().fastLoad = nil
 getgenv().testing = nil
 getgenv().notifyLoad = nil
 if getgenv().auth then
-    getgenv().auth.clearStoredKey()
+	getgenv().auth.clearStoredKey()
 end
