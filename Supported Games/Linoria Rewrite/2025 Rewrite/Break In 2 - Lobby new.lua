@@ -48,7 +48,7 @@ end
 
 -- Solution to transparent fill on the cursor due to solara's shit drawing lib
 
-local useCustomCursor = true
+local useCustomCursor = false
 
 if identifyexecutor() == "Solara" then
 	useCustomCursor = false
@@ -175,11 +175,11 @@ local gameGroup = tabs.home:AddRightGroupbox("Game")
 --      HOME: INFORMATION GROUP  --
 -------------------------------------
 
-if getgenv().auth and executionLib then
+if getgenv().auth and getgenv().executionLib then
 	informationGroup:AddLabel("Identifier: " .. getgenv().auth.currentUser.Identifier)
 	informationGroup:AddLabel("Rank: " .. getgenv().auth.currentUser.Rank)
 	informationGroup:AddLabel("Discord ID: " .. getgenv().auth.currentUser.DiscordId)
-	informationGroup:AddLabel("Executions: " .. executionLib.fetchExecutions())
+	informationGroup:AddLabel("Executions: " .. getgenv().executionLib.fetchExecutions())
 
 	informationGroup:AddLabel("Executor: " .. identifyexecutor())
 end
@@ -204,11 +204,7 @@ local rolesGroup = tabs.main:AddRightGroupbox("Roles")
 --      MAIN: UTILITIES GROUP  --
 -------------------------------------
 
-local truckTeleportDisabled = false
-
-if not getgenv().utils.checkFunction(firetouchinterest) then
-	truckTeleportDisabled = true
-end
+local truckTeleportDisabled = not getgenv().utils.checkFunction(firetouchinterest)
 
 utilGroup:AddDropdown("truckTeleport_Dropdown", { Values = { "Truck 1", "Truck 2"}, Searchable = false, Default = 1, Multi = false, Text = "Teleport to Truck", Tooltip = false, Disabled = truckTeleportDisabled, DisabledTooltip = "Your exploit does not support this feature."})
 
@@ -219,7 +215,7 @@ utilGroup:AddButton({ Text = "Teleport", Tooltip = false, DoubleClick = false, D
 
         if humanoid.Sit then
             humanoid.Sit = false
-            wait(1.5)
+            task.wait(1.5)
         end
 
         -- Get trucks

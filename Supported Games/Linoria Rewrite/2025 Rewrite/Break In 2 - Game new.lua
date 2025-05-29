@@ -72,7 +72,7 @@ end
 
 -- Solution to transparent fill on the cursor due to solara's shit drawing lib
 
-local useCustomCursor = true
+local useCustomCursor = false
 
 if identifyexecutor() == "Solara" then
 	useCustomCursor = false
@@ -269,8 +269,7 @@ local godmodeDepbox = exploitsGroup1:AddDependencyBox()
 godmodeDepbox:AddSlider("godmodeDelay_Slider", { Text = "Delay", Tooltip = false, Default = 0.05, Min = 0, Max = 10, Rounding = 2 })
 godmodeDepbox:AddToggle("godmodeHideEnergyGain_Toggle", { Text = "Hide Energy Gain", Tooltip = 'Hides the "+x" text above the energy bar while keeping the "-x" text.' })
 
-exploitsGroup1:AddToggle("noclip_Toggle", { Text = "Noclip", Tooltip = false, Default = false }):AddKeyPicker("noclip_KeyPicker", { Default = "G", SyncToggleState = true, Mode = "Toggle", Text = "Noclip", NoUI = false }
-)
+exploitsGroup1:AddToggle("noclip_Toggle", { Text = "Noclip", Tooltip = false, Default = false }):AddKeyPicker("noclip_KeyPicker", { Default = "G", SyncToggleState = true, Mode = "Toggle", Text = "Noclip", NoUI = false })
 
 exploitsGroup1:AddToggle("fly_Toggle", { Text = "Fly", Tooltip = false, Default = false })
 :AddKeyPicker("fly_KeyPicker", { Default = "F", SyncToggleState = true, Mode = "Toggle", Text = "Fly", NoUI = false })
@@ -913,15 +912,13 @@ exploitsGroup3:AddButton({ Text = "Teleport", Tooltip = false, DoubleClick = fal
             -- If the teleport was successful, perform additional actions
 
             if dropdown.Value == "Villian Base" then
-                getLib("utils").fireTouchEvent(hrp, game.Workspace.InsideTouchParts.FrontDoor)
-                print("fired touch: base")
+                getLib("utils").fireTouchEvent(hrp, game:GetService("Workspace").InsideTouchParts.FrontDoor)
 
             elseif dropdown.Value == "Fighting Arena" then
                 getLib("utils").fireTouchEvent(hrp, game:GetService("Workspace").EvilArea.EnterPart)
-                print("fired touch: arena")
 
             elseif dropdown.Value == "Detective" then
-                local clickDetector = game.Workspace.TheHouse.OfficeDoor.ClosedDoor.Handle:FindFirstChildOfClass("ClickDetector")
+                local clickDetector = game:GetService("Workspace").TheHouse.OfficeDoor.ClosedDoor.Handle:FindFirstChildOfClass("ClickDetector")
 
                 if clickDetector then
                     getLib("utils").fireClickEvent(clickDetector)
@@ -931,7 +928,7 @@ exploitsGroup3:AddButton({ Text = "Teleport", Tooltip = false, DoubleClick = fal
             -- If value is NOT "Fighting Arena", remove the strength overhead
 
             if dropdown.Value ~= "Fighting Arena" then
-                getLib("utils").fireTouchEvent(hrp, game.Workspace.EvilArea.ExitPart2)
+                getLib("utils").fireTouchEvent(hrp, game:GetService("Workspace").EvilArea.ExitPart2)
             end
 
         else
@@ -951,7 +948,7 @@ toggles.insideSpoof_Toggle:OnChanged(function(enabled)
 		task.spawn(function()
 			repeat
 				local hrp = getHRP()
-				getLib("utils").fireTouchEvent(hrp, game.Workspace.InsideTouchParts.FrontDoor)
+				getLib("utils").fireTouchEvent(hrp, game:GetService("Workspace").InsideTouchParts.FrontDoor)
 
 				task.wait(0.2)
 			until not toggles.insideSpoof_Toggle.Value
@@ -967,7 +964,7 @@ toggles.outsideSpoof_Toggle:OnChanged(function(enabled)
 		task.spawn(function()
 			repeat
 				local hrp = getHRP()
-				getLib("utils").fireTouchEvent(hrp, game.Workspace.OutsideTouchParts.OutsideTouch)
+				getLib("utils").fireTouchEvent(hrp, game:GetService("Workspace").OutsideTouchParts.OutsideTouch)
 
 				task.wait(0.2)
 			until not toggles.outsideSpoof_Toggle.Value
@@ -982,14 +979,14 @@ toggles.fightSpoof_Toggle:OnChanged(function(enabled)
 		task.spawn(function()
 			repeat
 				local hrp = getHRP()
-				getLib("utils").fireTouchEvent(hrp, game.Workspace.EvilArea.EnterPart)
+				getLib("utils").fireTouchEvent(hrp, game:GetService("Workspace").EvilArea.EnterPart)
 
 				task.wait(0.2)
 			until not toggles.outsideSpoof_Toggle.Value
 		end)
 	else
 		local hrp = getHRP()
-		getLib("utils").fireTouchEvent(hrp, game.Workspace.EvilArea.ExitPart2)
+		getLib("utils").fireTouchEvent(hrp, game:GetService("Workspace").EvilArea.ExitPart2)
 	end
 end)
 
@@ -997,18 +994,21 @@ end)
 --                   TAB: UTILITY                   --
 -- =================================================
 
-local itemsGroup2 = tabs.util:AddLeftGroupbox("Items")
+local itemsGroup = tabs.util:AddLeftGroupbox("Items")
+local trainingGroup = tabs.util:AddRightGroupbox("Auto Train")
+local disablersGroup = tabs.util:AddLeftGroupbox("Disablers")
+local othersGroup2 = tabs.util:AddRightGroupbox("Other")
 
 -------------------------------------
 --      UTIL: ITEMS GROUP  --
 -------------------------------------
 
-itemsGroup2:AddDropdown("itemList_Dropdown", { Values = { "GoldPizza", "GoldenApple", "RainbowPizzaBox", "RainbowPizza", "GoldKey",
+itemsGroup:AddDropdown("itemList_Dropdown", { Values = { "GoldPizza", "GoldenApple", "RainbowPizzaBox", "RainbowPizza", "GoldKey",
 "Bottle", "Armor", "Louise", "Lollipop", "Ladder", "MedKit", "Chips", "Cookie", "BloxyCola", "Apple", "Pizza", "ExpiredBloxyCola" }, Searchable = true, Default = 1, Multi = true, Text = "Item", Tooltip = false })
 
-itemsGroup2:AddSlider("giveItemAmount_Slider", { Text = "Amount", Tooltip = false, Default = 10, Min = 1, Max = 800, Rounding = 0 })
+itemsGroup:AddSlider("giveItemAmount_Slider", { Text = "Amount", Tooltip = false, Default = 10, Min = 1, Max = 800, Rounding = 0 })
 
-itemsGroup2:AddInput("customGiveAmount_Input", { Default = "", Numeric = true, Finished = false, ClearTextOnFocus = true, Text = "Custom Value", Tooltip = false, Placeholder = "Number (###)", MaxLength = 3,
+itemsGroup:AddInput("customGiveAmount_Input", { Default = "", Numeric = true, Finished = false, ClearTextOnFocus = true, Text = "Custom Value", Tooltip = false, Placeholder = "Number (###)", MaxLength = 3,
 	Callback = function(val)
 		local amountSlider = options.giveItemAmount_Slider
         local amountSliderMin = options.giveItemAmount_Slider.Min
@@ -1027,7 +1027,7 @@ itemsGroup2:AddInput("customGiveAmount_Input", { Default = "", Numeric = true, F
 	end
 })
 
-itemsGroup2:AddButton({
+itemsGroup:AddButton({
 	Text = "Give Item",
 	Tooltip = false,
 	DoubleClick = false,
@@ -1101,11 +1101,11 @@ itemsGroup2:AddButton({
 	end,
 })
 
-itemsGroup2:AddDivider()
+itemsGroup:AddDivider()
 
-itemsGroup2:AddDropdown("weaponList_Dropdown", { Values = { "Crowbar 1", "Crowbar 2", "Bat", "Pitchfork", "Hammer", "Wrench", "Broom" }, Searchable = true, Default = 1, Multi = false, Text = "Weapon", Tooltip = false })
+itemsGroup:AddDropdown("weaponList_Dropdown", { Values = { "Crowbar 1", "Crowbar 2", "Bat", "Pitchfork", "Hammer", "Wrench", "Broom" }, Searchable = true, Default = 1, Multi = false, Text = "Weapon", Tooltip = false })
 
-local giveWeapon_Btn = itemsGroup2:AddButton({ Text = "Give Weapon", Tooltip = false, DoubleClick = false,
+local giveWeapon_Btn = itemsGroup:AddButton({ Text = "Give Weapon", Tooltip = false, DoubleClick = false,
 	Func = function()
         local weapon = options.weaponList_Dropdown.Value
 
@@ -1142,7 +1142,7 @@ local giveWeapon_Btn = itemsGroup2:AddButton({ Text = "Give Weapon", Tooltip = f
 	end
 })
 
-local giveBestWeapon_Btn = itemsGroup2:AddButton({ Text = "Give Best Weapon", Tooltip = false, DoubleClick = false,
+itemsGroup:AddButton({ Text = "Give Best Weapon", Tooltip = false, DoubleClick = false,
 	Func = function()
         local bestWeapon = localplayer.PlayerGui.Phone.Phone.Phone.Background.InfoScreen.WeaponInfo.TwadoWants.Text
 
@@ -1179,17 +1179,279 @@ local giveBestWeapon_Btn = itemsGroup2:AddButton({ Text = "Give Best Weapon", To
 	end
 })
 
+-------------------------------------
+--      UTIL: AUTO TRAINING GROUP  --
+-------------------------------------
+
+trainingGroup:AddButton({ Text = "Train Strength & Speed", Tooltip = false, DoubleClick = false,
+	Func = function()
+		for _ = 1, 5 do
+            events.RainbowWhatStat:FireServer("Strength")
+            events.RainbowWhatStat:FireServer("Speed")
+        end
+	end
+})
+
+trainingGroup:AddButton({ Text = "Train Strength", Tooltip = false, DoubleClick = false,
+	Func = function()
+		for _ = 1, 5 do
+            events.RainbowWhatStat:FireServer("Strength")
+        end
+	end
+})
+
+trainingGroup:AddButton({ Text = "Train Speed", Tooltip = false, DoubleClick = false,
+	Func = function()
+		for _ = 1, 5 do
+            events.RainbowWhatStat:FireServer("Speed")
+        end
+	end
+})
+
+-------------------------------------
+--      UTIL: DISABLERS GROUP  --
+-------------------------------------
+
+disablersGroup:AddToggle("antiSlip_Toggle", { Text = "Anti Slip", Tooltip = false })
+disablersGroup:AddToggle("antiHail_Toggle", { Text = "Anti Hail", Tooltip = false })
+disablersGroup:AddToggle("disableWind_Toggle", { Text = "Disable Wind", Tooltip = false })
+disablersGroup:AddToggle("disableMud_Toggle", { Text = "Disable Mud", Tooltip = false })
+
+disablersGroup:AddLabel("Anti Slip will also protect you from anything that makes you fall/sit down such as the wave 3 brute.", true)
+
+toggles.antiSlip_Toggle:OnChanged(function(enabled)
+	if enabled then
+		events:FindFirstChild("IceSlip").Parent = game:GetService("Chat")
+
+	else
+
+		if not game:GetService("Chat"):FindFirstChild("IceSlip") then return end
+
+		game:GetService("Chat"):FindFirstChild("IceSlip").Parent = events
+	end
+end)
+
+toggles.antiHail_Toggle:OnChanged(function(enabled)
+	if enabled then
+		game:GetService("Workspace"):FindFirstChild("Hails").Parent = game:GetService("Chat")
+	else
+		if not game:GetService("Chat"):FindFirstChild("Hails") then return end
+		
+		game:GetService("Chat"):FindFirstChild("Hails").Parent = game:GetService("Workspace")
+	end
+end)
+
+toggles.disableWind_Toggle:OnChanged(function(enabled)
+	if enabled then
+		task.spawn(function()
+			repeat
+				for _, part in pairs(game:GetService("Workspace"):GetChildren()) do
+            		if part.Name == "WavePart" then
+                		part.CanTouch = false
+            		end
+        		end
+
+				task.wait(0.05)
+			until not toggles.disableWind_Toggle.Value
+		end)
+
+	else
+
+		for _, part in pairs(game:GetService("Workspace"):GetChildren()) do
+            if part.Name == "WavePart" then
+                part.CanTouch = true
+            end
+        end
+	end
+end)
+
+toggles.disableMud_Toggle:OnChanged(function(enabled)
+	if enabled then
+        for _, part in pairs(game:GetService("Workspace").BogArea.Bog:GetDescendants()) do
+            if part.Name == "Mud" and part:IsA("BasePart") then
+                part.CanTouch = false
+            end
+        end
+
+    else
+
+        for _, part in pairs(game:GetService("Workspace").BogArea.Bog:GetDescendants()) do
+            if part.Name == "Mud" and part:IsA("BasePart") then
+                part.CanTouch = true
+            end
+        end
+	end
+end)
+
+-------------------------------------
+--      UTIL: OTHERS GROUP  --
+-------------------------------------
+
+othersGroup2:AddButton({ Text = "Collect Hidden Items", Tooltip = false, DoubleClick = false,
+	Func = function()
+		getLib("utils").fireClickEvent(game:GetService("Workspace").Hidden)
+	end
+})
+
+local hiddenItems_Label = othersGroup2:AddLabel("Existing Hidden Items: ", true)
+
+local itemUpdateLoop = true
+
+task.spawn(function()
+	repeat
+		local hiddenParts = game.Workspace:FindFirstChild("Hidden")
+        local text = "Existing Hidden Items: \n\n"
+
+        if hiddenParts and #hiddenParts:GetChildren() > 0 then
+            for _, part in ipairs(hiddenParts:GetChildren()) do
+                text = text .. part.Name .. "\n"
+            end
+        else
+            text = text .. "No more items left"
+        end
+
+        hiddenItems_Label:SetText(text, true)
+
+		task.wait(0.5)
+	until not itemUpdateLoop
+end)
+
+othersGroup2:AddButton({ Text = "Collect Outside Items", Tooltip = false, DoubleClick = false,
+	Func = function()
+		local hrp = getHRP()
+		local origcframe = hrp.CFrame
+
+        if #game.Workspace.OutsideParts:GetChildren() == 0 then
+            notify("No more outside items.", 5)
+            return
+        end
+        
+		local origCFrame = getLib("entityLib").storeData(hrp, "CFrame")
+
+        getLib("utils").fireClickEvent(game.Workspace.OutsideParts)
+
+        task.wait(0.1)
+
+        --[[ Teleport to base entrance ]] getLib("entityLib").teleport(CFrame.new(-200.997543, 34.0999222, -790.799988, 1, -8.10623169e-05, -5.24520874e-06, 8.10623169e-05, 1, 5.24520874e-06, 5.24520874e-06, -5.24520874e-06, 1))
+        task.wait(0.01)
+        events.TeleportMain:FireServer("Main") -- teleport to villian base
+        task.wait(0.5)
+        getLib("entityLib").restoreData(hrp, "CFrame") -- teleport to original cframe
+		getLib("entityLib").clearData(hrp, "CFrame")
+	end
+})
+
 -- =================================================
 --                   TAB: PLAYER                   --
 -- =================================================
 
-local testGroup3 = tabs.player:AddLeftGroupbox("Groupbox Title")
+local playersGroup = tabs.player:AddLeftGroupbox("Players")
 
 -------------------------------------
---      PLAYER: TEST GROUP  --
+--      PLAYER: PLAYERS GROUP  --
 -------------------------------------
 
---print("code here")
+playersGroup:AddButton({ Text = "MedKit Heal Others", Tooltip = false, DoubleClick = false,
+	Func = function()
+		local player = game:GetService("Players").LocalPlayer
+		local foundMedKit = false
+		local uniqueName = nil
+
+		for _, tool in pairs(player.Backpack:GetChildren()) do
+			if tool:IsA("Tool") and tool.Name == "MedKit" then
+				local charges = tool:FindFirstChild("Charges")
+
+				if charges and charges:IsA("IntValue") and charges.Value >= 1 then
+					uniqueName = "ValidMedKit_" .. tick()
+					tool.Name = uniqueName
+					getgenv().entityLib.equipTool(uniqueName, true)
+					foundMedKit = true
+					break
+				end
+			end
+		end
+
+		if not foundMedKit then
+			notify("No valid medkit was found.", 8)
+			return
+		end
+
+		task.wait(0.5)
+
+		for _, target in pairs(players:GetPlayers()) do
+			events.HealPlayer:FireServer(target)
+		end
+
+		task.wait(0.5)
+
+		getgenv().entityLib.equipTool(uniqueName, false)
+	end
+})
+
+playersGroup:AddButton({ Text = "Heal Yourself", Tooltip = false, DoubleClick = false,
+	Func = function()
+        for _ = 1, 2 do
+            events.GiveTool:FireServer("GoldPizza")
+
+            task.wait(0.2)
+        
+			getgenv().entityLib.equipTool("GoldPizza", true)
+        
+            task.wait(0.1)
+        
+            events.CurePlayer:FireServer(localplayer, localplayer)
+        end
+	end
+})
+
+playersGroup:AddToggle("autoHealAllPlayers_Toggle", { Text = "Auto Heal All", Tooltip = "This will only work if the golden apple has not already been taken." })
+playersGroup:AddToggle("autoEat_Toggle", { Text = "Auto Eat", Tooltip = false })
+
+toggles.autoHealAllPlayers_Toggle:OnChanged(function(enabled)
+	if enabled then
+		task.spawn(function()
+			repeat
+
+				events.GiveTool:FireServer("GoldenApple")
+
+        		task.wait(0.2)
+
+        		getgenv().entityLib.equipTool("GoldenApple", true)
+
+       			task.wait(0.1)
+
+        		events.HealTheNoobs:FireServer()
+
+				task.wait(6)
+			until not toggles.autoHealAllPlayers_Toggle.Value
+		end)
+	end
+end)
+
+toggles.autoEat_Toggle:OnChanged(function(enabled)
+	if enabled then
+		task.spawn(function()
+			repeat
+
+				events.Energy:FireServer(5, "Chips")
+        		events.Energy:FireServer(15, "Cookie")
+        		events.Energy:FireServer(15, "BloxyCola")
+        		events.Energy:FireServer(15, "Apple")
+        		events.Energy:FireServer(25, "Pizza")
+        		events.Energy:FireServer(15, "ExpiredBloxyCola")
+
+        		-- Golden Apple & Golden Pizza
+
+
+        		events.HealTheNoobs:FireServer() -- gold apple
+        		events.CurePlayer:FireServer(player, player) -- gold pizza
+        		events.RainbowPizza:FireServer(player) -- rainbow pizza
+
+				task.wait(0.1)
+			until not toggles.autoEat_Toggle.Value
+		end)
+	end
+end)
 
 -- =================================================
 --                   TAB: ENDINGS                   --
@@ -1208,6 +1470,11 @@ local testGroup4 = tabs.endings:AddLeftGroupbox("Groupbox Title")
 -- =================================================
 
 local miscGroup = tabs.misc:AddLeftGroupbox("Miscellaneous")
+local othersGroup = tabs.misc:AddRightGroupbox("Other")
+
+-------------------------------------
+--      MISCELLANEOUS: MISCELLANEOUS GROUP  --
+-------------------------------------
 
 miscGroup:AddButton({ Text = "Lobby", Tooltip = false, DoubleClick = true,
 	Func = function()
@@ -1249,6 +1516,70 @@ toggles.bypassCutscenes_Toggle:OnChanged(function(enabled)
 				task.wait(0.05)
 			until not toggles.bypassCutscenes_Toggle.Value
 		end)
+	end
+end)
+
+-------------------------------------
+--      MISCELLANEOUS: OTHERS GROUP  --
+-------------------------------------
+
+othersGroup:AddToggle("autoclicker_Toggle", { Text = "Enable Autoclicker", Tooltip = false })
+
+local autoclickerDepbox = othersGroup:AddDependencyBox()
+
+autoclickerDepbox:AddLabel("Autoclicker Keybind"):AddKeyPicker("autoclicker_KeyPicker", { Default = "K", SyncToggleState = false, Mode = "Toggle", Text = "Autoclicker Keybind", NoUI = true })
+autoclickerDepbox:AddSlider("autoclickerDelay_Slider", { Text = "Autoclicker CPS", Tooltip = false, Default = 10, Min = 1, Max = 30, Rounding = 0 })
+autoclickerDepbox:AddToggle("autoclickerIgnoreWindow_Toggle", { Text = "Ignore Window", Tooltip = "Whether to allow the autoclicker to click when the window is open." })
+-- toggles.autoclickerIgnoreWindow_Toggle.Value
+
+autoclickerDepbox:SetupDependencies({ { toggles.autoclicker_Toggle, true } })
+
+local function getWindowState()
+	if not gethui():FindFirstChild("Linoria") or not gethui().Linoria:FindFirstChild("Linoria Outer") then
+		return "Linoria instance not found or Linoria outer frame was not found or is unavailable."
+	end
+
+	local outer = gethui().Linoria["Linoria Outer"]
+	return outer.Visible
+end
+
+local autoclickerRunning = false
+local autoclickerThread = nil
+
+options.autoclicker_KeyPicker:OnClick(function(value)
+	if not toggles.autoclicker_Toggle.Value then
+		notify("Autoclicker is not enabled.", 7)
+		return
+	end
+
+	-- Toggle
+
+	autoclickerRunning = not autoclickerRunning
+	local cps = options.autoclickerDelay_Slider.Value
+	local ignoreWindow = toggles.autoclickerIgnoreWindow_Toggle.Value
+
+	if autoclickerRunning then
+		print("Autoclicker started")
+
+		autoclickerThread = task.spawn(function()
+			while autoclickerRunning do
+				if not isrbxactive() then
+					repeat task.wait(0.1) until isrbxactive()
+				end
+				
+				-- Handling the click blocking
+
+				if not ignoreWindow and getWindowState() then
+					task.wait(0.1)
+					continue
+				end
+
+				mouse1click()
+				task.wait(1 / cps)
+			end
+		end)
+	else
+		print("Autoclicker stopped")
 	end
 end)
 
@@ -1333,7 +1664,7 @@ toggles.executeOnTeleport_Toggle:OnChanged(function(enabled)
 	if enabled then
 		if not getgenv().scriptQueued then
 			queue_on_teleport([[
-                loadstring(readfile("Celestial/Supported Games/Linoria Rewrite/2025 Rewrite/Break In 2 - Game new.lua"))()
+                loadstring(readfile("Celestial/Supported Games/Linoria Rewrite/2025 Rewrite/Break In 2 - Lobby new.lua"))()
             ]])
 
 			--notify("Successfully queued script.", 5)
@@ -1371,9 +1702,11 @@ local function unloadModules()
 		shared.scriptLoaded = false
 	end
 
-	task.wait(0.1)
+	itemUpdateLoop = false
 
 	--[[
+	task.wait(0.1)
+
     getgenv().assetLib = nil
     getgenv().utils = nil
     getgenv().entityLib = nil

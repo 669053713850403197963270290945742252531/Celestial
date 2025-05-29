@@ -70,33 +70,6 @@ ModalElement.Text = ""
 ModalElement.ZIndex = -999
 ModalElement.Parent = ModalScreenGui
 
-getgenv().assetLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Asset%20Library.lua"))()
-getgenv().assetLib.createAssets("Sounds")
-
-getgenv().utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Core%20Utilities.lua"))()
-getgenv().entityLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Entity%20Library.lua"))()
-
-getgenv().fastLoad = true
-getgenv().testing = false
-
-if getgenv().testing then
-    getgenv().script_key = "lQwkSPLnL29AIKCAxmWuQ91M0gzjPuUugJ0Xd"
-    getgenv().notifyLoad = true
-end
-
-getgenv().script_key = getgenv().script_key or ""
-
-if not getgenv().fastLoad then
-    getgenv().auth = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Authentication.lua"))()
-    getgenv().auth.trigger()
-
-    if getgenv().auth.kicked then
-        return
-    end
-
-    getgenv().executionLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Execution%20Library.lua"))()
-end
-
 --[[
     You can access Toggles & Options through (I'm planning to remove **a** option):
         a) getgenv().Toggles, getgenv().Options (IY will break this getgenv)
@@ -3328,10 +3301,12 @@ do
             ToggleInner.BackgroundColor3 = Toggle.Value and Library.AccentColor or Library.MainColor;
             ToggleInner.BorderColor3 = Toggle.Value and Library.AccentColorDark or Library.OutlineColor;
 
-            Library.RegistryMap[ToggleInner].Properties.BackgroundColor3 = Toggle.Value and 'AccentColor' or 'MainColor';
-            Library.RegistryMap[ToggleInner].Properties.BorderColor3 = Toggle.Value and 'AccentColorDark' or 'OutlineColor';
+            if Library.RegistryMap[ToggleInner] then
+                Library.RegistryMap[ToggleInner].Properties.BackgroundColor3 = Toggle.Value and 'AccentColor' or 'MainColor';
+                Library.RegistryMap[ToggleInner].Properties.BorderColor3 = Toggle.Value and 'AccentColorDark' or 'OutlineColor';
 
-            Library.RegistryMap[ToggleLabel].Properties.TextColor3 = Toggle.Risky and 'RiskColor' or nil;
+                Library.RegistryMap[ToggleLabel].Properties.TextColor3 = Toggle.Risky and 'RiskColor' or nil;
+            end
         end;
 
         function Toggle:OnChanged(Func)
@@ -4897,6 +4872,7 @@ function Library:CreateWindow(...)
         Visible = false;
         ZIndex = 1;
         Parent = ScreenGui;
+        Name = "Linoria Outer";
     });
     LibraryMainOuterFrame = Outer;
     Library:MakeDraggable(Outer, 25, true);
@@ -4926,7 +4902,7 @@ function Library:CreateWindow(...)
         Text = Config.Title or '';
         TextXAlignment = Enum.TextXAlignment.Left;
         ZIndex = 1;
-        Parent = Inner;
+        Parent = Inner
     });
 
     local MainSectionOuter = Library:Create('Frame', {

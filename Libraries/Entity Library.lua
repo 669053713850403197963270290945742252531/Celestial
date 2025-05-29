@@ -283,7 +283,7 @@ entityLib.clearData = function(object, propertyName)
             storedData[object][propertyName] = nil
             --print(propertyName .. " data cleared for the given object.")
         else
-            warn("No stored data for " .. propertyName .. " on this object.")
+            --warn("No stored data for " .. propertyName .. " on this object.")
         end
     else
         --warn("No data found for the given object: " .. tostring(object))

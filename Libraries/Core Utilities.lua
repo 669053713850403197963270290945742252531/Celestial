@@ -762,7 +762,7 @@ utils.checkFunction = function(functionName)
     if typeof(functionName) == "function" then
         return true
     else
-        warn(tostring(functionName) .. " did not return a function type.")
+        --warn(tostring(functionName) .. " did not return a function type.")
         return false
     end
 end

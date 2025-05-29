@@ -1,3 +1,6 @@
+- convert to Obsidian ui library
+- convert every associated with the asset library to using roblox asset ids to save on load times
+
 saktkia51:
 - field of view
 - lock field of view: use GetPropertyChangedSignal to detect when the FieldOfView property of Camera changes
