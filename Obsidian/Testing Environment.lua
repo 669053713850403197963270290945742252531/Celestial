@@ -66,10 +66,16 @@ if isLibEnabled("auth") then
 end
 
 
+local repo = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Obsidian/"
+local library = loadstring(game:HttpGet(repo .. "Library.lua"))()
+local ThemeManager = loadstring(game:HttpGet(repo .. "ThemeManager.lua"))()
+local SaveManager = loadstring(game:HttpGet(repo .. "SaveManager.lua"))()
 
+--[[
 local library = loadstring(readfile("Celestial/Obsidian/Library.lua"))()
 local ThemeManager = loadstring(readfile("Celestial/Obsidian/Theme Manager.lua"))()
 local SaveManager = loadstring(readfile("Celestial/Obsidian/Save Manager.lua"))()
+]]
 
 local options = library.Options
 local toggles = library.Toggles
@@ -84,9 +90,9 @@ local runService = game:GetService("RunService")
 
 local window = library:CreateWindow({
 	Title = "Celestial",
-    Center = true,
+    Footer = "version: example",
+	Center = true,
     AutoShow = true,
-	Footer = "version: example",
     MobileButtonsSide = "Left",
 	Icon = 105046741702072,
     IconColor = Color3.fromRGB(255, 255, 255),

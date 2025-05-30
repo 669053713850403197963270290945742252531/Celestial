@@ -27,44 +27,6 @@ local Buttons = {}
 local Toggles = {}
 local Options = {}
 
---[[
-getgenv().assetLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Asset%20Library.lua"))()
-getgenv().assetLib.createAssets("Sounds")
-
-getgenv().utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Core%20Utilities.lua"))()
-getgenv().entityLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Entity%20Library.lua"))()
-
-getgenv().fastLoad = true
-getgenv().testing = false
-
-if getgenv().testing then
-    getgenv().script_key = "lQwkSPLnL29AIKCAxmWuQ91M0gzjPuUugJ0Xd"
-    getgenv().notifyLoad = true
-end
-
-getgenv().script_key = getgenv().script_key or ""
-
-if not getgenv().fastLoad then
-    getgenv().auth = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Authentication.lua"))()
-    getgenv().auth.trigger()
-
-    if getgenv().auth.kicked then
-        getgenv().assetLib = nil
-        getgenv().utils = nil
-        getgenv().entityLib = nil
-        getgenv().fastLoad = nil
-        getgenv().testing = nil
-        getgenv().script_key = nil
-        getgenv().notifyLoad = nil
-        getgenv().auth = nil
-        getgenv().executionLib = nil
-        return
-    end
-
-    getgenv().executionLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Execution%20Library.lua"))()
-end
-]]
-
 local Library = {
     LocalPlayer = LocalPlayer,
     DevicePlatform = nil,
@@ -996,19 +958,10 @@ local function ParentUI(UI: Instance, SkipHiddenUI: boolean?)
     SafeParentUI(UI, gethui)
 end
 
--- Destroy previous instances
-
-for _, prevUI in pairs(gethui():GetChildren()) do
-    if prevUI:IsA("ScreenGui") and prevUI.Name == "Obsidian" then
-        prevUI:Destroy()
-    end
-end
-
 local ScreenGui = New("ScreenGui", {
     Name = "Obsidian",
     DisplayOrder = 999,
     ResetOnSpawn = false,
-    Name = "Obsidian",
 })
 ParentUI(ScreenGui)
 Library.ScreenGui = ScreenGui
@@ -2355,6 +2308,7 @@ do
         end
 
         function ColorPicker:SetValueRGB(Color, Transparency)
+            ColorPicker.Transparency = Info.Transparency and Transparency or 0
             ColorPicker:SetHSVFromRGB(Color)
             ColorPicker:Display()
         end
@@ -4705,7 +4659,6 @@ function Library:CreateWindow(WindowInfo)
                 Image = tonumber(WindowInfo.Icon) and "rbxassetid://" .. WindowInfo.Icon or WindowInfo.Icon,
                 Size = WindowInfo.IconSize,
                 Parent = TitleHolder,
-                ImageColor3 = WindowInfo.IconColor,
             })
         end
 

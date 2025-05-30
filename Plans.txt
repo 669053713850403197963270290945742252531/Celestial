@@ -1,4 +1,5 @@
 - convert to Obsidian ui library
+- convert to Synergy's version of the Obsidian UI Library
 - convert every associated with the asset library to using roblox asset ids to save on load times
 
 saktkia51:
