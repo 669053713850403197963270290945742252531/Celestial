@@ -958,6 +958,14 @@ local function ParentUI(UI: Instance, SkipHiddenUI: boolean?)
     SafeParentUI(UI, gethui)
 end
 
+-- Destroy previous interface instances
+
+for _, prevUI in pairs(gethui():GetChildren()) do
+    if prevUI:IsA("ScreenGui") and prevUI.Name == "Obsidian" then
+        prevUI:Destroy()
+    end
+end
+
 local ScreenGui = New("ScreenGui", {
     Name = "Obsidian",
     DisplayOrder = 999,
@@ -2308,7 +2316,7 @@ do
         end
 
         function ColorPicker:SetValueRGB(Color, Transparency)
-            ColorPicker.Transparency = Info.Transparency and Transparency or 0
+            --ColorPicker.Transparency = Info.Transparency and Transparency or 0
             ColorPicker:SetHSVFromRGB(Color)
             ColorPicker:Display()
         end
@@ -3152,8 +3160,10 @@ do
             Switch.BackgroundColor3 = Toggle.Value and Library.Scheme.AccentColor or Library.Scheme.MainColor
             SwitchStroke.Color = Toggle.Value and Library.Scheme.AccentColor or Library.Scheme.OutlineColor
 
-            Library.Registry[Switch].BackgroundColor3 = Toggle.Value and "AccentColor" or "MainColor"
-            Library.Registry[SwitchStroke].Color = Toggle.Value and "AccentColor" or "OutlineColor"
+            if Library.Registry[Switch] then
+                Library.Registry[Switch].BackgroundColor3 = Toggle.Value and "AccentColor" or "MainColor"
+                Library.Registry[SwitchStroke].Color = Toggle.Value and "AccentColor" or "OutlineColor"
+            end
 
             if Toggle.Disabled then
                 Label.TextTransparency = 0.8
@@ -3177,7 +3187,10 @@ do
             }):Play()
 
             Ball.BackgroundColor3 = Library.Scheme.FontColor
-            Library.Registry[Ball].BackgroundColor3 = "FontColor"
+
+            if Library.Registry[Ball] then
+                Library.Registry[Ball].BackgroundColor3 = "FontColor"
+            end
         end
 
         function Toggle:OnChanged(Func)
@@ -5651,6 +5664,18 @@ function Library:CreateWindow(WindowInfo)
 
         MainFrame.Visible = Library.Toggled
         ModalElement.Modal = Library.Toggled
+
+        -- Why obsidian hide roblox cursor
+        
+        UserInputService.MouseIconEnabled = not Library.ShowCustomCursor
+
+        if Library.Toggled then
+            UserInputService.MouseIconEnabled = not Library.ShowCustomCursor
+            Cursor.Visible = Library.ShowCustomCursor
+        else
+            UserInputService.MouseIconEnabled = true
+            Cursor.Visible = false
+        end
 
         if Library.Toggled and not Library.IsMobile then
             local OldMouseIconEnabled = UserInputService.MouseIconEnabled

@@ -12,14 +12,16 @@ player.CharacterAdded:Connect(function(newChar)
     char = newChar
 end)
 
-local function getHumanoid()
-    if not char then return nil end
-    return char:FindFirstChildOfClass("Humanoid")
+local function getCharacter()
+	return player.Character or player.CharacterAdded:Wait()
 end
 
 local function getHRP()
-    if not char then return nil end
-    return char:FindFirstChild("HumanoidRootPart")
+	return getCharacter():WaitForChild("HumanoidRootPart")
+end
+
+local function getHumanoid()
+	return getCharacter():WaitForChild("Humanoid")
 end
 
 entityLib.isAlive = function()
@@ -467,9 +469,19 @@ end
 
 --------------------------------------]]
 
-local hrp = getHRP()
-local humanoid = getHumanoid()
 local userInput = game:GetService("UserInputService")
+
+local function getCharacter()
+    return player.Character or player.CharacterAdded:Wait()
+end
+
+local function getHRP()
+    return getCharacter():WaitForChild("HumanoidRootPart")
+end
+
+local function getHumanoid()
+    return getCharacter():WaitForChild("Humanoid")
+end
 
 local flying = false
 local speed = 50
@@ -480,7 +492,6 @@ local function cleanUp()
     if bodyVelocity then bodyVelocity:Destroy() bodyVelocity = nil end
     if bodyGyro then bodyGyro:Destroy() bodyGyro = nil end
     if connection then connection:Disconnect() connection = nil end
-    humanoid.PlatformStand = false
 end
 
 local function getMovementDirection()
@@ -514,18 +525,18 @@ local function toggleFly(state)
     if flying then
         cleanUp()
 
-        humanoid.PlatformStand = true
+        getHumanoid().PlatformStand = true
 
         bodyVelocity = Instance.new("BodyVelocity")
         bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
         bodyVelocity.Velocity = Vector3.zero
-        bodyVelocity.Parent = hrp
+        bodyVelocity.Parent = getHRP()
 
         bodyGyro = Instance.new("BodyGyro")
-        bodyGyro.CFrame = hrp.CFrame
+        bodyGyro.CFrame = getHRP().CFrame
         bodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
         bodyGyro.P = 10000
-        bodyGyro.Parent = hrp
+        bodyGyro.Parent = getHRP()
 
         connection = runService.RenderStepped:Connect(function()
             if not flying then return end
@@ -540,6 +551,10 @@ local function toggleFly(state)
                 moveDirection = moveDirection - Vector3.new(0, 1, 0) * verticalSpeed
             end
 
+            if userInput:IsKeyDown(Enum.KeyCode.LeftControl) then
+                moveDirection = moveDirection - Vector3.new(0, 1, 0) * verticalSpeed
+            end
+
             bodyVelocity.Velocity = moveDirection
             bodyGyro.CFrame = game.Workspace.CurrentCamera.CFrame
         end)
@@ -548,7 +563,9 @@ local function toggleFly(state)
 
         cleanUp()
 
-        humanoid:Move(moveDirection, true)
+        getHumanoid().PlatformStand = false
+
+        getHumanoid():Move(moveDirection, true)
     end
 end
 
@@ -564,37 +581,99 @@ end
 entityLib.toggleFly = toggleFly
 entityLib.setFlySpeed = setFlySpeed
 
+local function onCharacterAdded(char)
+    local humanoid = char:WaitForChild("Humanoid")
+    local humanoidRootPart = char:WaitForChild("HumanoidRootPart")
+
+    if humanoid then
+        humanoid.PlatformStand = false
+    end
+
+    if bodyVelocity then
+        bodyVelocity:Destroy()
+        bodyVelocity = nil
+    end
+
+    if bodyGyro then
+        bodyGyro:Destroy()
+        bodyGyro = nil
+    end
+
+    while not char:WaitForChild("HumanoidRootPart") do
+        wait(0.1)
+    end
+    while not char:WaitForChild("Humanoid") do
+        wait(0.1)
+    end
+
+    if flying and getHRP() then
+        bodyVelocity = Instance.new("BodyVelocity")
+        bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+        bodyVelocity.Velocity = Vector3.zero
+        bodyVelocity.Parent = getHRP()
+
+        bodyGyro = Instance.new("BodyGyro")
+        bodyGyro.CFrame = getHRP().CFrame
+        bodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+        bodyGyro.P = 10000
+        bodyGyro.Parent = getHRP()
+
+        connection = runService.RenderStepped:Connect(function()
+            if not flying then return end
+
+            local moveDirection = getMovementDirection()
+            
+            if userInput:IsKeyDown(Enum.KeyCode.Space) then
+                moveDirection = moveDirection + Vector3.new(0, 1, 0) * verticalSpeed
+            end
+
+            if userInput:IsKeyDown(Enum.KeyCode.LeftShift) then
+                moveDirection = moveDirection - Vector3.new(0, 1, 0) * verticalSpeed
+            end
+
+            if userInput:IsKeyDown(Enum.KeyCode.LeftControl) then
+                moveDirection = moveDirection - Vector3.new(0, 1, 0) * verticalSpeed
+            end
+
+            bodyVelocity.Velocity = moveDirection
+            bodyGyro.CFrame = game.Workspace.CurrentCamera.CFrame
+        end)
+    end
+end
+
+player.CharacterAdded:Connect(onCharacterAdded)
+
+
 --[[-----------------------------------
 
             NOCLIP FUNCTION
 
 --------------------------------------]]
 
+local noclipEnabled = false
 local noclipConnection = nil
 local originalStates = {}
+local char = nil
 
 entityLib.toggleNoclip = function(enabled)
-    -- If noclip is disabled, restore original CanCollide
-    
+    noclipEnabled = enabled -- Keep track of toggle state
+
     if not enabled then
         -- Restore original CanCollide states
-
         for part, state in pairs(originalStates) do
-            if part and part:IsDescendantOf(char) then
+            if part and part:IsDescendantOf(getCharacter()) then
                 part.CanCollide = state
             end
         end
         originalStates = {}
 
-        -- Trigger state change to refresh due to shitty roblox engine being needy
-        
-        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        -- Force state refresh
+        local humanoid = getHumanoid()
         if humanoid then
             humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
         end
 
         -- Disconnect noclip loop
-
         if noclipConnection then
             noclipConnection:Disconnect()
             noclipConnection = nil
@@ -603,8 +682,43 @@ entityLib.toggleNoclip = function(enabled)
         return
     end
 
-    -- Save original CanCollide, disable collisions
+    -- Save original CanCollide and disable collisions
+    for _, part in ipairs(getCharacter():GetDescendants()) do
+        if part:IsA("BasePart") then
+            if originalStates[part] == nil then
+                originalStates[part] = part.CanCollide
+            end
+            part.CanCollide = false
+        end
+    end
 
+    -- Set up noclip loop
+    if noclipConnection then
+        noclipConnection:Disconnect()
+        noclipConnection = nil
+    end
+
+    noclipConnection = runService.Stepped:Connect(function()
+        if noclipEnabled then -- only force noclip when enabled
+            for _, object in pairs(game.Workspace:GetChildren()) do
+                if object.Name == player.Name then
+                    for _, part in pairs(object:GetChildren()) do
+                        if part:IsA("BasePart") then
+                            part.CanCollide = false
+                        end
+                    end
+                end
+            end
+        end
+    end)
+end
+
+local function onCharacterAdded(char)
+    local humanoid = char:WaitForChild("Humanoid")
+
+    if not noclipEnabled then return end -- Don't re-enable if not toggled on
+
+    -- Save CanCollide states
     for _, part in ipairs(char:GetDescendants()) do
         if part:IsA("BasePart") then
             if originalStates[part] == nil then
@@ -614,18 +728,23 @@ entityLib.toggleNoclip = function(enabled)
         end
     end
 
-    -- Run stepped event to disable collisions to enable
+    -- Re-establish noclip loop
+    if noclipConnection then
+        noclipConnection:Disconnect()
+        noclipConnection = nil
+    end
 
     noclipConnection = runService.Stepped:Connect(function()
-        for _, object in pairs(game.Workspace:GetChildren()) do
-            if object.Name == player.Name then
-                for _, part in pairs(object:GetChildren()) do
-                    if part:IsA("BasePart") then
-                        part.CanCollide = false
+        if noclipEnabled then
+            for _, object in pairs(game.Workspace:GetChildren()) do
+                if object.Name == player.Name then
+                    for _, part in pairs(object:GetChildren()) do
+                        if part:IsA("BasePart") then
+                            part.CanCollide = false
+                        end
                     end
                 end
             end
-
         end
     end)
 end

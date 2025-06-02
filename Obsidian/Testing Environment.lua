@@ -13,11 +13,8 @@ end
 
 local startTime = tick()
 
-local assetLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Asset%20Library.lua"))()
-assetLib.createAssets("Sounds")
-
 local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Core%20Utilities.lua"))()
-local entityLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Entity%20Library.lua"))()
+local entityLib = loadstring(readfile("Celestial/Libraries/Entity Library.lua"))()
 
 local fastLoad = true
 local testing = false
@@ -46,7 +43,6 @@ local function isLibEnabled(library)
     local libraryRefs = {
         auth = auth,
         executionLib = executionLib,
-        assetLib = assetLib,
         entityLib = entityLib,
         utils = utils
     }
@@ -66,15 +62,15 @@ if isLibEnabled("auth") then
 end
 
 
+local library = loadstring(readfile("Celestial/Obsidian/Library.lua"))()
+local ThemeManager = loadstring(readfile("Celestial/Obsidian/ThemeManager.lua"))()
+local SaveManager = loadstring(readfile("Celestial/Obsidian/SaveManager.lua"))()
+
+--[[
 local repo = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Obsidian/"
 local library = loadstring(game:HttpGet(repo .. "Library.lua"))()
 local ThemeManager = loadstring(game:HttpGet(repo .. "ThemeManager.lua"))()
 local SaveManager = loadstring(game:HttpGet(repo .. "SaveManager.lua"))()
-
---[[
-local library = loadstring(readfile("Celestial/Obsidian/Library.lua"))()
-local ThemeManager = loadstring(readfile("Celestial/Obsidian/Theme Manager.lua"))()
-local SaveManager = loadstring(readfile("Celestial/Obsidian/Save Manager.lua"))()
 ]]
 
 local options = library.Options
@@ -90,7 +86,7 @@ local runService = game:GetService("RunService")
 
 local window = library:CreateWindow({
 	Title = "Celestial",
-    Footer = "version: example",
+    Footer = "Universal - v1.0.0",
 	Center = true,
     AutoShow = true,
     MobileButtonsSide = "Left",
@@ -131,7 +127,14 @@ local function notify(title, desc, duration)
     end
 
     if window.notifSoundEnabled then
-        assetLib.fetchAsset("Assets/Sounds/Notification Main.mp3", window.alertVolume)
+		local sound = Instance.new("Sound", gethui())
+		sound.PlayOnRemove = true
+		sound.SoundId = "rbxassetid://4590662766"
+		sound.Volume = window.alertVolume
+		sound:Destroy()
+
+        library:Notify({ Title = title, Description = desc, Time = duration--[[, SoundId = "rbxassetid://117667749029346"]] })
+		return
     end
 
     library:Notify({ Title = title, Description = desc, Time = duration })
@@ -145,6 +148,8 @@ local function toggleRainbow(enabled, colorPickerName)
 		if not rainbowConnections[colorPickerName] then
 			hues[colorPickerName] = hues[colorPickerName] or 0
 			rainbowConnections[colorPickerName] = runService.RenderStepped:Connect(function(deltaTime)
+				if not hues or not colorPickerName then return end
+				
 				hues[colorPickerName] = (hues[colorPickerName] + deltaTime * window.rainbowSpeed) % 1
 
 				if not options[colorPickerName] or not defaults[colorPickerName] then
@@ -152,6 +157,7 @@ local function toggleRainbow(enabled, colorPickerName)
 					return
 				else
 					options[colorPickerName]:SetValueRGB(Color3.fromHSV(hues[colorPickerName], 1, 1))
+					--print("running")
 				end
 			end)
 		end
@@ -173,19 +179,23 @@ local function toggleRainbow(enabled, colorPickerName)
 end
 
 local tabs = {
-    info = window:AddTab("Info", "info"),
+    home = window:AddTab("Home", "house"),
 	main = window:AddTab("Main", "user"),
-	key = window:AddKeyTab("Key System"),
+	misc = window:AddTab("Miscellaneous", "circle-ellipsis"),
 	["UI Settings"] = window:AddTab("UI Settings", "settings"),
 }
 
 -- =================================================
---                   TAB: INFO                   --
+--                   TAB: HOME                   --
 -- =================================================
 
-local infoTabBox = tabs.info:AddLeftTabbox()
+local infoTabBox = tabs.home:AddLeftTabbox()
+
+tabs.home:UpdateWarningBox({Title = "Warning", Text = "This script is trash", Visible = true})
 
 local playerTab = infoTabBox:AddTab("Player")
+
+local respawnButton_Toggle = playerTab:AddToggle("toggleRespawn_Toggle", {Text = "Respawn Button", Tooltip = false, Default = true })
 
 playerTab:AddLabel("Name: " .. localplayer.DisplayName .. " (@" .. localplayer.Name .. ")", true)
 playerTab:AddLabel("UserId: " .. localplayer.UserId, true)
@@ -201,6 +211,17 @@ gameTab:AddLabel("Job ID: " .. game.JobId, true)
 gameTab:AddLabel("Creator ID: " .. game.CreatorId, true)
 gameTab:AddLabel("Creator Type: " .. game.CreatorType.Name, true)
 
+local serverJoinScript = [[game:GetService("TeleportService")]] .. ":TeleportToPlaceInstance(" .. game.PlaceId..", '" .. game.JobId.."')"
+gameTab:AddLabel("\nServer Join Script: " .. serverJoinScript, true)
+
+gameTab:AddButton({ Text = "Copy Server Join Script", DoubleClick = false,
+    Func = function()
+        setclipboard(serverJoinScript)
+
+		notify("Success", "The server join script has been copied to your clipboard.", 5)
+    end,
+})
+
 if isLibEnabled("auth") and isLibEnabled("executionLib") then
     local whitelistTab = infoTabBox:AddTab("Whitelist")
 
@@ -209,6 +230,10 @@ if isLibEnabled("auth") and isLibEnabled("executionLib") then
     whitelistTab:AddLabel("Discord ID: " .. auth.currentUser.DiscordId, true)
     whitelistTab:AddLabel("Total Exections: " .. executionLib.fetchExecutions(), true)
 end
+
+respawnButton_Toggle:OnChanged(function(enabled)
+	utils.setElementEnabled("Reset Button", enabled)
+end)
 
 --[[
 
@@ -250,6 +275,8 @@ leftGroupBox:AddToggle("fly_Toggle", { Text = "Fly", Tooltip = false, Default = 
 local flyHorizSlider = leftGroupBox:AddSlider("flyHorizontalSpeed_Slider", { Text = "Horizontal Speed", Tooltip = "The speed you normally go at.",  Default = 10, Min = 5, Max = 1000, Rounding = 0 })
 local flyVertSlider = leftGroupBox:AddSlider("flyVerticalSpeed_Slider", { Text = "Vertical Speed", Tooltip = "The speed you when ascending/descending.",  Default = 10, Min = 5, Max = 300, Rounding = 0 })
 
+leftGroupBox:AddToggle("noclip_Toggle", { Text = "Noclip", Tooltip = false, Default = false })
+
 options.flyHorizontalSpeed_Slider:OnChanged(function(val)
 	entityLib.setFlySpeed(flyHorizSlider.Value, flyVertSlider.Value)
 end)
@@ -263,52 +290,56 @@ toggles.fly_Toggle:OnChanged(function(enabled)
 	entityLib.setFlySpeed(flyHorizSlider.Value, flyVertSlider.Value)
 end)
 
+toggles.noclip_Toggle:OnChanged(function(enabled)
+	entityLib.toggleNoclip(enabled)
+end)
+
 leftGroupBox:AddToggle("MyToggle", { Text = "This is a toggle", Tooltip = "This is a tooltip", Default = true,
 	Callback = function(Value)
-		print("[cb] MyToggle changed to:", Value)
+		--print("[cb] MyToggle changed to:", Value)
 	end,
 }):AddColorPicker("ColorPicker1", { Default = Color3.new(1, 0, 0), Title = "Some color1", Transparency = 0.5,
 		Callback = function(Value)
-			print("[cb] Color changed!", Value)
+			--print("[cb] Color changed!", Value)
 		end,
 	}):AddColorPicker("ColorPicker2", { Default = Color3.new(0, 1, 0), Title = "Some color2",
 		Callback = function(Value)
-			print("[cb] Color changed!", Value)
+			--print("[cb] Color changed!", Value)
 		end,
 	})
 
 toggles.MyToggle:OnChanged(function()
-	print("MyToggle changed to:", toggles.MyToggle.Value)
+	--print("MyToggle changed to:", toggles.MyToggle.Value)
 end)
 
 toggles.MyToggle:SetValue(false)
 
-leftGroupBox:AddCheckbox("MyCheckbox", { Text = "Rainbow", Tooltip = "This is a tooltip", Default = false,
+local rainbowToggle = leftGroupBox:AddCheckbox("MyCheckbox", { Text = "Rainbow", Tooltip = "This is a tooltip", Default = false,
 	Callback = function(Value)
 		toggleRainbow(Value, "ColorPicker1")
 	end,
 })
 
 toggles.MyCheckbox:OnChanged(function()
-	print("MyCheckbox changed to:", toggles.MyCheckbox.Value)
+	--print("MyCheckbox changed to:", toggles.MyCheckbox.Value)
 end)
 
 local MyButton = leftGroupBox:AddButton({ Text = "Button", Tooltip = "This is the main button", DoubleClick = false,
 	Func = function()
-		print("You clicked a button!")
+		--print("You clicked a button!")
         notify("test notification", "fuck you", 10)
 	end,
 })
 
 local MyButton2 = MyButton:AddButton({ Text = "Sub button", Tooltip = "This is the sub button", DoubleClick = true,
 	Func = function()
-		print("You clicked a sub button!")
+		--print("You clicked a sub button!")
 	end,
 })
 
 local MyDisabledButton = leftGroupBox:AddButton({ Text = "Disabled Button", Tooltip = "This is a disabled button", DoubleClick = false, Disabled = true, DisabledTooltip = "I am disabled!",
 	Func = function()
-		print("You somehow clicked a disabled button!")
+		--print("You somehow clicked a disabled button!")
 	end,
 })
 
@@ -331,44 +362,48 @@ leftGroupBox:AddDivider()
 
 leftGroupBox:AddSlider("MySlider", { Text = "This is my slider!", Tooltip = "I am a slider!",  Default = 0, Min = 0, Max = 5, Rounding = 1,
 	Callback = function(Value)
-		print("[cb] MySlider was changed! New value:", Value)
+		--print("[cb] MySlider was changed! New value:", Value)
 	end,
 })
 
 local Number = options.MySlider.Value
 options.MySlider:OnChanged(function()
-	print("MySlider was changed! New value:", options.MySlider.Value)
+	--print("MySlider was changed! New value:", options.MySlider.Value)
 end)
 
 options.MySlider:SetValue(3)
 
 leftGroupBox:AddInput("MyTextbox", { Text = "This is a textbox", Tooltip = "This is a tooltip", Placeholder = "Placeholder text", Default = "My textbox!", Numeric = false, MaxLength = 5, ClearTextOnFocus = true,
 	Callback = function(Value)
-		print("[cb] Text updated. New text:", Value)
+		--print("[cb] Text updated. New text:", Value)
 	end,
 })
 
 options.MyTextbox:OnChanged(function()
-	print("Text updated. New text:", options.MyTextbox.Value)
+	--print("Text updated. New text:", options.MyTextbox.Value)
 end)
+
+-------------------------------------
+--      MAIN: DROPDOWNS GROUP  --
+-------------------------------------
 
 local DropdownGroupBox = tabs.main:AddRightGroupbox("Dropdowns")
 
 DropdownGroupBox:AddDropdown("MyDropdown", { Text = "A dropdown", Tooltip = "This is a tooltip", Values = { "This", "is", "a", "dropdown" }, Default = 1, Multi = false, Searchable = false,
 	Callback = function(Value)
-		print("[cb] Dropdown got changed. New value:", Value)
+		--print("[cb] Dropdown got changed. New value:", Value)
 	end,
 })
 
 options.MyDropdown:OnChanged(function()
-	print("Dropdown got changed. New value:", options.MyDropdown.Value)
+	--print("Dropdown got changed. New value:", options.MyDropdown.Value)
 end)
 
 options.MyDropdown:SetValue("This")
 
 DropdownGroupBox:AddDropdown("MySearchableDropdown", { Text = "A searchable dropdown", Tooltip = "This is a tooltip", Values = { "This", "is", "a", "searchable", "dropdown" }, Default = 1, Multi = false, Searchable = true,
 	Callback = function(Value)
-		print("[cb] Dropdown got changed. New value:", Value)
+		--print("[cb] Dropdown got changed. New value:", Value)
 	end,
 })
 
@@ -382,7 +417,7 @@ DropdownGroupBox:AddDropdown("MyDisplayFormattedDropdown", { Text = "A display f
 	end,
 
 	Callback = function(Value)
-		print("[cb] Display formatted dropdown got changed. New value:", Value)
+		--print("[cb] Display formatted dropdown got changed. New value:", Value)
 	end,
 })
 
@@ -393,9 +428,9 @@ DropdownGroupBox:AddDropdown("MyMultiDropdown", { Text = "A multi dropdown", Too
 	-- Currently you can not set multiple values with a dropdown
 
 	Callback = function(Value)
-		print("[cb] Multi dropdown got changed:")
+		--print("[cb] Multi dropdown got changed:")
 		for key, value in next, options.MyMultiDropdown.Value do
-			print(key, value) -- should print something like This, true
+			--print(key, value) -- should print something like This, true
 		end
 	end,
 })
@@ -407,7 +442,7 @@ options.MyMultiDropdown:SetValue({
 
 DropdownGroupBox:AddDropdown("MyDisabledDropdown", { Text = "A disabled dropdown", Tooltip = "This is a tooltip", Values = { "This", "is", "a", "dropdown" }, Default = 1, Multi = false,
 	Callback = function(Value)
-		print("[cb] Disabled dropdown got changed. New value:", Value)
+		--print("[cb] Disabled dropdown got changed. New value:", Value)
 	end,
 })
 
@@ -415,7 +450,7 @@ DropdownGroupBox:AddDropdown("MyDisabledValueDropdown", { Text = "A dropdown wit
 Default = 1, Multi = false,
 
 	Callback = function(Value)
-		print("[cb] Dropdown with disabled value got changed. New value:", Value)
+		--print("[cb] Dropdown with disabled value got changed. New value:", Value)
 	end,
 })
 
@@ -443,31 +478,31 @@ DropdownGroupBox:AddDropdown("MyVeryLongDropdown", { Text = "A very long dropdow
 	},
 
 	Callback = function(Value)
-		print("[cb] Very long dropdown got changed. New value:", Value)
+		--print("[cb] Very long dropdown got changed. New value:", Value)
 	end,
 })
 
 DropdownGroupBox:AddDropdown("MyPlayerDropdown", { Text = "A player dropdown", Tooltip = "This is a tooltip", SpecialType = "Player", ExcludeLocalPlayer = true,
 	Callback = function(Value)
-		print("[cb] Player dropdown got changed:", Value)
+		--print("[cb] Player dropdown got changed:", Value)
 	end,
 })
 
 DropdownGroupBox:AddDropdown("MyTeamDropdown", { Text = "A team dropdown", Tooltip = "This is a tooltip", SpecialType = "Team",
 	Callback = function(Value)
-		print("[cb] Team dropdown got changed:", Value)
+		--print("[cb] Team dropdown got changed:", Value)
 	end,
 })
 
 leftGroupBox:AddLabel("Color"):AddColorPicker("ColorPicker", { Title = "Some color", Default = Color3.new(0, 1, 0), Transparency = 0,
 	Callback = function(Value)
-		print("[cb] Color changed!", Value)
+		--print("[cb] Color changed!", Value)
 	end,
 })
 
 options.ColorPicker:OnChanged(function()
-	print("Color changed!", options.ColorPicker.Value)
-	print("Transparency changed!", options.ColorPicker.Transparency)
+	--print("Color changed!", options.ColorPicker.Value)
+	--print("Transparency changed!", options.ColorPicker.Transparency)
 end)
 
 options.ColorPicker:SetValueRGB(Color3.fromRGB(0, 255, 140))
@@ -479,24 +514,24 @@ leftGroupBox:AddLabel("Keybind"):AddKeyPicker("KeyPicker", { Text = "Auto lockpi
 	-- Occurs when the keybind is clicked, Value is `true`/`false`
 
 	Callback = function(Value)
-		print("[cb] Keybind clicked!", Value)
+		--print("[cb] Keybind clicked!", Value)
 	end,
 
 	-- Occurs when the keybind itself is changed, `New` is a KeyCode Enum OR a UserInputType Enum
 
 	ChangedCallback = function(New)
-		print("[cb] Keybind changed!", New)
+		--print("[cb] Keybind changed!", New)
 	end,
 })
 
 -- OnClick is only fired when you press the keybind and the mode is Toggle
 -- Otherwise, you will have to use Keybind:GetState()
 options.KeyPicker:OnClick(function()
-	print("Keybind clicked!", options.KeyPicker:GetState())
+	--print("Keybind clicked!", options.KeyPicker:GetState())
 end)
 
 options.KeyPicker:OnChanged(function()
-	print("Keybind changed!", options.KeyPicker.Value)
+	--print("Keybind changed!", options.KeyPicker.Value)
 end)
 
 task.spawn(function()
@@ -505,9 +540,11 @@ task.spawn(function()
 
 		-- example for checking if a keybind is being pressed
 		local state = options.KeyPicker:GetState()
+		--[[
 		if state then
 			print("KeyPicker is being held down")
 		end
+		]]
 
 		if library.Unloaded then
 			break
@@ -516,6 +553,10 @@ task.spawn(function()
 end)
 
 options.KeyPicker:SetValue({ "MB2", "Hold" })
+
+-------------------------------------
+--      MAIN: GROUPBOX #2  --
+-------------------------------------
 
 local LeftGroupBox2 = tabs.main:AddLeftGroupbox("Groupbox #2")
 LeftGroupBox2:AddLabel( "This label spans multiple lines! We're gonna run out of UI space...\nJust kidding! Scroll down!\n\n\nHello from below!", true )
@@ -528,7 +569,7 @@ Depbox:AddToggle('DepboxToggle', { Text = 'Sub-dependency box toggle' });
 Depbox:SetupDependencies({ { toggles.ControlToggle, true } });
 
 toggles.ControlToggle:OnChanged(function(enabled)
-	print(enabled)
+	--print(enabled)
 end)
 
 local TabBox = tabs.main:AddRightTabbox() -- Add Tabbox on right side
@@ -541,25 +582,31 @@ local Tab2 = TabBox:AddTab("Tab 2")
 Tab2:AddToggle("Tab2Toggle", { Text = "Tab2 Toggle" })
 
 library:OnUnload(function()
-	print("Unloaded!")
+	--print("Unloaded!")
 end)
 
--- Anything we can do in a Groupbox, we can do in a key tab (AddToggle, AddSlider, AddLabel, etc etc...)
-tabs.key:AddLabel({ Text = "Key: Banana", DoesWrap = true, Size = 16 })
+-- =================================================
+--                   TAB: MISCELLANEOUS                   --
+-- =================================================
 
-tabs.key:AddKeyBox("Banana", function(Success, ReceivedKey)
-	print("Expected Key: Banana - Received Key:", ReceivedKey, "| Success:", Success)
-	library:Notify({ Title = "Expected Key: Banana", Description = "Received Key: " .. ReceivedKey .. "\nSuccess: " .. tostring(Success), Time = 4 })
-end)
+local miscGroupBox = tabs.misc:AddLeftGroupbox("Miscellaneous")
 
-tabs.key:AddLabel({ Text = "No Key", DoesWrap = true, Size = 16 })
+-------------------------------------
+--      MISCELLANEOUS: MISCELLANEOUS GROUP  --
+-------------------------------------
 
-tabs.key:AddKeyBox(function(Success, ReceivedKey)
-	print("Expected Key: None | Success:", Success) -- true
-	library:Notify("Success: " .. tostring(Success), 4)
-end)
+miscGroupBox:AddButton({ Text = "Rejoin", DoubleClick = true,
+    Func = function()
+        utils.gameTeleport("Rejoin")
 
--- UI Settings
+		notify("Rejoining", "Rejoining server with job id " .. game.JobId .. ".", 1000)
+    end,
+})
+
+-- =================================================
+--                   TAB: UI SETTINGS                   --
+-- =================================================
+
 local MenuGroup = tabs["UI Settings"]:AddLeftGroupbox("Menu")
 
 MenuGroup:AddToggle("KeybindMenuOpen", { Default = library.KeybindFrame.Visible, Text = "Open Keybind Menu",
@@ -602,7 +649,7 @@ MenuGroup:AddDivider()
 MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", { Default = "RightShift", NoUI = true, Text = "Menu keybind" })
 
 local function unloadModules()
-	local modules = { "" }
+	local modules = { "fly_Toggle", "noclip_Toggle", "rainbowToggle" }
 
 	for _, moduleName in ipairs(modules) do
 		if toggles[moduleName] then
@@ -614,8 +661,8 @@ local function unloadModules()
 		shared.scriptLoaded = false
 	end
 
-    local rainbowConnections = nil
-	local hues = nil
+    rainbowConnections = nil
+	hues = nil
 end
 
 -- Handle any case were the interface is destroyed abruptly
@@ -636,6 +683,7 @@ end
 
 MenuGroup:AddButton("Unload", function()
 	library:Unload()
+	unloadModules()
 end)
 
 options.notifAlertVolumeSlider:OnChanged(function(val)
