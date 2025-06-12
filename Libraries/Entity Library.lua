@@ -292,6 +292,10 @@ entityLib.clearData = function(object, propertyName)
     end
 end
 
+entityLib.isStored = function(object, propertyName)
+    return storedData[object] ~= nil and storedData[object][propertyName] ~= nil
+end
+
 --[[
 
 entityLib.clearData = function(object, propertyName)
