@@ -15,22 +15,6 @@ local toggles = library.Toggles
 library.ForceCheckbox = false
 library.ShowToggleFrameInKeybinds = true
 
-local function isLibEnabled(library)
-    local libraryRefs = {
-        auth = auth,
-        executionLib = executionLib,
-        entityLib = entityLib,
-        utils = utils
-    }
-
-    if typeof(libraryRefs[library]) ~= "table" then
-        --warn(library .. " did not return a table.")
-        return false
-    end
-
-    return true
-end
-
 local gameName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
 local players = game:GetService("Players")
 local localplayer = players.LocalPlayer
@@ -64,7 +48,6 @@ local tabs = {
     player = window:AddTab("Player", "circle-user-round"),
     visuals = window:AddTab("Visuals", "globe"),
     weapons = window:AddTab("Weapons", "swords"),
-    gui = window:AddTab("User Interface", "monitor"),
 	misc = window:AddTab("Miscellaneous", "circle-ellipsis"),
 	uiSettings = window:AddTab("UI Settings", "settings"),
 }
@@ -114,21 +97,11 @@ local function notify(title, desc, duration)
 end
 
 local function getHRP()
-    if isLibEnabled("entityLib") then
-        return entityLib.getCharInstance("HumanoidRootPart") or nil
-    else
-        notify("Error", "Entity Library not loaded.", 100)
-        return "Error"
-    end
+    return entityLib.getCharInstance("HumanoidRootPart") or nil
 end
 
 local function getHumanoid()
-    if isLibEnabled("entityLib") then
-        return entityLib.getCharInstance("Humanoid") or nil
-    else
-        notify("Error", "Entity Library not loaded.", 100)
-        return "Error"
-    end
+    return entityLib.getCharInstance("Humanoid") or nil
 end
 
 local function isAlive()
@@ -184,6 +157,36 @@ local function toggleRainbow(enabled, colorPickerName)
 	end
 end
 
+local function teleporterInUse()
+    local displayLabel = game:GetService("Workspace").AREA51.TeleporterRoom.Teleporter["Control Panels"].Middle.Displayer.SurfaceGui.Frame.TextLabel
+    local teleportSmoke = game:GetService("Workspace").AREA51.TeleporterRoom.Teleporter.Teleporter.Collision.Smoke
+
+    if string.find(displayLabel.Text, "Teleporting") or teleportSmoke.Enabled then
+        return true
+    end
+
+    return false
+end
+
+local function getTeleporterState()
+    local door = game:GetService("Workspace").AREA51.TeleporterRoom.Teleporter.Teleporter.Inside
+    local teleportSmoke = game:GetService("Workspace").AREA51.TeleporterRoom.Teleporter.Teleporter.Collision.Smoke
+    local openY = 329.900665
+    local closedY = 320.000061
+    local tolerance = 0.1
+
+    local currentY = door.CFrame.Position.Y
+
+    if math.abs(currentY - openY) < tolerance then
+        return "Open"
+    elseif teleportSmoke.Enabled then
+        return "Teleporting in Progress"
+    elseif math.abs(currentY - closedY) < tolerance and not teleportSmoke.Enabled then
+        return "Closed"
+    else
+        return "Moving"
+    end
+end
 
 
 -- =================================================
@@ -219,7 +222,7 @@ gameTab:AddButton({ Text = "Copy Server Join Script", DoubleClick = false,
     end,
 })
 
-if isLibEnabled("auth") and isLibEnabled("executionLib") then
+if auth and executionLib then
     local whitelistTab = infoTabBox:AddTab("Whitelist")
 
     whitelistTab:AddLabel("Identifier: " .. auth.currentUser.Identifier, true)
@@ -265,11 +268,6 @@ teleportGroup:AddButton({ Text = "Teleport", Func = function()
         local dropdown = options.regularLocationsList_Dropdown
         local cframeDestination = cframeValues[dropdown.Value]
         local hrp = getHRP()
-
-        if not isLibEnabled("entityLib") then
-            notify("Error", "Entity Library not loaded.", 100)
-            return
-        end
 
         if dropdown.Value == "Pack A Punch Machine" then
             entityLib.teleport(game:GetService("Workspace").PACKAPUNCH.GUI)
@@ -887,6 +885,7 @@ end
 -- =================================================
 
 local worldGroup = tabs.visuals:AddLeftGroupbox("World")
+local userInterfaceGroup = tabs.visuals:AddRightGroupbox("User Interface")
 
 -------------------------------------
 --      VISUALS: WORLD GROUP  --
@@ -1197,11 +1196,17 @@ toggles.rainbowNameTagColor_Toggle:OnChanged(function(enabled)
     toggleRainbow(enabled, "killerNameTagColor_ColorPicker")
 end)
 
+-------------------------------------
+--      VISUALS: USER INTERFACE GROUP  --
+-------------------------------------
+
+-- code here
+
 -- =================================================
 --                   TAB: WEAPONS                   --
 -- =================================================
 
-local weaponsGroup = tabs.weapons:AddLeftGroupbox("Groupbox")
+local weaponsGroup = tabs.weapons:AddLeftGroupbox("Weapons")
 local papRequirementsGroup = tabs.weapons:AddRightGroupbox("Pack A Punch Requirements")
 local othersGroup = tabs.weapons:AddLeftGroupbox("Other")
 
@@ -1222,20 +1227,19 @@ for _, name in ipairs(extraWeapons) do
     end
 end
 
-weaponsGroup:AddDropdown("weaponsList_Dropdown", {
-    Text = "Give Weapon(s)",
-    Tooltip = false,
-    Values = weaponNames,
-    Default = nil,
-    Multi = true,
-    Searchable = true,
-
+weaponsGroup:AddDropdown("weaponsList_Dropdown", { Text = "Give Weapon(s)", Tooltip = false, Values = weaponNames, Default = nil, Multi = true, Searchable = true,
     Callback = function(val)
         local selectedNames = {}
         for name, isSelected in pairs(val) do
             if isSelected then
                 table.insert(selectedNames, name)
             end
+        end
+
+        if #selectedNames == 0 then
+            giveWeaponBtn:SetText("Give Weapon")
+            papWeaponBtn:SetText("Pack a Punch Weapon")
+            return
         end
 
         local displayLimit = 2
@@ -1251,8 +1255,9 @@ weaponsGroup:AddDropdown("weaponsList_Dropdown", {
     end,
 })
 
-giveWeaponBtn = weaponsGroup:AddButton({
-    Text = "Give Weapon",
+weaponsGroup:AddDropdown("giveWeaponMethod_Dropdown", { Text = "Method", Tooltip = false, Values = { "Normal", "Alternative" }, Default = 1, Multi = false, Searchable = false })
+
+giveWeaponBtn = weaponsGroup:AddButton({ Text = "Give Weapon",
     Func = function()
         local selected = options.weaponsList_Dropdown.Value
         local anySelected = false
@@ -1265,7 +1270,7 @@ giveWeaponBtn = weaponsGroup:AddButton({
         for weaponName, isSelected in pairs(selected) do
             if isSelected then
                 if restrictedWeapons[weaponName] then
-                    notify("Error", weaponName .. " cannot be given and can only be pack-a-punched due to requirements/gamepasses.", 14)
+                    notify("Error", weaponName .. " cannot be given and can only be pack a punched due to requirements/gamepasses.", 14)
                 else
                     anySelected = true
 
@@ -1288,8 +1293,15 @@ giveWeaponBtn = weaponsGroup:AddButton({
             end
         end
 
+        local method = options.giveWeaponMethod_Dropdown.Value
         for _, weapon in ipairs(weaponsToGive) do
-            utils.fireTouchEvent(hrp, weapon.Hitbox)
+            
+            if method == "Normal" then
+                utils.fireTouchEvent(hrp, weapon.Hitbox)
+            else
+                warn("under construction")
+            end
+
         end
 
         for _, weapon in ipairs(weaponsToGive) do
@@ -1314,10 +1326,146 @@ giveWeaponBtn = weaponsGroup:AddButton({
     end,
 })
 
+local function pap(weaponName)
+	-- Weapon check
 
-weaponsGroup:AddButton({ Text = "Clear Selection",
+	if not entityLib.getTool("Specific", weaponName) then
+		notify("Error", "You don't have " .. weaponName .. " in your inventory. Skipping...", 6)
+		return false
+	end
+
+	-- Kill requirements
+
+	local requirements = require(game:GetService("StarterPlayer").StarterPlayerScripts.LocalAnimations["Classic area"].Teleportation.PackAPunch["Classic mode"].Requirements)
+	local requiredKills = requirements[weaponName]
+	local kills = game:GetService("Players").LocalPlayer.leaderstats["Killers Killed"].Value
+
+	if requiredKills and kills < requiredKills then
+		local needed = requiredKills - kills
+		notify("Error", weaponName .. " requires " .. requiredKills .. " kills to pack a punch. You need " .. needed .. " more.", 7)
+		return false
+	end
+
+	-- Teleport to control panel
+
+	entityLib.teleport(CFrame.new(110.864708, 313.499969, 72.9767151))
+	task.wait(1)
+
+	-- Fire teleport prompt
+
+	utils.fireProxPrompt(game:GetService("Workspace").AREA51.TeleporterRoom.Teleporter["Control Panels"].Middle.Teleport)
+    notify("Working..", "Teleporting in progress...", 11)
+
+	-- Confirm teleport has started
+
+	local displayLabel = game:GetService("Workspace").AREA51.TeleporterRoom.Teleporter["Control Panels"].Middle.Displayer.SurfaceGui.Frame.TextLabel
+
+    repeat task.wait() until string.find(displayLabel.Text, "Teleporting" )
+    notify("Working..", "Correct teleport.", 12)
+
+	-- Teleport inside teleporter
+
+	local inside = game:GetService("Workspace").AREA51.TeleporterRoom.Teleporter.Teleporter.Inside
+	inside.CanCollide = false
+	task.wait(0.2)
+	entityLib.teleport(CFrame.new(111.216148, 315.700012, 41.9078827))
+
+	local hrp = getHRP()
+	local punchRoomCFrame = CFrame.new(109.300003, 335.499969, 62)
+	repeat task.wait() until entityLib.checkTeleport(hrp, punchRoomCFrame, 5)
+    notify("Working..", "Teleport finished.", 9)
+
+	-- PAP the weapon
+
+	game:GetService("Workspace").PACKAPUNCH.PAPStarted:FireServer(weaponName)
+	game:GetService("Workspace").PACKAPUNCH.PAPFinished:FireServer()
+    notify("Success", weaponName .. " has been pack a punched!", 7)
+
+	return true
+end
+
+papWeaponBtn = weaponsGroup:AddButton({ Text = "Pack a Punch Weapon",
     Func = function()
-        options.weaponsList_Dropdown:SetValue(nil)
+        papWeaponBtn:SetDisabled(true)
+
+        local requirements = require(game:GetService("StarterPlayer").StarterPlayerScripts.LocalAnimations["Classic area"].Teleportation.PackAPunch["Classic mode"].Requirements)
+        local kills = game:GetService("Players").LocalPlayer.leaderstats["Killers Killed"].Value
+
+        local selected = options.weaponsList_Dropdown.Value
+        local selectedWeapons = {}
+
+        -- Filter selected weapons
+        for name, isSelected in pairs(selected) do
+            if isSelected then
+                -- Skip if already PAP version exists in inventory
+                if entityLib.getTool("Specific", "PAP" .. name) then
+                    notify("Info", "You already have PAP" .. name .. ". Skipping...", 5)
+                elseif string.sub(name, 1, 3) == "PAP" then
+                    notify("Info", name .. " is already pack a punched. Skipping...", 5)
+                else
+                    table.insert(selectedWeapons, name)
+                end
+            end
+        end
+
+        task.spawn(function()
+            local anyPunched = false
+
+            for index, weaponName in ipairs(selectedWeapons) do
+                local hasBase = entityLib.getTool("Specific", weaponName)
+                local hasPAP = entityLib.getTool("Specific", "PAP" .. weaponName)
+
+                if not (hasBase or hasPAP) then
+                    notify("Error", "You don't have " .. weaponName .. ". Cannot pack a punch.", 6)
+                else
+                    -- Check kills requirement
+                    local requiredKills = requirements[weaponName] or 0
+                    if kills < requiredKills then
+                        notify("Error", "Not enough kills to pack a punch " .. weaponName .. ". Need " .. (requiredKills - kills) .. " more kills.", 6)
+                    else
+                        repeat
+                            if teleporterInUse() then
+                                local pending = {}
+                                for i = index, #selectedWeapons do
+                                    table.insert(pending, selectedWeapons[i])
+                                end
+                                notify("Waiting", "Teleporter in use. Waiting to pack a punch: " .. table.concat(pending, ", "), 4)
+                            end
+                            task.wait(2)
+                        until not teleporterInUse()
+
+                        local success = pap(weaponName)
+                        if success then
+                            anyPunched = true
+                        else
+                            notify("Error", "Failed to pack a punch " .. weaponName, 5)
+                            break
+                        end
+
+                        local hrp = getHRP()
+                        local returnCFrame = CFrame.new(219.199997, 323.500061, 845.900024, 1, 0, 0, 0, 1, 0, 0, 0, 1)
+                        repeat task.wait() until entityLib.checkTeleport(hrp, returnCFrame, 5)
+                    end
+                end
+            end
+
+            if anyPunched then
+                notify("Success", "All selected weapons have been pack a punched!", 6)
+                if toggles.clearOnAction_Toggle.Value then
+                    options.weaponsList_Dropdown:SetValue({})
+                end
+            else
+                notify("Info", "No weapons were pack a punched.", 6)
+            end
+
+            papWeaponBtn:SetDisabled(false)
+        end)
+    end,
+})
+
+weaponsGroup:AddButton({ Text = "[ ! ] Pack a Punch Held Weapon",
+    Func = function()
+
     end,
 })
 
@@ -1336,143 +1484,23 @@ weaponsGroup:AddButton({ Text = "Select All Weapons",
     end,
 })
 
-local function teleporterInUse()
-    local displayLabel = game:GetService("Workspace").AREA51.TeleporterRoom.Teleporter["Control Panels"].Middle.Displayer.SurfaceGui.Frame.TextLabel
-    local teleportSmoke = game:GetService("Workspace").AREA51.TeleporterRoom.Teleporter.Teleporter.Collision.Smoke
-
-    if string.find(displayLabel.Text, "Teleporting") or teleportSmoke.Enabled then
-        return true
-    end
-
-    return false
-end
-
-local function packapunchSingle(weaponName)
-	if teleporterInUse() then
-		notify("Error", "The teleporter is currently in use. Please try again in a minute.", 6)
-		return false
-	end
-
-	-- Teleport to teleporter control panel
-	entityLib.teleport(CFrame.new(110.864708, 313.499969, 72.9767151))
-	task.wait(1)
-
-	-- Activate teleporter
-	utils.fireProxPrompt(game.Workspace.AREA51.TeleporterRoom.Teleporter["Control Panels"].Middle.Teleport)
-
-	-- Wait for teleport animation to begin
-	task.wait(0.5)
-	local displayLabel = game.Workspace.AREA51.TeleporterRoom.Teleporter["Control Panels"].Middle.Displayer.SurfaceGui.Frame.TextLabel
-	if not string.find(displayLabel.Text, "Teleporting") then
-		return false
-	end
-
-	-- Move into the teleporter
-	local inside = game.Workspace.AREA51.TeleporterRoom.Teleporter.Teleporter.Inside
-	inside.CanCollide = false
-	entityLib.teleport(CFrame.new(111.216148, 315.700012, 41.9078827))
-
-	-- Wait until inside teleporter
-	local hrp = game.Players.LocalPlayer.Character.HumanoidRootPart
-	local insideCFrame = CFrame.new(109.300003, 335.499969, 62)
-	repeat task.wait() until entityLib.checkTeleport(hrp, insideCFrame, 5)
-
-	-- Pack-a-Punch
-	workspace.PACKAPUNCH.PAPStarted:FireServer(weaponName)
-	task.wait(0.25)
-	workspace.PACKAPUNCH.PAPFinished:FireServer()
-	notify("Success", weaponName .. " has been pack-a-punched!", 5)
-
-	-- Wait until returned to surface
-	local surfaceCFrame = CFrame.new(219.199997, 323.500061, 845.900024)
-	repeat task.wait() until entityLib.checkTeleport(hrp, surfaceCFrame, 5)
-
-	return true
-end
-
-
-papWeaponBtn = weaponsGroup:AddButton({
-    Text = "Pack-A-Punch Weapon",
+weaponsGroup:AddButton({ Text = "Clear Selection",
     Func = function()
-        papWeaponBtn:SetDisabled(true)
-
-        local requirements = require(game:GetService("StarterPlayer").StarterPlayerScripts.LocalAnimations["Classic area"].Teleportation.PackAPunch["Classic mode"].Requirements)
-        local kills = game:GetService("Players").LocalPlayer.leaderstats["Killers Killed"].Value
-
-        local selected = options.weaponsList_Dropdown.Value
-        local selectedWeapons = {}
-
-        -- Filter selected weapons
-        for name, isSelected in pairs(selected) do
-            if isSelected then
-                -- Skip if already PAP version exists in inventory
-                if entityLib.getTool("Specific", "PAP" .. name) then
-                    notify("Info", "You already have PAP" .. name .. ". Skipping...", 5)
-                elseif string.sub(name, 1, 3) == "PAP" then
-                    notify("Info", name .. " is already Pack-a-Punched. Skipping...", 5)
-                else
-                    table.insert(selectedWeapons, name)
-                end
-            end
-        end
-
-        task.spawn(function()
-            local anyPunched = false
-
-            for index, weaponName in ipairs(selectedWeapons) do
-                local hasBase = entityLib.getTool("Specific", weaponName)
-                local hasPAP = entityLib.getTool("Specific", "PAP" .. weaponName)
-
-                if not (hasBase or hasPAP) then
-                    notify("Error", "You don't have " .. weaponName .. ". Cannot Pack-a-Punch.", 6)
-                else
-                    -- Check kills requirement
-                    local requiredKills = requirements[weaponName] or 0
-                    if kills < requiredKills then
-                        notify("Error", "Not enough kills to Pack-a-Punch " .. weaponName .. ". Need " .. (requiredKills - kills) .. " more kills.", 6)
-                    else
-                        repeat
-                            if teleporterInUse() then
-                                local pending = {}
-                                for i = index, #selectedWeapons do
-                                    table.insert(pending, selectedWeapons[i])
-                                end
-                                notify("Waiting", "Teleporter in use. Waiting to Pack-a-Punch: " .. table.concat(pending, ", "), 4)
-                            end
-                            task.wait(2)
-                        until not teleporterInUse()
-
-                        local success = packapunchSingle(weaponName)
-                        if success then
-                            anyPunched = true
-                        else
-                            notify("Error", "Failed to Pack-a-Punch " .. weaponName, 5)
-                            break
-                        end
-
-                        local hrp = getHRP()
-                        local returnCFrame = CFrame.new(219.199997, 323.500061, 845.900024, 1, 0, 0, 0, 1, 0, 0, 0, 1)
-                        repeat task.wait() until entityLib.checkTeleport(hrp, returnCFrame, 5)
-                    end
-                end
-            end
-
-            if anyPunched then
-                notify("Success", "All selected weapons have been Pack-a-Punched!", 6)
-                if toggles.clearOnAction_Toggle.Value then
-                    options.weaponsList_Dropdown:SetValue({})
-                end
-            else
-                notify("Info", "No weapons were Pack-a-Punched.", 6)
-            end
-
-            papWeaponBtn:SetDisabled(false)
-        end)
+        options.weaponsList_Dropdown:SetValue(nil)
     end,
 })
 
-weaponsGroup:AddToggle("clearOnAction_Toggle", { Text = "Clear on Action", Tooltip = "Clears the selected weapons when you obtain, pack a punch it, etc." })
+weaponsGroup:AddToggle("clearOnAction_Toggle", { Text = "Clear on Action", Tooltip = "Clears the selected weapons when you obtain, pack a punch it, etc.", Default = false })
+weaponsGroup:AddLabel("Due to recent updates, you can only pack a punch one weapon per teleporter usage. Meaning one weapon can be pack a punched for each teleport.", true)
+local teleporterStateLabel = weaponsGroup:AddLabel("Teleporter: " .. getTeleporterState(), true)
 
+local isUpdatingTeleporterState = true
+task.spawn(function()
+	while isUpdatingTeleporterState do
+		teleporterStateLabel:SetText("Teleporter: " .. getTeleporterState())
+		task.wait(0.1)
+	end
+end)
 
 -------------------------------------
 --      WEAPONS: PAP REQUIREMENTS GROUP  --
@@ -1492,18 +1520,6 @@ local papLabel = papRequirementsGroup:AddLabel(labelText, true)
 
 -------------------------------------
 --      WEAPONS: OTHERS GROUP  --
--------------------------------------
-
--- module code here
-
--- =================================================
---                   TAB: USER INTERFACE                   --
--- =================================================
-
-local testGroup3 = tabs.gui:AddLeftGroupbox("Groupbox")
-
--------------------------------------
---      USER INTERFACE: TEST GROUP  --
 -------------------------------------
 
 -- module code here
@@ -1533,7 +1549,7 @@ toggles.disableAllKillers_Toggle:OnChanged(function(enabled)
                 local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
                 if not hrp then task.wait(0.5); continue end
 
-                for _, model in pairs(workspace.Killers:GetChildren()) do
+                for _, model in pairs(game:GetService("Workspace").Killers:GetChildren()) do
                     if model:IsA("Model") then
                         local hum = model:FindFirstChildOfClass("Humanoid")
                         local root = model:FindFirstChild("HumanoidRootPart")
@@ -1562,7 +1578,7 @@ toggles.disableAllKillers_Toggle:OnChanged(function(enabled)
             end
         end)
     else
-        for _, model in pairs(workspace.Killers:GetChildren()) do
+        for _, model in pairs(game:GetService("Workspace").Killers:GetChildren()) do
             if model:IsA("Model") then
                 local hum = model:FindFirstChildOfClass("Humanoid")
                 if hum then
@@ -1579,7 +1595,7 @@ toggles.killerGodmode_Toggle:OnChanged(function(enabled)
     if enabled then
         task.spawn(function()
             while toggles.killerGodmode_Toggle.Value do
-                for _, model in pairs(workspace.Killers:GetChildren()) do
+                for _, model in pairs(game:GetService("Workspace").Killers:GetChildren()) do
                     if model:IsA("Model") then
                         for _, descendant in ipairs(model:GetDescendants()) do
                             if descendant:IsA("TouchTransmitter") then
@@ -1647,6 +1663,7 @@ local function unloadModules()
 
     rainbowConnections = nil
 	hues = nil
+    isUpdatingTeleporterState = false
 end
 
 -- Handle any case were the interface is destroyed abruptly
