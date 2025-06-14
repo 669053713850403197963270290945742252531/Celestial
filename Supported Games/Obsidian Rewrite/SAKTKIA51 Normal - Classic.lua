@@ -188,6 +188,14 @@ local function getTeleporterState()
     end
 end
 
+local function freeze(enabled)
+    local hum = getHumanoid()
+    if hum then
+        hum.WalkSpeed = enabled and 0 or 16
+        hum.JumpPower = enabled and 0 or 50
+    end
+end
+
 
 -- =================================================
 --                   TAB: HOME                   --
@@ -1227,7 +1235,7 @@ for _, name in ipairs(extraWeapons) do
     end
 end
 
-weaponsGroup:AddDropdown("weaponsList_Dropdown", { Text = "Give Weapon(s)", Tooltip = false, Values = weaponNames, Default = nil, Multi = true, Searchable = true,
+weaponsGroup:AddDropdown("weaponsList_Dropdown", { Text = "Obtain Weapon(s)", Tooltip = false, Values = weaponNames, Default = nil, Multi = true, Searchable = true,
     Callback = function(val)
         local selectedNames = {}
         for name, isSelected in pairs(val) do
@@ -1237,7 +1245,7 @@ weaponsGroup:AddDropdown("weaponsList_Dropdown", { Text = "Give Weapon(s)", Tool
         end
 
         if #selectedNames == 0 then
-            giveWeaponBtn:SetText("Give Weapon")
+            giveWeaponBtn:SetText("Obtain Weapon")
             papWeaponBtn:SetText("Pack a Punch Weapon")
             return
         end
@@ -1246,10 +1254,10 @@ weaponsGroup:AddDropdown("weaponsList_Dropdown", { Text = "Give Weapon(s)", Tool
         if #selectedNames > displayLimit then
             local shown = table.concat({ unpack(selectedNames, 1, displayLimit) }, ", ")
             local extra = #selectedNames - displayLimit
-            giveWeaponBtn:SetText("Give " .. shown .. ", +" .. extra .. " more")
+            giveWeaponBtn:SetText("Obtain " .. shown .. ", +" .. extra .. " more")
             papWeaponBtn:SetText("Pack a Punch  " .. shown .. ", +" .. extra .. " more")
         else
-            giveWeaponBtn:SetText("Give " .. table.concat(selectedNames, ", "))
+            giveWeaponBtn:SetText("Obtain " .. table.concat(selectedNames, ", "))
             papWeaponBtn:SetText("Pack a Punch " .. table.concat(selectedNames, ", "))
         end
     end,
@@ -1257,7 +1265,7 @@ weaponsGroup:AddDropdown("weaponsList_Dropdown", { Text = "Give Weapon(s)", Tool
 
 weaponsGroup:AddDropdown("giveWeaponMethod_Dropdown", { Text = "Method", Tooltip = false, Values = { "Normal", "Alternative" }, Default = 1, Multi = false, Searchable = false })
 
-giveWeaponBtn = weaponsGroup:AddButton({ Text = "Give Weapon",
+giveWeaponBtn = weaponsGroup:AddButton({ Text = "Obtain Weapon",
     Func = function()
         local selected = options.weaponsList_Dropdown.Value
         local anySelected = false
@@ -1299,7 +1307,19 @@ giveWeaponBtn = weaponsGroup:AddButton({ Text = "Give Weapon",
             if method == "Normal" then
                 utils.fireTouchEvent(hrp, weapon.Hitbox)
             else
-                warn("under construction")
+                -- Alternative: Teleport to weapons hitbox
+                
+                weapon.Hitbox.CanCollide = false -- Why fall over upon collison
+
+                local origCFrame = entityLib.storeData(hrp, "CFrame")
+
+                entityLib.teleport(weapon.Hitbox)
+                task.wait(0.01)
+
+                entityLib.restoreData(hrp, "CFrame")
+                entityLib.clearData(hrp, "CFrame")
+
+                weapon.Hitbox.CanCollide = true
             end
 
         end
@@ -1326,7 +1346,7 @@ giveWeaponBtn = weaponsGroup:AddButton({ Text = "Give Weapon",
     end,
 })
 
-local function pap(weaponName)
+local function pap(weaponName, selectedWeapons, currentIndex)
 	-- Weapon check
 
 	if not entityLib.getTool("Specific", weaponName) then
@@ -1346,34 +1366,35 @@ local function pap(weaponName)
 		return false
 	end
 
+    local hrp = getHRP()
+
 	-- Teleport to control panel
 
+    freeze(true)
 	entityLib.teleport(CFrame.new(110.864708, 313.499969, 72.9767151))
-	task.wait(1)
+    repeat task.wait(0.09) until entityLib.checkTeleport(hrp, CFrame.new(110.86470794677734, 313.4999694824219, 72.97671508789062), 5)
+	--task.wait(0.15)
 
 	-- Fire teleport prompt
 
 	utils.fireProxPrompt(game:GetService("Workspace").AREA51.TeleporterRoom.Teleporter["Control Panels"].Middle.Teleport)
-    notify("Working..", "Teleporting in progress...", 11)
+    notify("Working..", "Teleporting in progress...\nPack a punching the " .. weaponName .. "...", 11)
 
 	-- Confirm teleport has started
 
 	local displayLabel = game:GetService("Workspace").AREA51.TeleporterRoom.Teleporter["Control Panels"].Middle.Displayer.SurfaceGui.Frame.TextLabel
-
     repeat task.wait() until string.find(displayLabel.Text, "Teleporting" )
-    notify("Working..", "Correct teleport.", 12)
+    notify("Working..", "Correct teleport.\nPack a punching the " .. weaponName .. "...", 12)
 
 	-- Teleport inside teleporter
 
 	local inside = game:GetService("Workspace").AREA51.TeleporterRoom.Teleporter.Teleporter.Inside
 	inside.CanCollide = false
-	task.wait(0.2)
 	entityLib.teleport(CFrame.new(111.216148, 315.700012, 41.9078827))
 
-	local hrp = getHRP()
 	local punchRoomCFrame = CFrame.new(109.300003, 335.499969, 62)
 	repeat task.wait() until entityLib.checkTeleport(hrp, punchRoomCFrame, 5)
-    notify("Working..", "Teleport finished.", 9)
+    notify("Working..", "Teleport finished.\nPack a punching the " .. weaponName .. "...", 9)
 
 	-- PAP the weapon
 
@@ -1381,12 +1402,25 @@ local function pap(weaponName)
 	game:GetService("Workspace").PACKAPUNCH.PAPFinished:FireServer()
     notify("Success", weaponName .. " has been pack a punched!", 7)
 
+    -- Notify remaining queue
+    local remaining = {}
+    for i = currentIndex + 1, #selectedWeapons do
+        table.insert(remaining, selectedWeapons[i])
+    end
+
+    if #remaining > 0 then
+        notify("Info", "Remaining in queue (" .. #remaining .. "): " .. table.concat(remaining, ", "), 12)
+    end
+
+    freeze(false)
+
 	return true
 end
 
 papWeaponBtn = weaponsGroup:AddButton({ Text = "Pack a Punch Weapon",
     Func = function()
         papWeaponBtn:SetDisabled(true)
+        papHeldBtn:SetDisabled(true)
 
         local requirements = require(game:GetService("StarterPlayer").StarterPlayerScripts.LocalAnimations["Classic area"].Teleportation.PackAPunch["Classic mode"].Requirements)
         local kills = game:GetService("Players").LocalPlayer.leaderstats["Killers Killed"].Value
@@ -1434,7 +1468,7 @@ papWeaponBtn = weaponsGroup:AddButton({ Text = "Pack a Punch Weapon",
                             task.wait(2)
                         until not teleporterInUse()
 
-                        local success = pap(weaponName)
+                        local success = pap(weaponName, selectedWeapons, index)
                         if success then
                             anyPunched = true
                         else
@@ -1459,14 +1493,39 @@ papWeaponBtn = weaponsGroup:AddButton({ Text = "Pack a Punch Weapon",
             end
 
             papWeaponBtn:SetDisabled(false)
+            papHeldBtn:SetDisabled(false)
         end)
     end,
 })
 
-weaponsGroup:AddButton({ Text = "[ ! ] Pack a Punch Held Weapon",
-    Func = function()
+papHeldBtn = weaponsGroup:AddButton({ Text = "Pack a Punch Held Weapon",
+	Func = function()
+		local heldWeapon = tostring(entityLib.getTool("Held"))
+		if not heldWeapon then
+			notify("Error", "You're not holding a weapon.", 5)
+			return
+		end
 
-    end,
+		papWeaponBtn:SetDisabled(true)
+		papHeldBtn:SetDisabled(true)
+
+		task.spawn(function()
+			local success = pap(heldWeapon)
+			if success then
+				local hrp = getHRP()
+				local returnCFrame = CFrame.new(219.199997, 323.500061, 845.900024)
+				repeat task.wait() until entityLib.checkTeleport(hrp, returnCFrame, 5)
+
+				notify("Success", heldWeapon .. " has been pack a punched!", 6)
+				if toggles.clearOnAction_Toggle.Value then
+					options.weaponsList_Dropdown:SetValue({})
+				end
+			end
+
+			papWeaponBtn:SetDisabled(false)
+			papHeldBtn:SetDisabled(false)
+		end)
+	end,
 })
 
 weaponsGroup:AddButton({ Text = "Select All Weapons",
@@ -1675,6 +1734,7 @@ for _, newUI in pairs(gethui():GetDescendants()) do
 				newUI.AncestryChanged:Connect(function(_, parent)
 					if not parent then
 						unloadModules()
+                        library:Unload()
 					end
 				end)
 			end)
