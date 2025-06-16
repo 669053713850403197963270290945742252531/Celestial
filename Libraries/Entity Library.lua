@@ -256,58 +256,48 @@ end
 
 local storedData = {}
 
-entityLib.storeData = function(object, propertyName)
-    storedData[object] = storedData[object] or {}
+local function getStorageKey(object)
+    return typeof(object) == "Instance" and object:IsA("Humanoid") and game.Players:GetPlayerFromCharacter(object.Parent) or object
+end
 
-    -- Check if the property is already stored
-    if storedData[object][propertyName] ~= nil then
-        warn(propertyName .. " is already stored. Skipping.")
-        return storedData[object][propertyName] -- Return the stored value
+entityLib.storeData = function(object, propertyName, force)
+    local key = getStorageKey(object)
+    if not key then
+        warn("Could not resolve storage key for object:", object)
+        return
     end
 
-    storedData[object][propertyName] = object[propertyName] -- Store the property value in the table
-    return storedData[object][propertyName] -- Return the stored value
+    storedData[key] = storedData[key] or {}
+
+    if storedData[key][propertyName] ~= nil and not force then
+        warn(propertyName .. " is already stored. Skipping.")
+        return storedData[key][propertyName]
+    end
+
+    storedData[key][propertyName] = object[propertyName]
+    return storedData[key][propertyName]
 end
 
 entityLib.restoreData = function(object, propertyName)
-    -- Restore the property value if it was saved
-
-    if storedData[object] and storedData[object][propertyName] ~= nil then
-        object[propertyName] = storedData[object][propertyName]
-    else
-        --warn("entityLibrary.restoreData: No stored data for ", propertyName)
+    local key = getStorageKey(object)
+    if key and storedData[key] and storedData[key][propertyName] ~= nil then
+        object[propertyName] = storedData[key][propertyName]
     end
 end
 
 entityLib.clearData = function(object, propertyName)
-    if storedData[object] then
-        if storedData[object][propertyName] then
-            storedData[object][propertyName] = nil
-            --print(propertyName .. " data cleared for the given object.")
-        else
-            --warn("No stored data for " .. propertyName .. " on this object.")
+    local key = getStorageKey(object)
+    if key and storedData[key] then
+        if storedData[key][propertyName] then
+            storedData[key][propertyName] = nil
         end
-    else
-        --warn("No data found for the given object: " .. tostring(object))
     end
 end
 
 entityLib.isStored = function(object, propertyName)
-    return storedData[object] ~= nil and storedData[object][propertyName] ~= nil
+    local key = getStorageKey(object)
+    return key ~= nil and storedData[key] ~= nil and storedData[key][propertyName] ~= nil
 end
-
---[[
-
-entityLib.clearData = function(object, propertyName)
-    if storedData[object] then
-        storedData[object][propertyName] = nil
-        if next(storedData[object]) == nil then
-            storedData[object] = nil -- Remove the object entirely if no properties remain
-        end
-    end
-end
-
-]]
 
 entityLib.clearAllData = function()
     storedData = {}
