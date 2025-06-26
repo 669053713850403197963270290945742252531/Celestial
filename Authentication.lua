@@ -11,8 +11,8 @@ local hashedHWID = utils.hash(hwid, "SHA-384")
 
 -- Config
 local authConfig = {
-    logExecutions = false,
-    logBreaches = false
+    logExecutions = true,
+    logBreaches = true
 }
 
 auth.currentUser = nil
@@ -64,17 +64,30 @@ if not whitelistedUsers then
     return
 end
 
--- Logging function
+-- Execution log lock (persistent per session)
+getgenv()._celestial_logged_breach = getgenv()._celestial_logged_breach or false
+getgenv()._celestial_logged_execution = getgenv()._celestial_logged_execution or false
+
 local function logEvent(eventType)
+    -- Block duplicate logs
+    if eventType == "execution" and getgenv()._celestial_logged_execution then return end
+    if eventType == "breach" and getgenv()._celestial_logged_breach then return end
+
     local url = ""
     if eventType == "execution" then
         url = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Webhooks/Execution.lua"
+        warn("[Celestial] Execution log sent.")
+        getgenv()._celestial_logged_execution = true
     elseif eventType == "breach" then
         url = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Webhooks/Breach.lua"
+        warn("[Celestial] Breach log sent.")
+        getgenv()._celestial_logged_breach = true
     end
 
     if url ~= "" then
-        loadstring(game:HttpGet(url))()
+        pcall(function()
+            loadstring(game:HttpGet(url))()
+        end)
     end
 end
 
@@ -132,6 +145,8 @@ auth.hwid = function(mode)
         warn("auth.hwid: Invalid mode.")
         return
     end
+
+    warn(logEvent("execution"))
 end
 
 -- Unsupported exploit check
@@ -159,29 +174,41 @@ end
 
 -- Main trigger authorization function
 auth.trigger = function()
+    print("[Celestial] Trigger called.")
+
     if not whitelistedUsers then
+        warn("[Celestial] Whitelist is nil.")
         realKick(player, "Failed to retrieve whitelist.")
         auth.kicked = true
         return
     end
 
     local isAuthorized, userData = auth.isAuthorized()
+    print("[Celestial] isAuthorized =", isAuthorized)
+    print("[Celestial] userData =", userData and userData.Key or "nil")
+
     if isAuthorized and userData then
         local scriptKey = getgenv().script_key
+        print("[Celestial] scriptKey =", scriptKey)
+        print("[Celestial] expected =", userData.Key)
+
         if typeof(scriptKey) ~= "string" or userData.Key ~= scriptKey then
+            warn("[Celestial] Invalid or missing script key.")
             if authConfig.logBreaches then logEvent("breach") end
             setclipboard(scriptKey or "nil")
             player:Kick("Invalid script key: " .. tostring(scriptKey))
             auth.kicked = true
             return
         end
+
+        warn("[Celestial] Passed all checks. Logging execution.")
         if authConfig.logExecutions then logEvent("execution") end
     else
+        warn("[Celestial] Not authorized. Copying HWID to clipboard.")
         setclipboard(hashedHWID)
-        warn("Invalid HWID: copied to clipboard.")
-        return
     end
 end
+
 
 local originalTrigger = auth.trigger
 
@@ -255,4 +282,5 @@ if not getgenv()._antiHookStarted then
     end)
 end
 
+auth.trigger()
 return auth

