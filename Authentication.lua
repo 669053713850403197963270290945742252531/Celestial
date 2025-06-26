@@ -195,20 +195,6 @@ auth.trigger = function()
     local isAuthorized, userData = auth.isAuthorized() -- Check authorization
 
     if isAuthorized and userData then
-        -- Handle bans
-
-        if userData.Banned and userData.Rank ~= "Owner" then
-            if userData.TempBan then
-                player:Kick("\nYou are temporarily banned from using this service for " .. userData.TempBanDuration .. ". You will be unbanned on " .. userData.TempBanEnd .. ".\nReason: " .. (userData.BanReason or "No reason provided."))
-                auth.kicked = true
-                return
-            else
-                player:Kick("\nYou are permanently banned from using this service.\nReason: " .. (userData.BanReason or "No reason provided."))
-                auth.kicked = true
-                return
-            end
-        end
-
         -- Handle invalid keys
 
         local scriptKey = getgenv().script_key

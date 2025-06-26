@@ -480,7 +480,12 @@ utils.fireTouchEvent = function(humanoidRootPart, touchTransmitterParent)
         warn("utils.fireTouchEvent: Argument #2 (touchTransmitterParent) expected Instance but got a " .. typeof(touchTransmitterParent) .. " value.")
         return
     end
-    
+
+    -- Fix "Part not in workspace" error
+    if not humanoidRootPart:IsDescendantOf(workspace) or not touchTransmitterParent:IsDescendantOf(workspace) then
+        return
+    end
+
     firetouchinterest(humanoidRootPart, touchTransmitterParent, 0)
     task.wait()
     firetouchinterest(humanoidRootPart, touchTransmitterParent, 1)

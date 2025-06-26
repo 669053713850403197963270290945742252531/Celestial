@@ -299,6 +299,14 @@ entityLib.isStored = function(object, propertyName)
     return key ~= nil and storedData[key] ~= nil and storedData[key][propertyName] ~= nil
 end
 
+entityLib.fetchData = function(object, propertyName)
+    local key = getStorageKey(object)
+    if key and storedData[key] then
+        return storedData[key][propertyName]
+    end
+    return nil
+end
+
 entityLib.clearAllData = function()
     storedData = {}
 end

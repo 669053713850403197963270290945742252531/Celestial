@@ -3171,8 +3171,10 @@ do
                 Ball.Position = UDim2.fromScale(Offset, 0)
 
                 Ball.BackgroundColor3 = Library:GetDarkerColor(Library.Scheme.FontColor)
-                Library.Registry[Ball].BackgroundColor3 = function()
-                    return Library:GetDarkerColor(Library.Scheme.FontColor)
+                if Library.Registry[Ball] then
+                    Library.Registry[Ball].BackgroundColor3 = function()
+                        return Library:GetDarkerColor(Library.Scheme.FontColor)
+                    end
                 end
 
                 return
