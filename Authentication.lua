@@ -11,25 +11,24 @@ local hashedHWID = utils.hash(hwid, "SHA-384")
 
 -- Config
 local authConfig = {
-    logExecutions = false,
+    logExecutions = true,
     logBreaches = false
 }
 
 auth.currentUser = nil
 auth.kicked = false
 
--- Save originals early
-local originalNamecall = getrawmetatable(game).__namecall
-local realKick
-realKick = hookfunction(player.Kick, function(...)
-    return realKick(...)
+-- Save original Kick function early
+local originalKick = player.Kick -- Store the original Kick function
+auth._originalKick = originalKick -- Save it for later checks
+
+-- Hook the Kick function to prevent any tampering
+local realKick = hookfunction(player.Kick, function(...)
+    return realKick(...) -- Call the original Kick function
 end)
 
-local originalKickAfterHook = player.Kick
-local realIdentifyExecutor = identifyexecutor
-
--- Forward declare originalTrigger
 local originalTrigger
+local realIdentifyExecutor = identifyexecutor
 
 -- Fetch whitelist
 local function fetchData(url)
@@ -149,10 +148,13 @@ auth.exploitSupported = function()
         ["Solara"] = false
     }
 
-    local exec = realIdentifyExecutor()
+    local exec = identifyexecutor()
     if not supported[exec] then
         realKick(player, "Celestial does not support " .. exec)
+        auth.kicked = true
     end
+
+    return true
 end
 
 -- Main trigger authorization function
@@ -181,6 +183,8 @@ auth.trigger = function()
     end
 end
 
+local originalTrigger = auth.trigger
+
 auth.clearStoredKey = function()
     if typeof(getgenv().script_key) ~= "nil" then
         getgenv().script_key = nil
@@ -189,37 +193,47 @@ auth.clearStoredKey = function()
     end
 end
 
--- Save the original trigger
-originalTrigger = auth.trigger
+-- Save original __namecall before anything else
+local mt = getrawmetatable(game)
+setreadonly(mt, false)
+local originalNamecall = mt.__namecall
+setreadonly(mt, true)
 
--- The core anti-hook check function
-local rawExecutor = identifyexecutor
+-- Anti-hook check
 function auth.runAntiHookChecks()
     local mt = getrawmetatable(game)
     setreadonly(mt, false)
-    local success, err
 
     if mt.__namecall ~= originalNamecall then
         setreadonly(mt, true)
         realKick(player, "Tampering detected: __namecall metamethod hooked.")
+        auth.kicked = true
         return false
     end
 
-    if player.Kick ~= originalKickAfterHook then
+    -- Ensure Kick function cannot be overwritten
+    local currentKick = player.Kick
+    if not rawequal(currentKick, originalKick) then
         setreadonly(mt, true)
-        realKick(player, "Tampering detected: Kick function hooked.")
+        realKick(player, "Tampering detected: Kick function has been overwritten.")
+        auth.kicked = true
         return false
     end
 
-    if auth.trigger ~= originalTrigger then
+    if not rawequal(auth.trigger, originalTrigger) then
         setreadonly(mt, true)
         realKick(player, "Tampering detected: auth.trigger overwritten.")
+        auth.kicked = true
         return false
     end
 
-    if identifyexecutor ~= rawExecutor then
+    local currentExecutor = identifyexecutor()
+    local expectedExecutor = realIdentifyExecutor()
+
+    if currentExecutor ~= expectedExecutor then
         setreadonly(mt, true)
-        realKick(player, "Tampering detected: exploit identification tampered.")
+        realKick(player, "Tampering detected: exploit identification mismatch (" .. tostring(currentExecutor) .. " vs " .. tostring(expectedExecutor) .. ").")
+        auth.kicked = true
         return false
     end
 
@@ -227,9 +241,14 @@ function auth.runAntiHookChecks()
     return true
 end
 
-task.defer(function()
-    task.wait(10)
-    auth.runAntiHookChecks()
-end)
+-- Run the check after a small delay
+if not getgenv()._antiHookStarted then
+    getgenv()._antiHookStarted = true
+
+    task.defer(function()
+        task.wait(5)
+        auth.runAntiHookChecks()
+    end)
+end
 
 return auth
