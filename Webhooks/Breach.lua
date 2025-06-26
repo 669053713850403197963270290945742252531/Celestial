@@ -1,6 +1,6 @@
-local webhookUrl = "https://discord.com/api/webhooks/1326062155115790407/GXAZ6LX2JOXXFkP8BzGDmqgeYh_EoYvnbq-RY3RDwJMUoF8c1fLAjQ-jnu7bQi7BpNfD"
-local utils = loadstring(game:HttpGet("https://gitlab.com/scripts1463602/Celestial/-/raw/main/Libraries/Core%20Utilities.lua?ref_type=heads"))()
-local embedLib = loadstring(game:HttpGet("https://gitlab.com/scripts1463602/Celestial/-/raw/main/Libraries/Embed%20Library.lua?ref_type=heads"))()
+local webhookUrl = "https://discord.com/api/webhooks/1387705899765993562/ZUQT7H7cJyE4s95AZuxORgLAGS_hCu5UpiY67W0HuWHgytxZZ4Qp7FveNuyt8_p6dsyL"
+local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Core%20Utilities.lua"))()
+local embedLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Embed%20Library.lua"))()
 
 local player = game:GetService("Players").LocalPlayer
 local hwid = game:GetService("RbxAnalyticsService"):GetClientId()
@@ -63,12 +63,6 @@ local function getDevice()
         return "Unknown"
     end
 end
-
-
--- Embed
-
-
-local webhookUrl = "https://discord.com/api/webhooks/1326062155115790407/GXAZ6LX2JOXXFkP8BzGDmqgeYh_EoYvnbq-RY3RDwJMUoF8c1fLAjQ-jnu7bQi7BpNfD"
 
 -- Embed
 

@@ -1,9 +1,11 @@
 local webhookUrl = "https://discord.com/api/webhooks/1387691970490531982/7BlMni3EGmBBiBOev2uY6NC8ExsfOWgdJOcNGuugAvrNWULZqWauL1RtmlRPuLR7LXzx"
-
 local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Core%20Utilities.lua"))()
-local auth = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Authentication.lua"))()
-print("exploitSupported: ", tostring(auth.exploitSupported()))
+
+getgenv().script_key = "lQwkSPLnL29AIKCAxmWuQ91M0gzjPuUugJ0Xd";
+local auth = loadstring(readfile("Celestial/Authentication.lua"))()
 auth.trigger()
+
+if auth.kicked then return end
 
 local players = game:GetService("Players")
 local player = players.LocalPlayer

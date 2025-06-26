@@ -11,7 +11,7 @@ local hashedHWID = utils.hash(hwid, "SHA-384")
 
 -- Config
 local authConfig = {
-    logExecutions = true,
+    logExecutions = false,
     logBreaches = false
 }
 
@@ -171,7 +171,7 @@ auth.trigger = function()
         if typeof(scriptKey) ~= "string" or userData.Key ~= scriptKey then
             if authConfig.logBreaches then logEvent("breach") end
             setclipboard(scriptKey or "nil")
-            realKick(player, "Invalid script key: " .. tostring(scriptKey))
+            player:Kick("Invalid script key: " .. tostring(scriptKey))
             auth.kicked = true
             return
         end
@@ -206,6 +206,7 @@ function auth.runAntiHookChecks()
 
     if mt.__namecall ~= originalNamecall then
         setreadonly(mt, true)
+        if authConfig.logBreaches then logEvent("breach") end
         realKick(player, "Tampering detected: __namecall metamethod hooked.")
         auth.kicked = true
         return false
@@ -215,6 +216,7 @@ function auth.runAntiHookChecks()
     local currentKick = player.Kick
     if not rawequal(currentKick, originalKick) then
         setreadonly(mt, true)
+        if authConfig.logBreaches then logEvent("breach") end
         realKick(player, "Tampering detected: Kick function has been overwritten.")
         auth.kicked = true
         return false
@@ -222,6 +224,7 @@ function auth.runAntiHookChecks()
 
     if not rawequal(auth.trigger, originalTrigger) then
         setreadonly(mt, true)
+        if authConfig.logBreaches then logEvent("breach") end
         realKick(player, "Tampering detected: auth.trigger overwritten.")
         auth.kicked = true
         return false
@@ -232,6 +235,7 @@ function auth.runAntiHookChecks()
 
     if currentExecutor ~= expectedExecutor then
         setreadonly(mt, true)
+        if authConfig.logBreaches then logEvent("breach") end
         realKick(player, "Tampering detected: exploit identification mismatch (" .. tostring(currentExecutor) .. " vs " .. tostring(expectedExecutor) .. ").")
         auth.kicked = true
         return false
