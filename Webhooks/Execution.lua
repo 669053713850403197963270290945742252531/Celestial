@@ -102,7 +102,3 @@ local encodedData = httpService:JSONEncode(data)
 local headers = {["content-type"] = "application/json"}
 local args = {Url = webhookUrl, Body = encodedData, Method = "POST", Headers = headers}
 request(args)
-
-task.wait(5)
-
-auth.clearStoredKey()
