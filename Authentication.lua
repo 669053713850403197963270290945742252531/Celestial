@@ -1,18 +1,15 @@
-while not game:IsLoaded() do
-    task.wait()
-end
+while not game:IsLoaded() do task.wait() end
 
 local auth = {}
 
+local player = game:GetService("Players").LocalPlayer
+local httpService = game:GetService("HttpService")
 local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Core%20Utilities.lua"))()
 
-local player = game:GetService("Players").LocalPlayer
 local hwid = game:GetService("RbxAnalyticsService"):GetClientId()
-local httpService = game:GetService("HttpService")
 local hashedHWID = utils.hash(hwid, "SHA-384")
 
--- Configuration
-
+-- Config
 local authConfig = {
     logExecutions = false,
     logBreaches = false
@@ -21,56 +18,60 @@ local authConfig = {
 auth.currentUser = nil
 auth.kicked = false
 
--- Making the whitelist modular
+-- Save originals early
+local originalNamecall = getrawmetatable(game).__namecall
+local realKick
+realKick = hookfunction(player.Kick, function(...)
+    return realKick(...)
+end)
 
+local originalKickAfterHook = player.Kick
+local realIdentifyExecutor = identifyexecutor
+
+-- Forward declare originalTrigger
+local originalTrigger
+
+-- Fetch whitelist
 local function fetchData(url)
     local success, response = pcall(function()
         return game:HttpGet(url)
     end)
 
-    if success then
-        local successDecode, data = pcall(function()
-            --print(response)
-            return httpService:JSONDecode(response)
-        end)
-
-        if successDecode then
-            return data
-        else
-            player:Kick("Failed to decode JSON data from URL: ", url)
-            auth.kicked = true
-            return
-        end
-    else
-        player:Kick("Failed to fetch data from URL: ", url)
+    if not success then
+        realKick(player, "Failed to fetch data from URL: " .. url)
         auth.kicked = true
-        return
+        return nil
     end
-    return nil
+
+    local successDecode, data = pcall(function()
+        return httpService:JSONDecode(response)
+    end)
+
+    if not successDecode then
+        realKick(player, "Failed to decode JSON data from URL: " .. url)
+        auth.kicked = true
+        return nil
+    end
+
+    return data
 end
 
--- URL fetching
-
-
-local whitelistURL = "https://gitlab.com/scripts1463602/Celestial/-/raw/main/Users.json?ref_type=heads"
+-- URLs
+local whitelistURL = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Users.json"
 local whitelistedUsers = fetchData(whitelistURL)
-
 if not whitelistedUsers then
-    player:Kick("Failed to retrieve the whitelist.")
+    realKick(player, "Failed to retrieve the whitelist.")
     auth.kicked = true
     return
 end
 
-
--- Logging
-
-
+-- Logging function
 local function logEvent(eventType)
     local url = ""
     if eventType == "execution" then
-        url = "https://gitlab.com/scripts1463602/Celestial/-/raw/main/Webhooks/Execution.lua?ref_type=heads"
+        url = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Webhooks/Execution.lua"
     elseif eventType == "breach" then
-        url = "https://gitlab.com/scripts1463602/Celestial/-/raw/main/Webhooks/Breach.lua?ref_type=heads"
+        url = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Webhooks/Breach.lua"
     end
 
     if url ~= "" then
@@ -78,12 +79,10 @@ local function logEvent(eventType)
     end
 end
 
-
--- Verify authentication
-
+-- Authorization check
 for _, user in ipairs(whitelistedUsers) do
     if user.HWID == hashedHWID then
-        auth.currentUser = user -- Set the current user
+        auth.currentUser = user
     end
 end
 
@@ -94,30 +93,26 @@ end
 auth.isAuthorized = function()
     for _, user in ipairs(whitelistedUsers) do
         if user.HWID == hashedHWID then
-            auth.currentUser = user -- Set the current user
+            auth.currentUser = user
             return true, user
         end
     end
-    auth.currentUser = nil -- Reset if not authorized
+    auth.currentUser = nil
     return false, nil
 end
 
 auth.isOwner = function()
-    local isAuthorized, user = auth.isAuthorized()
-    return isAuthorized and user and user.Rank == "Owner"
+    local authorized, user = auth.isAuthorized()
+    return authorized and user and user.Rank == "Owner"
 end
 
 auth.fetchConfig = function(configName)
-    -- Checks
-
     if typeof(configName) ~= "string" or configName == nil then
-        warn("Argument #1 (configName) expected a string value and a valid config name but got a " .. typeof(configName) .. " value and an invalid config name.")
+        warn("auth.fetchConfig: Invalid config name.")
         return "Failed: Check console for more information."
     end
 
     configName = string.lower(configName)
-
-    -- Check if the given configName matches a value inside authConfig
 
     for key, value in pairs(authConfig) do
         if string.lower(key) == configName then
@@ -125,97 +120,63 @@ auth.fetchConfig = function(configName)
         end
     end
 
-    -- If no match is found
-
-    warn("Argument #1 (configName) expected a valid config name.")
+    warn("auth.fetchConfig: Config not found.")
     return "Failed: Check console for more information."
 end
 
 auth.hwid = function(mode)
-    local validModes = {
-        "Normal",
-        "Hashed"
-    }
-
-    -- Check
-
-    local isValid = false
-    for _, validMode in ipairs(validModes) do
-        if mode == validMode then
-            isValid = true
-            break
-        end
-    end
-
-    if not isValid then
-        warn("auth.hwid | " .. mode .. " is not a valid mode.")
-        return
-    end
-
-    -- Mode
-
     if mode == "Normal" then
         return hwid
-    else
+    elseif mode == "Hashed" then
         return hashedHWID
+    else
+        warn("auth.hwid: Invalid mode.")
+        return
     end
 end
 
--- Handling unsupported exploits
-
+-- Unsupported exploit check
 auth.exploitSupported = function()
-    local exploits = {
+    local supported = {
         ["AWP"] = true,
         ["Wave"] = true,
         ["Synapse Z"] = true,
         ["Zenith"] = true,
         ["Seliware"] = true,
         ["Volcano"] = true,
-        
-        ["Visual"] = true,
-        ["Solara"] = true
+        ["Potassium"] = true,
+        ["Visual"] = false,
+        ["Solara"] = false
     }
 
-    local currentExploit = identifyexecutor()
-
-    if exploits[currentExploit] then
-        return true
-    else
-        player:Kick("Celestial does not support " .. identifyexecutor() .. ".")
+    local exec = realIdentifyExecutor()
+    if not supported[exec] then
+        realKick(player, "Celestial does not support " .. exec)
     end
 end
 
+-- Main trigger authorization function
 auth.trigger = function()
     if not whitelistedUsers then
-        player:Kick("Failed to retrieve whitelist.")
+        realKick(player, "Failed to retrieve whitelist.")
         auth.kicked = true
         return
     end
 
-    local isAuthorized, userData = auth.isAuthorized() -- Check authorization
-
+    local isAuthorized, userData = auth.isAuthorized()
     if isAuthorized and userData then
-        -- Handle invalid keys
-
         local scriptKey = getgenv().script_key
-        if userData.Key ~= scriptKey then
+        if typeof(scriptKey) ~= "string" or userData.Key ~= scriptKey then
             if authConfig.logBreaches then logEvent("breach") end
-        
-            local keyDisplay = typeof(scriptKey) == "string" and scriptKey or "None"
-            player:Kick("The provided key is invalid: " .. keyDisplay)
-        
+            setclipboard(scriptKey or "nil")
+            realKick(player, "Invalid script key: " .. tostring(scriptKey))
             auth.kicked = true
             return
-        else
-            if authConfig.logExecutions then logEvent("execution") end
         end
-        
-        
+        if authConfig.logExecutions then logEvent("execution") end
     else
-        -- Handle invalid HWID
-
         setclipboard(hashedHWID)
-        warn("Invalid HWID: Your hardware ID has been copied to your clipboard.")
+        warn("Invalid HWID: copied to clipboard.")
         return
     end
 end
@@ -224,8 +185,51 @@ auth.clearStoredKey = function()
     if typeof(getgenv().script_key) ~= "nil" then
         getgenv().script_key = nil
     else
-        warn("auth.clearRestoredKey: No stored key.")
+        warn("auth.clearStoredKey: No key to clear.")
     end
 end
+
+-- Save the original trigger
+originalTrigger = auth.trigger
+
+-- The core anti-hook check function
+local rawExecutor = identifyexecutor
+function auth.runAntiHookChecks()
+    local mt = getrawmetatable(game)
+    setreadonly(mt, false)
+    local success, err
+
+    if mt.__namecall ~= originalNamecall then
+        setreadonly(mt, true)
+        realKick(player, "Tampering detected: __namecall metamethod hooked.")
+        return false
+    end
+
+    if player.Kick ~= originalKickAfterHook then
+        setreadonly(mt, true)
+        realKick(player, "Tampering detected: Kick function hooked.")
+        return false
+    end
+
+    if auth.trigger ~= originalTrigger then
+        setreadonly(mt, true)
+        realKick(player, "Tampering detected: auth.trigger overwritten.")
+        return false
+    end
+
+    if identifyexecutor ~= rawExecutor then
+        setreadonly(mt, true)
+        realKick(player, "Tampering detected: exploit identification tampered.")
+        return false
+    end
+
+    setreadonly(mt, true)
+    return true
+end
+
+task.defer(function()
+    task.wait(10)
+    auth.runAntiHookChecks()
+end)
 
 return auth
