@@ -65,23 +65,29 @@ if not whitelistedUsers then
 end
 
 -- Execution log lock (persistent per session)
-getgenv()._celestial_logged_breach = getgenv()._celestial_logged_breach or false
-getgenv()._celestial_logged_execution = getgenv()._celestial_logged_execution or false
+--getgenv()._celestial_logged_breach = getgenv()._celestial_logged_breach or false
+--getgenv()._celestial_logged_execution = getgenv()._celestial_logged_execution or false
+
+local logCooldowns = getgenv()._celestial_logCooldowns or {}
+getgenv()._celestial_logCooldowns = logCooldowns
 
 local function logEvent(eventType)
-    -- Block duplicate logs
-    if eventType == "execution" and getgenv()._celestial_logged_execution then return end
-    if eventType == "breach" and getgenv()._celestial_logged_breach then return end
+    local now = tick()
+    local cooldown = 10  -- seconds between same-type logs
+
+    if logCooldowns[eventType] and (now - logCooldowns[eventType]) < cooldown then
+        return -- Skip if called too soon
+    end
+
+    logCooldowns[eventType] = now -- Update last log time
 
     local url = ""
     if eventType == "execution" then
         url = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Webhooks/Execution.lua"
         warn("[Celestial] Execution log sent.")
-        getgenv()._celestial_logged_execution = true
     elseif eventType == "breach" then
         url = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Webhooks/Breach.lua"
         warn("[Celestial] Breach log sent.")
-        getgenv()._celestial_logged_breach = true
     end
 
     if url ~= "" then
@@ -145,8 +151,6 @@ auth.hwid = function(mode)
         warn("auth.hwid: Invalid mode.")
         return
     end
-
-    warn(logEvent("execution"))
 end
 
 -- Unsupported exploit check
@@ -208,7 +212,6 @@ auth.trigger = function()
         setclipboard(hashedHWID)
     end
 end
-
 
 local originalTrigger = auth.trigger
 
