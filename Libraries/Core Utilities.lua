@@ -17,11 +17,25 @@ local character = player.Character or player.CharacterAdded:Wait()
 local humanoid = character:FindFirstChild("Humanoid")
 local hrp = character:FindFirstChild("HumanoidRootPart")
 
-if not hrp then
-    repeat
-        task.wait()
-    until hrp
-end
+if not hrp then repeat task.wait() until hrp end
+
+utils.Services = {
+	Players = game:GetService("Players"),
+	LocalPlayer = game:GetService("Players").LocalPlayer,
+	Workspace = game:GetService("Workspace"),
+	Lighting = game:GetService("Lighting"),
+	RepFirst = game:GetService("ReplicatedFirst"),
+	RepStorage = game:GetService("ReplicatedStorage"),
+	StarterGui = game:GetService("StarterGui"),
+	StarterPack = game:GetService("StarterPack"),
+	StarterPlayer = game:GetService("StarterPlayer"),
+	Teams = game:GetService("Teams"),
+	Sounds = game:GetService("SoundService"),
+	TextChat = game:GetService("TextChatService"),
+	LegacyChat = game:GetService("Chat"),
+    CoreGui = gethui and gethui() or game:GetService("CoreGui"),
+    Camera = game:GetService("Workspace").CurrentCamera
+}
 
 -- Function - getPlayers
 
