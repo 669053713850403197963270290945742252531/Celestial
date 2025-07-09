@@ -7,46 +7,151 @@
 - **Confirmation dialog for "Delete Config"**
 - **Confirmation dialog for "Reset Autoload"**
 - **Default value for the "Autoload Config" label set to *"none"* instead of an empty string**
-- **``AlphaEnabled`` configuration for Colorpicker objects to control visibility of the "Alpha" input inside Colorpickers.**
+- **``AlphaEnabled`` allows for Colorpicker objects to control visibility of the Alpha input inside Colorpickers.**
 
 ## New Features
 
 - **New Configuration: ``Disabled``**
-	- Determines if the interactive MacLib library element is interactable. This configuration supports all types of elements such as
-	sliders, dropdowns, colorpickers, etc. This configuration also applies to tabs.
+	- Determines if the interactive MacLib library element is interactable.
+	- Supports all types of elements such as sliders, dropdowns, colorpickers, and tabs in the navigation bar
 	**Expects: boolean**
+
+	### Example
+	```lua
+	local Tab = TabGroup:Tab({
+  		Name "Exploits",
+  		Image "rbxassetid://18821914323",
+  		Disabled = true
+	})
+	```
 - **New Configuration: ``LimitInput``**
 	- Allows for the value boxes for slider objects to go out of bounds and not be restricted to its minimum and maximum hardcoded values.
 	This functionality will only be enabled if its enabled on said slider object. Allowing less and greater values can be manually toggled as hardcoded values.
-	If LimitInput is true and isn't provided any valid table, then it will enforce all restrictions.
+	- If LimitInput is true and isn't provided any valid table, then it will enforce all restrictions.
 	**Expects: table**
+
+	### Example
+	```lua
+	Section:Slider({
+		Name = "Walkspeed",
+		Default = 16,
+		Minimum = 0,
+		Maximum = 300,
+		DisplayMethod = "Round",
+		LimitInput = {"Less", "Greater"}, -- Allow values less and greater then the slider's minimum and maximum via the value input
+		Precision = 0,
+		Callback = function (Value)
+			print("Changed to "..Value)
+		end,
+	}, "WalkspeedSlider")
+	```
 - **New Configuration: ``RoundedValue``**
-	- Originally, MacLib would return decimals for all values, while disregarding if DisplayMethod is set to "Round". The ``RoundedValue`` configuration
-	allows you to round the value to the specified decimals places. The amount of decimal places is determined by the **Precision** configuration.
-	The displayed value will **always** be the same as the rounded value.
-	**Please note: This is currently bugged with the **Percent** DisplayMethod due to the way percents are calcuated and displayed. This will result
+	- Originally, MacLib would return decimals for all values, while disregarding if DisplayMethod is set to "Round".
+	- The returned value will always be rounded to the decimal places, as defined in `Precision`.
+	- The displayed value will **always** match the returned rounded value.
+	**Please note: This is currently bugged with the `Percent` DisplayMethod due to the way percents are calcuated and displayed. This will result
 	in some outliers between the returned value and the displayed percentage.
 	**Expects: boolean**
+
+	### Example
+	```lua
+	Section:Slider({
+		Name = "Walkspeed",
+		Default = 16,
+		Minimum = 0,
+		Maximum = 300,
+		DisplayMethod = "Round",
+		RoundedValue = true,
+		Precision = 0,
+		Callback = function (Value)
+			print("Changed to "..Value)
+		end,
+	}, "WalkspeedSlider")
+	```
 - **New Configuration: ``CustomValue``**
 	- Determines whether the text inside slider value boxes are editable.
 	**Expects: boolean**
+
+	### Example
+	```lua
+	Section:Slider({
+		Name = "Walkspeed",
+		Default = 16,
+		Minimum = 0,
+		Maximum = 300,
+		DisplayMethod = "Round",
+		CustomValue = true,
+		Precision = 0,
+		Callback = function (Value)
+			print("Changed to "..Value)
+		end,
+	}, "WalkspeedSlider")
+	```
 - **New Configuration: ``BlacklistedBinds``**
 	- The list of KeyCodes a keybind object will reject.
 	**Expects: table**
+
+	### Example
+	```lua
+	Section:AddKeybind({
+		Name = "Reset Inventory",
+		Default = Enum.KeyCode.F,
+		BlacklistedBinds = {Enum.KeyCode.Backspace},
+		Callback = function()
+			print("triggered")
+		end,
+		onBinded = function()
+			print("key pressed")
+		end,
+		onBindHeld = function()
+			print("sprinting...")
+		end,
+	}, "ResetInventoryBind")
+	```
 - **New Configuration: ``Tooltip``**
-	- This configuration is inspired by [Linoria Library](https://github.com/violin-suzutsuki/LinoriaLib). This configuration allows for you to define a custom string
-	to guide the player to understanding the feature. Hovering your cursor over a Tooltip enabled element will reveal the string. Tooltip supports all types of elements,
-	toggles, global setting, dropdowns, sliders, keybinds, and color pickers.\
+	- Inspired by the [Linoria Library](https://github.com/violin-suzutsuki/LinoriaLib).
+	- Allows the defining of a custom string to guide and inform the player to understanding the feature.
+	- Hovering your cursor over a Tooltip enabled element will reveal the string. Tooltip supports all types of elements,
+	toggles, global setting, dropdowns, sliders, keybinds, color pickers, 
+	- The Tooltip window will be automatically scaled to fit the amount of content.
+	**Expects: string**
+
+	### Example
+	```lua
+	Section:Button({
+		Name = "Kill All",
+		Tooltip = "Kills all the available players in the server.",
+		Callback = function()
+			print("killed everyone")
+		end,
+	})
+	```
 - **New Window Configuration: ``GlobalSettings``**
-	- Toggles the visibility of the globe icon and the global settings located by the interface title.
+	- Toggles the visibility of the globe icon and the global settings located near the interface title.
+	**Expects: boolean**
+
+	### Example
+	```lua
+	local Window = MacLib:Window({
+		Title = "Kuzu Hub",
+		Subtitle = "Paid | V3.12",
+		Size = UDim2.fromOffset(868, 650),
+		DragStyle 1,
+		DisabledWindowControls = {}, -- "Exit", "Minimize"
+		ShowUserInfo = true,
+		Keybind = Enum.KeyCode.RightControl,
+		AcrylicBlur = true,
+		GlobalSettings = false
+	})
+	```
 
 ## Miscellaneous Changes
 
 - Removed deprecated DisplayMethods: Hundredths & Tenths
-- **Slider Input Fixed:** When a invalid value such as a letter or an empty string it would **always** error with "invalid argument #1". This has been fully fixed.
-- Renamed "AlphaNumeric" DisplayMethod to "Alphanumeric" due to incorrect spelling
+- **Slider Input Fixed:** When an invalid value such as a letter or an empty string was entered, it would **always** error with "invalid argument". This has been fully fixed.
+- Renamed "AlphaNumeric" DisplayMethod to "Alphanumeric" due to incorrect opinionated spelling
 - Renamed `Notification:Cancel` to `Notification:Dismiss`
-- Renamed `Dialog:Cancel` to `Dialog:Dismiss`
+- Renamed `Dialog:Cancel` to `Dialog:Close`
 - Renamed `:SetVisibility` to `:SetVisible`
 - Any previous instance(s) of Maclib will now be destroyed
 
@@ -1166,7 +1271,8 @@ function MacLib:Window(Settings)
 		end
 	end
 
-	local DrawQuad; do
+	local DrawQuad
+do
 		local acos, max, pi, sqrt = math.acos, math.max, math.pi, math.sqrt
 		local sz = 0.2
 
@@ -1301,7 +1407,7 @@ function MacLib:Window(Settings)
 		local tl, br = frame.AbsolutePosition, frame.AbsolutePosition + frame.AbsoluteSize
 		local tr, bl = Vector2.new(br.x, tl.y), Vector2.new(tl.x, br.y)
 		do
-			local rot = 0;
+			local rot = 0
 			for _, v in ipairs(parents) do
 				rot = rot + v.Rotation
 			end
@@ -6002,7 +6108,7 @@ function MacLib:Window(Settings)
 			paragraphBody.Text = New
 		end
 
-		function DialogFunctions:Dismiss()
+		function DialogFunctions:Close()
 			dialogOut()
 		end
 
@@ -6277,7 +6383,7 @@ function MacLib:Window(Settings)
 	function MacLib:SetFolder(Folder)
 		if isStudio then return "Config system unavailable." end
 
-		MacLib.Folder = Folder;
+		MacLib.Folder = Folder
 		BuildFolderTree()
 	end
 
