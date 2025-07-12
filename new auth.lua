@@ -1,7 +1,7 @@
 local HttpService = game:GetService("HttpService")
 local AnalyticsService = game:GetService("RbxAnalyticsService")
 local utils = loadstring(readfile("Celestial/Libraries/Core Utilities.lua"))()
-local WS_URL = "ws://localhost:8080"
+local WS_URL = "ws://2606:380:33:8a38:8021:2686:ba11:e867:8080"
 
 local module = {}
 

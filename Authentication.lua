@@ -9,7 +9,6 @@ local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/6690537
 local hwid = game:GetService("RbxAnalyticsService"):GetClientId()
 local hashedHWID = utils.hash(hwid, "SHA-384")
 
--- Config
 local authConfig = {
     logExecutions = true,
     logBreaches = true
@@ -18,26 +17,15 @@ local authConfig = {
 auth.currentUser = nil
 auth.kicked = false
 
--- Save original Kick function early
-local originalKick = player.Kick -- Store the original Kick function
-auth._originalKick = originalKick -- Save it for later checks
-
--- Hook the Kick function to prevent any tampering
-local realKick = hookfunction(player.Kick, function(...)
-    return realKick(...) -- Call the original Kick function
-end)
-
-local originalTrigger
-local realIdentifyExecutor = identifyexecutor
-
 -- Fetch whitelist
+
 local function fetchData(url)
     local success, response = pcall(function()
         return game:HttpGet(url)
     end)
 
     if not success then
-        realKick(player, "Failed to fetch data from URL: " .. url)
+        player:Kick(player, "Failed to fetch data from URL: " .. url)
         auth.kicked = true
         return nil
     end
@@ -47,7 +35,7 @@ local function fetchData(url)
     end)
 
     if not successDecode then
-        realKick(player, "Failed to decode JSON data from URL: " .. url)
+        player:Kick(player, "Failed to decode JSON data from URL: " .. url)
         auth.kicked = true
         return nil
     end
@@ -55,32 +43,15 @@ local function fetchData(url)
     return data
 end
 
--- URLs
 local whitelistURL = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Users.json"
 local whitelistedUsers = fetchData(whitelistURL)
 if not whitelistedUsers then
-    realKick(player, "Failed to retrieve the whitelist.")
+    player:Kick(player, "Failed to retrieve the whitelist.")
     auth.kicked = true
     return
 end
 
--- Execution log lock (persistent per session)
---getgenv()._celestial_logged_breach = getgenv()._celestial_logged_breach or false
---getgenv()._celestial_logged_execution = getgenv()._celestial_logged_execution or false
-
-local logCooldowns = getgenv()._celestial_logCooldowns or {}
-getgenv()._celestial_logCooldowns = logCooldowns
-
 local function logEvent(eventType)
-    local now = tick()
-    local cooldown = 10  -- seconds between same-type logs
-
-    if logCooldowns[eventType] and (now - logCooldowns[eventType]) < cooldown then
-        return -- Skip if called too soon
-    end
-
-    logCooldowns[eventType] = now -- Update last log time
-
     local url = ""
     if eventType == "execution" then
         url = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Webhooks/Execution.lua"
@@ -91,13 +62,12 @@ local function logEvent(eventType)
     end
 
     if url ~= "" then
-        pcall(function()
-            loadstring(game:HttpGet(url))()
-        end)
+        loadstring(game:HttpGet(url))()
     end
 end
 
--- Authorization check
+-- Auth check
+
 for _, user in ipairs(whitelistedUsers) do
     if user.HWID == hashedHWID then
         auth.currentUser = user
@@ -126,8 +96,7 @@ end
 
 auth.fetchConfig = function(configName)
     if typeof(configName) ~= "string" or configName == nil then
-        warn("auth.fetchConfig: Invalid config name.")
-        return "Failed: Check console for more information."
+		warn("Argument #1 (configName) expected a string value and a valid config name but got a " .. typeof(configName) .. " value and an invalid config name.")
     end
 
     configName = string.lower(configName)
@@ -139,7 +108,6 @@ auth.fetchConfig = function(configName)
     end
 
     warn("auth.fetchConfig: Config not found.")
-    return "Failed: Check console for more information."
 end
 
 auth.hwid = function(mode)
@@ -153,7 +121,8 @@ auth.hwid = function(mode)
     end
 end
 
--- Unsupported exploit check
+-- Supported exploits
+
 auth.exploitSupported = function()
     local supported = {
         ["AWP"] = true,
@@ -169,7 +138,7 @@ auth.exploitSupported = function()
 
     local exec = identifyexecutor()
     if not supported[exec] then
-        realKick(player, "Celestial does not support " .. exec)
+        player:Kick(player, "Celestial does not support " .. exec)
         auth.kicked = true
     end
 
@@ -182,7 +151,7 @@ auth.trigger = function()
 
     if not whitelistedUsers then
         warn("[Celestial] Whitelist is nil.")
-        realKick(player, "Failed to retrieve whitelist.")
+        player:Kick(player, "Failed to retrieve whitelist.")
         auth.kicked = true
         return
     end
@@ -210,6 +179,9 @@ auth.trigger = function()
     else
         warn("[Celestial] Not authorized. Copying HWID to clipboard.")
         setclipboard(hashedHWID)
+		if authConfig.logBreaches then logEvent("breach") end
+		player:Kick("You are not authorized to use this script.")
+        auth.kicked = true
     end
 end
 
@@ -237,7 +209,7 @@ function auth.runAntiHookChecks()
     if mt.__namecall ~= originalNamecall then
         setreadonly(mt, true)
         if authConfig.logBreaches then logEvent("breach") end
-        realKick(player, "Tampering detected: __namecall metamethod hooked.")
+        player:Kick(player, "Tampering detected: __namecall metamethod hooked.")
         auth.kicked = true
         return false
     end
@@ -247,7 +219,7 @@ function auth.runAntiHookChecks()
     if not rawequal(currentKick, originalKick) then
         setreadonly(mt, true)
         if authConfig.logBreaches then logEvent("breach") end
-        realKick(player, "Tampering detected: Kick function has been overwritten.")
+        player:Kick(player, "Tampering detected: Kick function has been overwritten.")
         auth.kicked = true
         return false
     end
@@ -255,7 +227,7 @@ function auth.runAntiHookChecks()
     if not rawequal(auth.trigger, originalTrigger) then
         setreadonly(mt, true)
         if authConfig.logBreaches then logEvent("breach") end
-        realKick(player, "Tampering detected: auth.trigger overwritten.")
+        player:Kick(player, "Tampering detected: auth.trigger overwritten.")
         auth.kicked = true
         return false
     end
@@ -266,7 +238,7 @@ function auth.runAntiHookChecks()
     if currentExecutor ~= expectedExecutor then
         setreadonly(mt, true)
         if authConfig.logBreaches then logEvent("breach") end
-        realKick(player, "Tampering detected: exploit identification mismatch (" .. tostring(currentExecutor) .. " vs " .. tostring(expectedExecutor) .. ").")
+        player:Kick(player, "Tampering detected: exploit identification mismatch (" .. tostring(currentExecutor) .. " vs " .. tostring(expectedExecutor) .. ").")
         auth.kicked = true
         return false
     end
