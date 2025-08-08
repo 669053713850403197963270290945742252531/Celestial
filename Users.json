@@ -1,38 +1,16 @@
 [
     {
-        "HWID": "77a8697999f7f648aa029fcb819dc380f3538a426729066df56e063bcd625527",
-        "Identifier": "CaptainEz",
-        "Rank": "user",
-        "JoinDate": "2025-08-07",
-        "DiscordId": "895500903799463976",
-        "Key": "BrQhCC2kB7iQ6yk4fXQJxHZk8dClQH3oCr",
-        "Notes": "MY slave"
-    },
-    {
-        "HWID": "cd0aa9856147b6c5b4ff2b7dfee5da20aa38253099ef1b4a64aced233c9afe29",
-        "Identifier": "dyo",
-        "Rank": "person",
-        "JoinDate": "2025-08-07",
-        "DiscordId": "155149108183695360",
-        "Key": "sGMMWuSNvJaul4ib1whTAC5hS",
-        "Notes": "false"
-    },
-    {
-        "HWID": "e37b1e66860c94ee0499125e5b855695a55ea3260aa10dbdbfb44a44ab243c79",
-        "Identifier": "corrade",
-        "Rank": "owner",
-        "JoinDate": "2025-08-07",
+        "HWID": "f42e8a7cdbd928ad6e28758f21f607c97a635dac8f9a9f3fed6b593088f89f720fbd4d0711dfc201d2579018aa7d8680",
+        "Identifier": "Corrade",
+        "Rank": "Owner",
+        "JoinDate": "2024-12-14",
         "DiscordId": "999776749070078004",
-        "Key": "5PuwEhcFHv0sqoNEakUZoreRutNTggCd7LGf5L",
-        "Notes": "false"
-    },
-    {
-        "HWID": "45d25abffe8c792d74d30346429b5bc244b815eeb378a9c38395f7a466cf6894",
-        "Identifier": "Zayed",
-        "Rank": "user",
-        "JoinDate": "2025-08-07",
-        "DiscordId": "1393720838590693386",
-        "Key": "ic0aGuQWQcBlPrr0yNWiExlyf",
-        "Notes": "false"
+        "Key": "lQwkSPLnL29AIKCAxmWuQ91M0gzjPuUugJ0Xd",
+        "Notes": "false",
+        "Banned": "false",
+        "TempBan": "false",
+        "BanReason": "null",
+        "TempBanDuration": "null",
+        "TempBanEnd": "null"
     }
 ]
