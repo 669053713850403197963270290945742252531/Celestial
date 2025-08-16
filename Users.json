@@ -9,15 +9,6 @@
         "Notes": "MY slave"
     },
     {
-        "HWID": "cd0aa9856147b6c5b4ff2b7dfee5da20aa38253099ef1b4a64aced233c9afe29",
-        "Identifier": "dyno",
-        "Rank": "discord bot",
-        "JoinDate": "2025-08-07",
-        "DiscordId": "155149108183695360",
-        "Key": "sGMMWuSNvJaul4ib1whTAC5hS",
-        "Notes": "false"
-    },
-    {
         "HWID": "45d25abffe8c792d74d30346429b5bc244b815eeb378a9c38395f7a466cf6894",
         "Identifier": "Zayed",
         "Rank": "user",
@@ -34,14 +25,5 @@
         "DiscordId": "1218229252692906089",
         "Key": "cz7E4eaXfUcx8VEnbFsMlGxKVFogwTrfPzPOn",
         "Notes": "roblox update tracker application"
-    },
-    {
-        "HWID": "e37b1e66860c94ee0499125e5b855695a55ea3260aa10dbdbfb44a44ab243c79",
-        "Identifier": "Dyno",
-        "Rank": "User",
-        "JoinDate": "2025-08-16",
-        "DiscordId": "155149108183695360",
-        "Key": "lKbShYUz4wqlYBpV23fwhvH5pbh2NTi2SDr",
-        "Notes": "false"
     }
 ]
