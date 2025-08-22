@@ -1,1 +1,1 @@
-"getgenv().script_key = \"\"\r\nloadstring(readfile(\"Celestial/Supported Games/Linoria Rewrite/2025 Rewrite/Dusty Trip - Game.lua\"))()"
+"reactionroles:\r\ncreate embed and add a reaction role to it ONCE with an emoji and the role mention\r\neach new command execution with the specified arguments will add a new reaction role to that embed\r\nonly allow 1 embed to be created for reaction roles"
