@@ -1,1 +1,2 @@
-
+getgenv().script_key = ""
+loadstring(readfile("Celestial/Supported Games/Linoria Rewrite/2025 Rewrite/Dusty Trip - Game.lua"))()
