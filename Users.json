@@ -1,29 +1,38 @@
 [
-    {
-        "HWID": "45d25abffe8c792d74d30346429b5bc244b815eeb378a9c38395f7a466cf6894",
-        "Identifier": "zayed",
-        "Rank": "User",
-        "JoinDate": "08/23/2025 05:30 PM",
-        "DiscordId": "1393720838590693386",
-        "Key": "4UNXakLSr9LH1qFcULP9",
-        "Notes": "yes"
-    },
-    {
-        "HWID": "cd0aa9856147b6c5b4ff2b7dfee5da20aa38253099ef1b4a64aced233c9afe29",
-        "Identifier": "Dyno rank:User",
-        "Rank": "User",
-        "JoinDate": "08/23/2025 06:16 PM",
-        "DiscordId": "155149108183695360",
-        "Key": "yq90dsrAsW3yiyyaVvtB",
-        "Notes": "bot thing"
-    },
-    {
-        "HWID": "213e723d05ed923b3cda767424a329fc12a906bd85b976cbffe22861a8e68089",
-        "Identifier": "corrade",
-        "Rank": "User",
-        "JoinDate": "08/27/2025 05:57 PM",
-        "DiscordId": "999776749070078004",
-        "Key": "LPUEyVr8xDehyMa2jgzC",
-        "Notes": "false"
-    }
+  {
+    "HWID": "45d25abffe8c792d74d30346429b5bc244b815eeb378a9c38395f7a466cf6894",
+    "Identifier": "zayed",
+    "Rank": "User",
+    "JoinDate": "08/23/2025 05:30 PM",
+    "DiscordId": "1393720838590693386",
+    "Key": "4UNXakLSr9LH1qFcULP9",
+    "Notes": "yes"
+  },
+  {
+    "HWID": "cd0aa9856147b6c5b4ff2b7dfee5da20aa38253099ef1b4a64aced233c9afe29",
+    "Identifier": "Dyno rank:User",
+    "Rank": "User",
+    "JoinDate": "08/23/2025 06:16 PM",
+    "DiscordId": "155149108183695360",
+    "Key": "yq90dsrAsW3yiyyaVvtB",
+    "Notes": "bot thing"
+  },
+  {
+    "HWID": "213e723d05ed923b3cda767424a329fc12a906bd85b976cbffe22861a8e68089",
+    "Identifier": "corrade",
+    "Rank": "User",
+    "JoinDate": "08/27/2025 05:57 PM",
+    "DiscordId": "999776749070078004",
+    "Key": "LPUEyVr8xDehyMa2jgzC",
+    "Notes": "false"
+  },
+  {
+    "Identifier": "nigger",
+    "HWID": "0cf6bb5bef8d879148f7d44a0ed83048fff398d299559561e563227d0f32524a",
+    "DiscordId": "895500903799463976",
+    "Rank": "owner",
+    "JoinDate": "9/21/2025, 6:39:11 PM",
+    "Key": "egrgrgreger",
+    "Notes": "no"
+  }
 ]
