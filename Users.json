@@ -2,7 +2,7 @@
     {
         "Identifier": "corrade",
         "HWID": "213e723d05ed923b3cda767424a329fc12a906bd85b976cbffe22861a8e68089",
-        "DiscordId": null,
+        "DiscordId": "999776749070078004",
         "Key": "VshxkmW9K8A8OEkCdgWDiUHCQAggpG16crc",
         "JoinDate": "9/21/2025, 9:20:03 PM",
         "Rank": "Owner",
@@ -34,5 +34,14 @@
         "JoinDate": "9/24/2025, 12:25:29 AM",
         "Rank": "User",
         "Notes": null
+    },
+    {
+        "Identifier": "Zayed",
+        "HWID": "45d25abffe8c792d74d30346429b5bc244b815eeb378a9c38395f7a466cf6894",
+        "DiscordId": "1393720838590693386",
+        "Key": "1je9Lnw6HkmIN03T6QOfkBIjjWwhDJRqDn",
+        "JoinDate": "9/24/2025, 12:25:53 AM",
+        "Rank": "User",
+        "Notes": "the ai minion pfp guy"
     }
 ]
