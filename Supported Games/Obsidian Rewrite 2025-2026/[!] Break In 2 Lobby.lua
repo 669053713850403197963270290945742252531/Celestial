@@ -17,7 +17,7 @@ local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/6690537
 local entityLib = loadstring(readfile("Celestial/Libraries/Entity Library.lua"))()
 
 local fastLoad = false
-local testing = true
+local testing = false
 
 if testing then
     getgenv().script_key = "Gj3c3g0fgjbmxlzpweo54901f"
@@ -59,7 +59,6 @@ if isLibEnabled("auth") then
 	end
 end
 
-
 local library = loadstring(readfile("Celestial/Obsidian/Library.lua"))()
 local ThemeManager = loadstring(readfile("Celestial/Obsidian/ThemeManager.lua"))()
 local SaveManager = loadstring(readfile("Celestial/Obsidian/SaveManager.lua"))()
@@ -84,7 +83,7 @@ local runService = game:GetService("RunService")
 
 local window = library:CreateWindow({
 	Title = "Celestial",
-    Footer = "Universal - v1.0.0",
+    Footer = "Break In 2 - v1.0.0",
 	Center = true,
     AutoShow = true,
     MobileButtonsSide = "Left",
@@ -100,7 +99,7 @@ window.alertVolume = 1
 window.notifSoundEnabled = true
 window.notifSoundPath = "Notification Main.mp3"
 
-local defaults = {
+local colorDefaults = {
 	ColorPicker1 = Color3.fromRGB(255, 0, 0)
 }
 
@@ -150,7 +149,7 @@ local function toggleRainbow(enabled, colorPickerName)
 				
 				hues[colorPickerName] = (hues[colorPickerName] + deltaTime * window.rainbowSpeed) % 1
 
-				if not options[colorPickerName] or not defaults[colorPickerName] then
+				if not options[colorPickerName] or not colorDefaults[colorPickerName] then
 					notify("Error", "Invalid colorpicker object and/or no valid default was found.", 99999)
 					return
 				else
@@ -166,11 +165,11 @@ local function toggleRainbow(enabled, colorPickerName)
 		end
 
 		if window.autoResetRainbowColor then
-			if not options[colorPickerName] or not defaults[colorPickerName] then
+			if not options[colorPickerName] or not colorDefaults[colorPickerName] then
 				notify("Error", "Invalid colorpicker object and/or no valid default was found.", 99999)
 				return
 			else
-				options[colorPickerName]:SetValueRGB(defaults[colorPickerName])
+				options[colorPickerName]:SetValueRGB(colorDefaults[colorPickerName])
 			end
 		end
 	end
@@ -559,12 +558,12 @@ options.KeyPicker:SetValue({ "MB2", "Hold" })
 local LeftGroupBox2 = tabs.main:AddLeftGroupbox("Groupbox #2")
 LeftGroupBox2:AddLabel( "This label spans multiple lines! We're gonna run out of UI space...\nJust kidding! Scroll down!\n\n\nHello from below!", true )
 
-LeftGroupBox2:AddToggle('ControlToggle', { Text = 'Dependency box toggle' });
+LeftGroupBox2:AddToggle('ControlToggle', { Text = 'Dependency box toggle' })
 
-local Depbox = LeftGroupBox2:AddDependencyBox();
+local Depbox = LeftGroupBox2:AddDependencyBox()
 
-Depbox:AddToggle('DepboxToggle', { Text = 'Sub-dependency box toggle' });
-Depbox:SetupDependencies({ { toggles.ControlToggle, true } });
+Depbox:AddToggle('DepboxToggle', { Text = 'Sub-dependency box toggle' })
+Depbox:SetupDependencies({ { toggles.ControlToggle, true } })
 
 toggles.ControlToggle:OnChanged(function(enabled)
 	--print(enabled)
@@ -642,7 +641,21 @@ MenuGroup:AddDropdown("DPIDropdown", { Text = "DPI Scale", Values = { "50%", "75
 		library:SetDPIScale(DPI)
 	end,
 })
-MenuGroup:AddSlider("rainbowSpeedSlider", { Text = "Rainbow Speed", Tooltip = false, Default = window.rainbowSpeed, Min = 0.1, Max = 1, Rounding = 1, HideMax = false })
+MenuGroup:AddSlider("rainbowSpeedSlider", {
+	Text = "Rainbow Speed",
+	Tooltip = false,
+	Default = window.rainbowSpeed,
+	Min = 0.1,
+	Max = 1,
+	Rounding = 1,
+	HideMax = false,
+
+	FormatDisplayValue = function(slider, val)
+		if val == slider.Min then
+			return "Default"
+		end
+	end,
+})
 MenuGroup:AddDivider()
 MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", { Default = "RightShift", NoUI = true, Text = "Menu keybind" })
 
@@ -679,11 +692,10 @@ for _, newUI in pairs(gethui():GetDescendants()) do
 	end
 end
 
-MenuGroup:AddButton({ Text = "Unload", DoubleClick = true,
-    Func = function()
-		library:Unload()
-    end,
-})
+MenuGroup:AddButton("Unload", function()
+	library:Unload()
+	unloadModules()
+end)
 
 options.notifAlertVolumeSlider:OnChanged(function(val)
 	window.alertVolume = val

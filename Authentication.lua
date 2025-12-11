@@ -1,4 +1,4 @@
-while not game:IsLoaded() do task.wait() end
+repeat task.wait() until game:IsLoaded()
 
 local auth = {}
 
@@ -174,8 +174,7 @@ auth.trigger = function()
             return
         end
 
-        warn("[Celestial] Passed all checks. Logging execution.")
-        if authConfig.logExecutions then logEvent("execution") end
+        if authConfig.logExecutions then logEvent("execution") warn("[Celestial] Passed all checks. Logging execution.") end
     else
         warn("[Celestial] Not authorized. Copying HWID to clipboard.")
         setclipboard(hashedHWID)
@@ -191,6 +190,7 @@ auth.clear = function()
     if typeof(getgenv().script_key) ~= "nil" then
         getgenv().script_key = nil
     else
+        if not auth.isUser() then return end
         warn("auth.clear: No key to clear.")
     end
 end
@@ -246,5 +246,11 @@ function auth.runAntiHookChecks()
     setreadonly(mt, true)
     return true
 end
+
+task.spawn(function()
+    task.wait(2)
+
+    auth.clear()
+end)
 
 return auth

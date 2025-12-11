@@ -156,7 +156,9 @@ entityLib.teleport = function(targetPosition)
     end
 end
 
-entityLib.checkTeleport = function(rootPart, targetCFrame, tolerance)
+entityLib.checkCFrame = function(rootPart, targetCFrame, tolerance)
+    -- tolerance: number (optional) - The maximum distance allowed between the rootPart and targetCFrame to consider the teleport successful. Default is 5.
+    
     if not rootPart or not targetCFrame then
         warn("entityLibrary.checkTeleport: Argument #1 (rootPart) and/or argument #2 (targetCFrame) are invalid.")
         return false
