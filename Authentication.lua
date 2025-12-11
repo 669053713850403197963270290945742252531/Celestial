@@ -10,8 +10,8 @@ local hwid = game:GetService("RbxAnalyticsService"):GetClientId()
 local hashedHWID = utils.hash(hwid, "SHA-384")
 
 local authConfig = {
-    logExecutions = true,
-    logBreaches = true
+    logExecutions = false,
+    logBreaches = false
 }
 
 auth.currentUser = nil
@@ -25,7 +25,7 @@ local function fetchData(url)
     end)
 
     if not success then
-        player:Kick(player, "Failed to fetch data from URL: " .. url)
+        player:Kick("Failed to fetch data from URL: " .. url)
         auth.kicked = true
         return nil
     end
@@ -35,7 +35,7 @@ local function fetchData(url)
     end)
 
     if not successDecode then
-        player:Kick(player, "Failed to decode JSON data from URL: " .. url)
+        player:Kick("Failed to decode JSON data from URL: " .. url)
         auth.kicked = true
         return nil
     end
@@ -46,7 +46,7 @@ end
 local whitelistURL = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Users.json"
 local whitelistedUsers = fetchData(whitelistURL)
 if not whitelistedUsers then
-    player:Kick(player, "Failed to retrieve the whitelist.")
+    player:Kick("Failed to retrieve the whitelist.")
     auth.kicked = true
     return
 end
@@ -138,7 +138,7 @@ auth.exploitSupported = function()
 
     local exec = identifyexecutor()
     if not supported[exec] then
-        player:Kick(player, "Celestial does not support " .. exec)
+        player:Kick("Celestial does not support " .. exec)
         auth.kicked = true
     end
 
@@ -151,7 +151,7 @@ auth.trigger = function()
 
     if not whitelistedUsers then
         warn("[Celestial] Whitelist is nil.")
-        player:Kick(player, "Failed to retrieve whitelist.")
+        player:Kick("Failed to retrieve whitelist.")
         auth.kicked = true
         return
     end
@@ -187,11 +187,11 @@ end
 
 local originalTrigger = auth.trigger
 
-auth.clearStoredKey = function()
+auth.clear = function()
     if typeof(getgenv().script_key) ~= "nil" then
         getgenv().script_key = nil
     else
-        warn("auth.clearStoredKey: No key to clear.")
+        warn("auth.clear: No key to clear.")
     end
 end
 
@@ -209,7 +209,7 @@ function auth.runAntiHookChecks()
     if mt.__namecall ~= originalNamecall then
         setreadonly(mt, true)
         if authConfig.logBreaches then logEvent("breach") end
-        player:Kick(player, "Tampering detected: __namecall metamethod hooked.")
+        player:Kick("Tampering detected: __namecall metamethod hooked.")
         auth.kicked = true
         return false
     end
@@ -219,7 +219,7 @@ function auth.runAntiHookChecks()
     if not rawequal(currentKick, originalKick) then
         setreadonly(mt, true)
         if authConfig.logBreaches then logEvent("breach") end
-        player:Kick(player, "Tampering detected: Kick function has been overwritten.")
+        player:Kick("Tampering detected: Kick function has been overwritten.")
         auth.kicked = true
         return false
     end
@@ -227,7 +227,7 @@ function auth.runAntiHookChecks()
     if not rawequal(auth.trigger, originalTrigger) then
         setreadonly(mt, true)
         if authConfig.logBreaches then logEvent("breach") end
-        player:Kick(player, "Tampering detected: auth.trigger overwritten.")
+        player:Kick("Tampering detected: auth.trigger overwritten.")
         auth.kicked = true
         return false
     end
@@ -238,7 +238,7 @@ function auth.runAntiHookChecks()
     if currentExecutor ~= expectedExecutor then
         setreadonly(mt, true)
         if authConfig.logBreaches then logEvent("breach") end
-        player:Kick(player, "Tampering detected: exploit identification mismatch (" .. tostring(currentExecutor) .. " vs " .. tostring(expectedExecutor) .. ").")
+        player:Kick("Tampering detected: exploit identification mismatch (" .. tostring(currentExecutor) .. " vs " .. tostring(expectedExecutor) .. ").")
         auth.kicked = true
         return false
     end
@@ -247,15 +247,4 @@ function auth.runAntiHookChecks()
     return true
 end
 
--- Run the check after a small delay
-if not getgenv()._antiHookStarted then
-    getgenv()._antiHookStarted = true
-
-    task.defer(function()
-        task.wait(5)
-        auth.runAntiHookChecks()
-    end)
-end
-
-auth.trigger()
 return auth
