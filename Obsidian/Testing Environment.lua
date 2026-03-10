@@ -15,6 +15,7 @@ local startTime = tick()
 
 local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Core%20Utilities.lua"))()
 local entityLib = loadstring(readfile("Celestial/Libraries/Entity Library.lua"))()
+local camLib = loadstring(readfile("Celestial/Libraries/Camera Library.lua"))()
 
 local fastLoad = false
 local testing = true
@@ -266,14 +267,18 @@ gameGroup:AddLabel("Shift Lock Allowed: " .. tostring(localplayer.DevEnableMouse
 --      MAIN: LEFT GROUP BOX  --
 -------------------------------------
 
-local leftGroupBox = tabs.main:AddLeftGroupbox("Groupbox")
+local flyGroup = tabs.main:AddLeftGroupbox("Fly")
+local freecamGroup = tabs.main:AddRightGroupbox("Freecam")
+local miscGroupBox = tabs.main:AddLeftGroupbox("Miscellaneous")
 
-leftGroupBox:AddToggle("fly_Toggle", { Text = "Fly", Tooltip = false, Default = false })
+---------------- FLY ------------------
 
-local flyHorizSlider = leftGroupBox:AddSlider("flyHorizontalSpeed_Slider", { Text = "Horizontal Speed", Tooltip = "The speed you normally go at.",  Default = 10, Min = 5, Max = 1000, Rounding = 0 })
-local flyVertSlider = leftGroupBox:AddSlider("flyVerticalSpeed_Slider", { Text = "Vertical Speed", Tooltip = "The speed you when ascending/descending.",  Default = 10, Min = 5, Max = 300, Rounding = 0 })
+flyGroup:AddToggle("fly_Toggle", { Text = "Fly", Tooltip = false, Default = false })
 
-leftGroupBox:AddToggle("noclip_Toggle", { Text = "Noclip", Tooltip = false, Default = false })
+local flyHorizSlider = flyGroup:AddSlider("flyHorizontalSpeed_Slider", { Text = "Horizontal Speed", Tooltip = "The speed you normally go at.",  Default = 10, Min = 5, Max = 1000, Rounding = 0 })
+local flyVertSlider = flyGroup:AddSlider("flyVerticalSpeed_Slider", { Text = "Vertical Speed", Tooltip = "The speed you when ascending/descending.",  Default = 10, Min = 5, Max = 300, Rounding = 0 })
+
+flyGroup:AddToggle("noclip_Toggle", { Text = "Noclip", Tooltip = false, Default = false })
 
 options.flyHorizontalSpeed_Slider:OnChanged(function(val)
 	entityLib.setFlySpeed(flyHorizSlider.Value, flyVertSlider.Value)
@@ -292,7 +297,39 @@ toggles.noclip_Toggle:OnChanged(function(enabled)
 	entityLib.toggleNoclip(enabled)
 end)
 
-leftGroupBox:AddToggle("MyToggle", { Text = "This is a toggle", Tooltip = "This is a tooltip", Default = true,
+------------------- FREECAM -----------------
+
+freecamGroup:AddToggle("freecam_Toggle", { Text = "Freecam", Tooltip = false, Default = false })
+
+local freecamSpeedSlider = freecamGroup:AddSlider("freecamSpeedSlider", { Text = "Speed", Tooltip = "The speed you move at in freecam.",  Default = 64, Min = 10, Max = 2000, Rounding = 0 })
+local freecamPanSpeedSlider = freecamGroup:AddSlider("freecamPanSpeedSlider", { Text = "Pan Speed", Tooltip = "How fast your camera moves when moving your mouse around in freecam.",  Default = 8, Min = 8, Max = 30, Rounding = 0 })
+
+toggles.freecam_Toggle:OnChanged(function(enabled)
+	camLib.Freecam:updateSpeed(freecamSpeedSlider.Value)
+	camLib.Freecam:updatePanSpeed(freecamPanSpeedSlider.Value)
+
+	notify("modified values", "new speed: " .. freecamSpeedSlider.Value .. "\nnew pan speed: " .. freecamPanSpeedSlider.Value, 15)
+
+	if enabled then
+		camLib.Freecam:enable()
+		notify("toggled", "freecam enabled", 8)
+	else
+		camLib.Freecam:disable()
+		notify("toggled", "freecam disabled", 8)
+	end
+end)
+
+options.freecamSpeedSlider:OnChanged(function(val)
+	camLib.Freecam:updateSpeed(freecamSpeedSlider.Value)
+end)
+
+options.freecamPanSpeedSlider:OnChanged(function(val)
+	camLib.Freecam:updatePanSpeed(freecamPanSpeedSlider.Value)
+end)
+
+------------------- MISCELLANEOUS ------------------------
+
+miscGroupBox:AddToggle("MyToggle", { Text = "This is a toggle", Tooltip = "This is a tooltip", Default = true,
 	Callback = function(Value)
 		--print("[cb] MyToggle changed to:", Value)
 	end,
@@ -312,7 +349,7 @@ end)
 
 toggles.MyToggle:SetValue(false)
 
-local rainbowToggle = leftGroupBox:AddCheckbox("MyCheckbox", { Text = "Rainbow", Tooltip = "This is a tooltip", Default = false,
+local rainbowToggle = miscGroupBox:AddCheckbox("MyCheckbox", { Text = "Rainbow", Tooltip = "This is a tooltip", Default = false,
 	Callback = function(Value)
 		toggleRainbow(Value, "ColorPicker1")
 	end,
@@ -322,7 +359,7 @@ toggles.MyCheckbox:OnChanged(function()
 	--print("MyCheckbox changed to:", toggles.MyCheckbox.Value)
 end)
 
-local MyButton = leftGroupBox:AddButton({ Text = "Button", Tooltip = "This is the main button", DoubleClick = false,
+local MyButton = miscGroupBox:AddButton({ Text = "Button", Tooltip = "This is the main button", DoubleClick = false,
 	Func = function()
 		--print("You clicked a button!")
         notify("test notification", "fuck you", 10)
@@ -335,7 +372,7 @@ local MyButton2 = MyButton:AddButton({ Text = "Sub button", Tooltip = "This is t
 	end,
 })
 
-local MyDisabledButton = leftGroupBox:AddButton({ Text = "Disabled Button", Tooltip = "This is a disabled button", DoubleClick = false, Disabled = true, DisabledTooltip = "I am disabled!",
+local MyDisabledButton = miscGroupBox:AddButton({ Text = "Disabled Button", Tooltip = "This is a disabled button", DoubleClick = false, Disabled = true, DisabledTooltip = "I am disabled!",
 	Func = function()
 		--print("You somehow clicked a disabled button!")
 	end,
@@ -345,20 +382,20 @@ local MyDisabledButton = leftGroupBox:AddButton({ Text = "Disabled Button", Tool
 	NOTE: You can chain the button methods!
 	EXAMPLE:
 
-	leftGroupBox:AddButton({ Text = 'Kill all', Func = Functions.KillAll, Tooltip = 'This will kill everyone in the game!' })
+	miscGroupBox:AddButton({ Text = 'Kill all', Func = Functions.KillAll, Tooltip = 'This will kill everyone in the game!' })
 		:AddButton({ Text = 'Kick all', Func = Functions.KickAll, Tooltip = 'This will kick everyone in the game!' })
 ]]
 
-leftGroupBox:AddLabel("This is a label")
-leftGroupBox:AddLabel("This is a label\n\nwhich wraps its text!", true)
-leftGroupBox:AddLabel("This is a label exposed to Labels", true, "TestLabel")
-leftGroupBox:AddLabel("SecondTestLabel", { Text = "This is a label made with table options and an index", DoesWrap = true })
+miscGroupBox:AddLabel("This is a label")
+miscGroupBox:AddLabel("This is a label\n\nwhich wraps its text!", true)
+miscGroupBox:AddLabel("This is a label exposed to Labels", true, "TestLabel")
+miscGroupBox:AddLabel("SecondTestLabel", { Text = "This is a label made with table options and an index", DoesWrap = true })
 
-leftGroupBox:AddLabel("SecondTestLabel", { Text = "This is a label that doesn't wrap it's own text", DoesWrap = false })
+miscGroupBox:AddLabel("SecondTestLabel", { Text = "This is a label that doesn't wrap it's own text", DoesWrap = false })
 
-leftGroupBox:AddDivider()
+miscGroupBox:AddDivider()
 
-leftGroupBox:AddSlider("MySlider", { Text = "This is my slider!", Tooltip = "I am a slider!",  Default = 0, Min = 0, Max = 5, Rounding = 1,
+miscGroupBox:AddSlider("MySlider", { Text = "This is my slider!", Tooltip = "I am a slider!",  Default = 0, Min = 0, Max = 5, Rounding = 1,
 	Callback = function(Value)
 		--print("[cb] MySlider was changed! New value:", Value)
 	end,
@@ -371,7 +408,7 @@ end)
 
 options.MySlider:SetValue(3)
 
-leftGroupBox:AddInput("MyTextbox", { Text = "This is a textbox", Tooltip = "This is a tooltip", Placeholder = "Placeholder text", Default = "My textbox!", Numeric = false, MaxLength = 5, ClearTextOnFocus = true,
+miscGroupBox:AddInput("MyTextbox", { Text = "This is a textbox", Tooltip = "This is a tooltip", Placeholder = "Placeholder text", Default = "My textbox!", Numeric = false, MaxLength = 5, ClearTextOnFocus = true,
 	Callback = function(Value)
 		--print("[cb] Text updated. New text:", Value)
 	end,
@@ -492,7 +529,7 @@ DropdownGroupBox:AddDropdown("MyTeamDropdown", { Text = "A team dropdown", Toolt
 	end,
 })
 
-leftGroupBox:AddLabel("Color"):AddColorPicker("ColorPicker", { Title = "Some color", Default = Color3.new(0, 1, 0), Transparency = 0,
+miscGroupBox:AddLabel("Color"):AddColorPicker("ColorPicker", { Title = "Some color", Default = Color3.new(0, 1, 0), Transparency = 0,
 	Callback = function(Value)
 		--print("[cb] Color changed!", Value)
 	end,
@@ -508,7 +545,7 @@ options.ColorPicker:SetValueRGB(Color3.fromRGB(0, 255, 140))
 -- Label:AddKeyPicker
 -- Arguments: Idx, Info
 
-leftGroupBox:AddLabel("Keybind"):AddKeyPicker("KeyPicker", { Text = "Auto lockpick safes", Default = "MB2", SyncToggleState = false, Mode = "Toggle", NoUI = false,
+miscGroupBox:AddLabel("Keybind"):AddKeyPicker("KeyPicker", { Text = "Auto lockpick safes", Default = "MB2", SyncToggleState = false, Mode = "Toggle", NoUI = false,
 	-- Occurs when the keybind is clicked, Value is `true`/`false`
 
 	Callback = function(Value)
@@ -556,12 +593,12 @@ options.KeyPicker:SetValue({ "MB2", "Hold" })
 --      MAIN: GROUPBOX #2  --
 -------------------------------------
 
-local LeftGroupBox2 = tabs.main:AddLeftGroupbox("Groupbox #2")
-LeftGroupBox2:AddLabel( "This label spans multiple lines! We're gonna run out of UI space...\nJust kidding! Scroll down!\n\n\nHello from below!", true )
+local miscGroupBox2 = tabs.main:AddLeftGroupbox("Groupbox #2")
+miscGroupBox:AddLabel( "This label spans multiple lines! We're gonna run out of UI space...\nJust kidding! Scroll down!\n\n\nHello from below!", true )
 
-LeftGroupBox2:AddToggle('ControlToggle', { Text = 'Dependency box toggle' });
+miscGroupBox:AddToggle('ControlToggle', { Text = 'Dependency box toggle' });
 
-local Depbox = LeftGroupBox2:AddDependencyBox();
+local Depbox = miscGroupBox:AddDependencyBox();
 
 Depbox:AddToggle('DepboxToggle', { Text = 'Sub-dependency box toggle' });
 Depbox:SetupDependencies({ { toggles.ControlToggle, true } });
@@ -647,7 +684,7 @@ MenuGroup:AddDivider()
 MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", { Default = "RightShift", NoUI = true, Text = "Menu keybind" })
 
 local function unloadModules()
-	local modules = { "fly_Toggle", "noclip_Toggle", "rainbowToggle" }
+	local modules = { "fly_Toggle", "noclip_Toggle", "rainbowToggle", "freecam_Toggle" }
 
 	for _, moduleName in ipairs(modules) do
 		if toggles[moduleName] then
