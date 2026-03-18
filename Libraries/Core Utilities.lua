@@ -786,4 +786,14 @@ utils.checkFunction = function(functionName)
     end
 end
 
+utils.fetchResetButtonState = function()
+    local resetCharBtn = game:GetService("CoreGui").RobloxGui.SettingsClippingShield.SettingsShield.MenuContainer.Page.BottomButtonFrame.ResetCharacterButtonButton
+
+    if resetCharBtn.Active then
+        return true
+    end
+
+    return false
+end
+
 return utils

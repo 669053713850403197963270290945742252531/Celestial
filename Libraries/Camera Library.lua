@@ -405,7 +405,7 @@ end
 
 function cameraLib.Freecam:enable()
     startFreecam()
-    print("started freecam")
+    --print("started freecam")
 end
 
 function cameraLib.Freecam:disable()
@@ -413,19 +413,19 @@ function cameraLib.Freecam:disable()
 
     navGain = Vector3.new(1, 1, 1)*64
     panGain = Vector2.new(0.75, 1)*8
-    print("disabled freecam")
+    --print("disabled freecam")
 end
 
 function cameraLib.Freecam:updateSpeed(newNavGain)
     navGain = Vector3.new(1, 1, 1)*newNavGain
     wait(0.1)
-    print("set speed to: ", navGain)
+    --print("set speed to: ", navGain)
 end
 
 function cameraLib.Freecam:updatePanSpeed(newPanGain)
     panGain = Vector2.new(0.75, 1)*newPanGain
     wait(0.1)
-    print("set pan speed: ", panGain)
+    --print("set pan speed: ", panGain)
 end
 
 cameraLib.fetchCamera = function()

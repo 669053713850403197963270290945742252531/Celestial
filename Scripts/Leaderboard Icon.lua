@@ -10,7 +10,7 @@ local function dbg(...)
 	end
 end
 
-warn("LeaderboardIcons V1.0 : Developed and maintained by Corrade (corradeknight)")
+print("LeaderboardIcons V1.0 : Developed and maintained by Corrade (corradeknight)")
 
 -- ======================================================================================
 -- GLOBAL STATE

@@ -6,7 +6,7 @@ local settingsShield = game:GetService("CoreGui").RobloxGui.SettingsClippingShie
 
 for _, inst in pairs(settingsShield.Page.BottomButtonFrame:GetDescendants()) do
     if inst.Name == "RejoinButton" then
-        warn("The Rejoin button Instance already exists. If you're trying to delete the Respawn button, you should rejoin.")
+        warn("Cannot overwrite the current rejoin button.")
         return
     end
 end
@@ -33,11 +33,19 @@ end
 
 -------------- INSTANCES --------------
 
+-- Tweak UIListLayout of the bottom button container to accommodate the rejoin button
+
+local buttonLayout = game:GetService("CoreGui").RobloxGui.SettingsClippingShield.SettingsShield.MenuContainer.Page.BottomButtonFrame.UIListLayout
+local buttonFrame = game:GetService("CoreGui").RobloxGui.SettingsClippingShield.SettingsShield.MenuContainer.Page.BottomButtonFrame
+
+buttonLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+buttonFrame.Size = UDim2.new(1, 0, 0, 113)
+
 -- Creating the new button
 local newButton = respawnButton:Clone()
 newButton.Parent = newButtonsFolder
 newButton.Name = "RejoinButton"
-newButton.Position = UDim2.new(0.5, -131, 0.5, -85)
+newButton.Position = UDim2.new(0.5, -131, 0.5, -55)
 
 -- Modifying the labels of the new button
 
@@ -49,6 +57,8 @@ text.Text = "Rejoin"
 -- Triggering the rejoin function on button click. This is placed before the hover events because roblox is SHIT. i might be coping. just a lil bit
 
 newButton.MouseButton1Click:Connect(function()
+    newButton.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    newButton.BackgroundTransparency = 1
     rejoin()
 end)
 
@@ -68,16 +78,6 @@ end)
 local hint = newButton.ResetCharacterHint
 hint.Image = "rbxassetid://125851991683380"
 
--- Fixing the stuck activated button state for the "Resume" button
-
-local resumeButton = game:GetService("CoreGui").RobloxGui.SettingsClippingShield.SettingsShield.MenuContainer.Page.BottomButtonFrame.ResumeButtonButton
-task.spawn(function() -- We loop this due to the settings shield constantly being hidden and causing the Resume button to get bugged in the enabled state every reopen
-    while task.wait(0.1) do
-        resumeButton.BackgroundColor3 = Color3.fromRGB(0,0,0)
-        resumeButton.BackgroundTransparency = 1
-    end
-end)
-
 -- Triggering the rejoin function on keybind
 
 uis.InputBegan:Connect(function(input)
@@ -87,5 +87,13 @@ uis.InputBegan:Connect(function(input)
 
 	if input.KeyCode == Enum.KeyCode.J then
 		if isSettingShieldShieldVisible() then rejoin() end
+
+        -- Mimicking the hovering behavior
+        newButton.BackgroundColor3 = Color3.fromRGB(56, 57, 59)
+        newButton.BackgroundTransparency = 0
+        task.wait(0.05)
+        -- Mimicking the unhover behavior
+        newButton.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+        newButton.BackgroundTransparency = 1
 	end	
 end)

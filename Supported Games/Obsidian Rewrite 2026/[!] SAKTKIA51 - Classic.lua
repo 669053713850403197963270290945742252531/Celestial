@@ -4,6 +4,7 @@ end
 
 local utils = loadstring(readfile("Celestial/Libraries/Core Utilities.lua"))()
 local entityLib = loadstring(readfile("Celestial/Libraries/Entity Library.lua"))()
+local camLib = loadstring(readfile("Celestial/Libraries/Camera Library.lua"))()
 
 local library = loadstring(readfile("Celestial/Obsidian/Library.lua"))()
 local themeManager = loadstring(readfile("Celestial/Obsidian/ThemeManager.lua"))()
@@ -15,14 +16,20 @@ local toggles = library.Toggles
 library.ForceCheckbox = false
 library.ShowToggleFrameInKeybinds = true
 
+
+-- SERVICES
 local gameName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
 local players = game:GetService("Players")
 local localplayer = players.LocalPlayer
 local runService = game:GetService("RunService")
 local lighting = game:GetService("Lighting")
+local uis = game:GetService("UserInputService")
 local killersFolder = game.Workspace:FindFirstChild("Killers")
 local area51 = game:GetService("Workspace").AREA51
 local camera = game:GetService("Workspace").CurrentCamera
+
+local cancelPAPQueue = false
+local wasTeleporterBusy = false
 
 local function getMode()
     if game.PlaceId == 2092166489 then
@@ -59,6 +66,7 @@ local tabs = {
     home = window:AddTab("Home", "info"),
 	utils = window:AddTab("Utility", "wrench"),
     player = window:AddTab("Player", "circle-user-round"),
+    exploits = window:AddTab("Exploits", "bug"),
     visuals = window:AddTab("Visuals", "eye"),
     world = window:AddTab("World", "globe"),
     weapons = window:AddTab("Weapons", "swords"),
@@ -66,10 +74,58 @@ local tabs = {
 	uiSettings = window:AddTab("UI Settings", "settings"),
 }
 
+-- CONSTANTS & TABLES
+
 local restrictedWeapons = {
     Crossbow = true,
     MG42 = true,
     FreezeGun = true
+}
+
+local defaults = {
+	killerESPColor_ColorPicker = Color3.fromRGB(255, 0, 0),
+    killerNameTagColor_ColorPicker = Color3.fromRGB(255, 255, 255)
+}
+
+local rainbowConnections = {}
+local hues = {}
+
+local killerNames = {
+    "Alien", "Ao Oni", "Captain Zombie",
+    "Chucky", "Eyeless Jack", "Fishface",
+    "Freddy Krueger", "Ghostface", "Granny",
+    "Jack Torrance", "Jane", "Jason", "Jeff",
+    "Leatherface", "Michael Myers", "Pennywise",
+    "Pinhead", "Rake", "Robot", "Slenderman",
+    "Smile Dog", "Sonic.exe", "Tails Doll",
+    "Wendigo", "Yeti", "Zombie", "Fuwatti",
+    "Giant", "Evil Lawn Mower"
+}
+
+local collectibles = {
+    Gem = true,
+    Antenna = true,
+    Bone = true,
+    Brain = true,
+    Claw = true,
+    Fabric = true,
+    Fur = true,
+    Glass = true,
+    Hair = true,
+    Horn = true,
+    Ice = true,
+    Metal = true,
+    Plastic = true,
+    Pumpkin = true,
+    ["Red Light"] = true,
+    Ribbon = true,
+    Rubber = true,
+    Skin = true,
+    Slime = true,
+    Spike = true,
+    Tentacle = true,
+    Tie = true,
+    Wood = true
 }
 
 -- =================================================
@@ -121,14 +177,6 @@ end
 local function isAlive()
     return entityLib.isAlive()
 end
-
-local defaults = {
-	killerESPColor_ColorPicker = Color3.fromRGB(255, 0, 0),
-    killerNameTagColor_ColorPicker = Color3.fromRGB(255, 255, 255)
-}
-
-local rainbowConnections = {}
-local hues = {}
 
 local function toggleRainbow(enabled, colorPickerName)
 	if enabled then
@@ -227,6 +275,78 @@ local function getSuffix(sliderObj, suffixString)
     return val == 1 and " " .. suffixString or " " .. suffixString .. "s"
 end
 
+local function teleport(destination, hrp)
+    local cframeValues = {
+        ["Surface"] = CFrame.new(326.087067, 511.699921, 392.975769, 0.999967098, 0, 0.00810976978, 0, 1, 0, -0.00810976978, 0, 0.999967098),
+        ["Area 51"] = CFrame.new(327.146332, 313.499908, 369.922913, 0.0146765877, 0, 0.999892294, 0, 1, 0, -0.999892294, 0, 0.0146765877),
+        ["Teleporter"] = CFrame.new(110.864708, 313.499969, 72.9767151, 0.999984086, -2.85284294e-08, -0.00564495847, 2.80977517e-08, 1, -7.6373631e-08, 0.00564495847, 7.62138015e-08, 0.999984086),
+        ["Alien"] = CFrame.new(237.99556, 337.799927, 472.399994, 4.34290196e-05, 1.17440393e-07, -1, 3.82457843e-09, 1, 1.17440564e-07, 1, -3.8296788e-09, 4.34290196e-05),
+        ["Alien Code Input"] = CFrame.new(137.72377, 333.499939, 525.566956, -0.999551415, 4.71232431e-09, 0.0299497657, 4.37261027e-09, 1, -1.14082894e-08, -0.0299497657, -1.12722134e-08, -0.999551415),
+        ["Armor"] = CFrame.new(-167.243805, 293.500214, 316.368713, -0.0163577069, -1.04670743e-08, 0.999866188, 6.23807708e-08, 1, 1.14890186e-08, -0.999866188, 6.25603604e-08, -0.0163577069),
+        ["Ammo Box"] = CFrame.new(184.26889, 314.102753, 437.041473, -0.999995649, 5.072752e-09, 0.00294528855, 5.24779331e-09, 1, 5.94231793e-08, -0.00294528855, 5.94383778e-08, -0.999995649),
+        ["Zombie Morpher"] = CFrame.new(402.278748, 512.499817, 399.379395, 0.999998093, -4.97486283e-08, 0.00196264265, 4.98476567e-08, 1, -5.0407067e-08, -0.00196264265, 5.05048021e-08, 0.999998093),
+        ["Radioactive Zone"] = CFrame.new(140.615601, 313.499969, 435.841766, -0.9997648, 3.54234375e-09, 0.0216868054, 6.39699493e-09, 1, 1.31561421e-07, -0.0216868054, 1.31669211e-07, -0.9997648),
+        ["Office"] = CFrame.new(-52.6837997, 313.500305, 292.096558, 1, 1.49757151e-09, -4.17306546e-05, -1.49720991e-09, 1, 8.6659675e-09, 4.17306546e-05, -8.66590533e-09, 1)
+    }
+
+	if not isAlive() then return end
+
+	local cframeDestination = cframeValues[destination]
+
+	if destination == "Pack A Punch Machine" then
+		entityLib.teleport(game:GetService("Workspace").PACKAPUNCH.GUI)
+
+		local papMachineCFrame = game:GetService("Workspace").PACKAPUNCH.GUI.CFrame
+
+		if entityLib.checkCFrame(hrp, papMachineCFrame, 5) then
+			notify("Success", "Successfully teleported to " .. destination .. ".", 6)
+		else
+			notify("Error", "Failed to teleport to " .. destination .. ".", 7)
+		end
+
+		return
+	end
+
+	entityLib.teleport(cframeDestination)
+
+	if entityLib.checkCFrame(hrp, cframeDestination, 5) then
+		notify("Success", "Successfully teleported to " .. destination .. ".", 6)
+	else
+		notify("Error", "Failed to teleport to " .. destination .. ".", 7)
+	end
+end
+
+local function getAllPapers()
+    local hrp = getHRP()
+
+    utils.fireTouchEvent(hrp, workspace.AREA51.AlienLabRoom.Paper)
+    utils.fireTouchEvent(hrp, workspace.AREA51.ComputingRoom.Paper)
+    utils.fireTouchEvent(hrp, workspace.AREA51.GarbageSewer.Paper)
+    utils.fireTouchEvent(hrp, workspace.AREA51.MachineryRoom.Paper)
+    utils.fireTouchEvent(hrp, workspace.AREA51.MeetingRoom.DeadGuy.Paper)
+    utils.fireTouchEvent(hrp, workspace.AREA51.OfficeRoom.Paper)
+    utils.fireTouchEvent(hrp, workspace.AREA51.PrototypMeetingRoom.Paper)
+    utils.fireTouchEvent(hrp, workspace.AREA51.RadioactiveArea.Floor1.Paper)
+    utils.fireTouchEvent(hrp, workspace.AREA51.RejectRoom.Paper)
+    utils.fireTouchEvent(hrp, workspace.AREA51.ResearchOffice.Paper)
+    utils.fireTouchEvent(hrp, workspace.AREA51.SecretCleanerRoom.Table.Paper)
+    utils.fireTouchEvent(hrp, workspace.AREA51.SecretCleanerRoom.Paper)
+    utils.fireTouchEvent(hrp, workspace.AREA51.SecretRoom.Paper)
+    utils.fireTouchEvent(hrp, workspace.AREA51.WasteRoom.Paper)
+    utils.fireTouchEvent(hrp, workspace.AREA51.YellowBedRoom.Buro.Paper)
+end
+
+local function getEnergyDrinkState()
+    if not utils.fetchOwnership("Gamepass", 1182965) then
+        return false
+    end
+end
+
+local function isKillerAlive(model)
+    local hum = model:FindFirstChildOfClass("Humanoid")
+    return hum and hum.Health > 0
+end
+
 local gunModFuncs = {
     infiniteAmmo = function()
         for _, weapon in next, getgc(true) do
@@ -277,7 +397,7 @@ local gunModFuncs = {
 local infoTabBox = tabs.home:AddLeftTabbox()
 local playerTab = infoTabBox:AddTab("Player")
 
-local respawnButton_Toggle = playerTab:AddToggle("toggleRespawn_Toggle", { Text = "Respawn Button", Tooltip = false, Default = true })
+local respawnButton_Toggle = playerTab:AddToggle("toggleRespawn_Toggle", { Text = "Respawn Button", Tooltip = false, Default = utils.fetchResetButtonState() })
 
 playerTab:AddLabel("Name: " .. localplayer.DisplayName .. " (@" .. localplayer.Name .. ")", true)
 playerTab:AddLabel("UserId: " .. localplayer.UserId, true)
@@ -333,62 +453,20 @@ local otherGroup2 = tabs.utils:AddRightGroupbox("Other")
 teleportGroup:AddDropdown("regularLocationsList_Dropdown", { Text = "Teleport", Tooltip = false, Values = {"Surface", "Area 51", "Teleporter", "Alien", "Alien Code Input",
 "Pack A Punch Machine", "Ammo Box", "Zombie Morpher", "Radioactive Zone"}, Default = 1 })
 teleportGroup:AddButton({ Text = "Teleport", Func = function()
-        local cframeValues = {
-            ["Surface"] = CFrame.new(326.087067, 511.699921, 392.975769, 0.999967098, 0, 0.00810976978, 0, 1, 0, -0.00810976978, 0, 0.999967098),
-            ["Area 51"] = CFrame.new(327.146332, 313.499908, 369.922913, 0.0146765877, 0, 0.999892294, 0, 1, 0, -0.999892294, 0, 0.0146765877),
-            ["Teleporter"] = CFrame.new(110.864708, 313.499969, 72.9767151, 0.999984086, -2.85284294e-08, -0.00564495847, 2.80977517e-08, 1, -7.6373631e-08, 0.00564495847, 7.62138015e-08, 0.999984086),
-            ["Alien"] = CFrame.new(237.99556, 337.799927, 472.399994, 4.34290196e-05, 1.17440393e-07, -1, 3.82457843e-09, 1, 1.17440564e-07, 1, -3.8296788e-09, 4.34290196e-05),
-            ["Alien Code Input"] = CFrame.new(137.72377, 333.499939, 525.566956, -0.999551415, 4.71232431e-09, 0.0299497657, 4.37261027e-09, 1, -1.14082894e-08, -0.0299497657, -1.12722134e-08, -0.999551415),
-            ["Armor"] = CFrame.new(-167.243805, 293.500214, 316.368713, -0.0163577069, -1.04670743e-08, 0.999866188, 6.23807708e-08, 1, 1.14890186e-08, -0.999866188, 6.25603604e-08, -0.0163577069),
-            ["Ammo Box"] = CFrame.new(184.26889, 314.102753, 437.041473, -0.999995649, 5.072752e-09, 0.00294528855, 5.24779331e-09, 1, 5.94231793e-08, -0.00294528855, 5.94383778e-08, -0.999995649),
-            ["Zombie Morpher"] = CFrame.new(402.278748, 512.499817, 399.379395, 0.999998093, -4.97486283e-08, 0.00196264265, 4.98476567e-08, 1, -5.0407067e-08, -0.00196264265, 5.05048021e-08, 0.999998093),
-            ["Radioactive Zone"] = CFrame.new(140.615601, 313.499969, 435.841766, -0.9997648, 3.54234375e-09, 0.0216868054, 6.39699493e-09, 1, 1.31561421e-07, -0.0216868054, 1.31669211e-07, -0.9997648),
-        }
-
         if not isAlive() then return end
-
-        local dropdown = options.regularLocationsList_Dropdown
-        local cframeDestination = cframeValues[dropdown.Value]
         local hrp = getHRP()
 
-        if dropdown.Value == "Pack A Punch Machine" then
-            entityLib.teleport(game:GetService("Workspace").PACKAPUNCH.GUI)
-
-            local papMachineCFrame = game:GetService("Workspace").PACKAPUNCH.GUI.CFrame
-
-            if entityLib.checkTeleport(hrp, papMachineCFrame, 5) then
-                notify("Success", "Successfully teleported to " .. dropdown.Value .. ".", 6)
-            else
-                notify("Error", "Failed to teleport to " .. dropdown.Value .. ".", 7)
-            end
-
-            return
-        end
-
-        entityLib.teleport(cframeDestination)
-
-        if entityLib.checkTeleport(hrp, cframeDestination, 5) then
-            notify("Success", "Successfully teleported to " .. dropdown.Value .. ".", 6)
-        else
-            notify("Error", "Failed to teleport to " .. dropdown.Value .. ".", 7)
-        end
+        local dropdown = options.regularLocationsList_Dropdown
+        teleport(dropdown.Value, hrp)
     end,
 })
 
-teleportGroup:AddButton({ Text = "Spawn Kill Teleport", Tooltip = "Teleports you to an area where you can kill the killers through the glass.",
+teleportGroup:AddButton({ Text = "Office Teleport", Tooltip = "Teleports you to an area where you can kill the killers through the glass.",
     Func = function()
         if not isAlive() then return end
 
-        local destination = CFrame.new(-52.6837997, 313.500305, 292.096558, 1, 1.49757151e-09, -4.17306546e-05, -1.49720991e-09, 1, 8.6659675e-09, 4.17306546e-05, -8.66590533e-09, 1)
         local hrp = getHRP()
-
-        entityLib.teleport(destination)
-
-        if entityLib.checkTeleport(hrp, destination, 5) then
-            notify("Success", "Successfully teleported to the area.", 6)
-        else
-            notify("Error", "Failed to teleport  to the area.", 7)
-        end
+        teleport("Office", hrp)
     end,
 })
 
@@ -396,55 +474,58 @@ teleportGroup:AddButton({ Text = "Spawn Kill Teleport", Tooltip = "Teleports you
 --      UTILITY: HEALING GROUP  --
 -------------------------------------
 
-local function getEnergyDrink()
-    if not utils.fetchOwnership("Gamepass", 1182965) then
-        return nil, "You do not own the gamepass."
+if getEnergyDrinkState() then -- Don't run the Energy Drink functions if the player does not have the Energy Drink gamepass
+    local function getEnergyDrink()
+        if not getEnergyDrinkState() then
+            return nil, "You do not own the gamepass."
+        end
+
+        local energyDrink = entityLib.getTool("Specific", "Energy")
+
+        if not energyDrink then
+            return nil, "Energy drink not found."
+        end
+
+        if energyDrink:FindFirstChild("Ammo") and energyDrink.Ammo.Value == 0 then
+            return nil, "Energy drink has no more charges left."
+        end
+
+        return energyDrink, nil
     end
 
-    local energyDrink = entityLib.getTool("Specific", "Energy")
+    local function refillEnergyDrink()
 
-    if not energyDrink then
-        return nil, "Energy drink not found."
+        local energyDrink = getEnergyDrink()
+        local hrp = getHRP()
+
+        if not energyDrink then return end
+
+        local remainingCharges = energyDrink.Ammo.Value
+        
+        if remainingCharges ~= 0 then
+            notify("Refill Failed", "You still have " .. remainingCharges .. " charges left.", 6, "Error")
+            return
+        end
+        
+        local origCFrame = entityLib.storeData(hrp, "CFrame", true)
+        
+        task.wait(0.01)
+        
+        entityLib.teleport(CFrame.new(178.023087, 333.499908, 597.890442, 0.0192538705, -8.12836092e-08, 0.99981463, 1.48566126e-09, 1, 8.12700662e-08, -0.99981463, -7.93774491e-11, 0.0192538705))
+        
+        task.wait(0.17)
+        
+        utils.fireProxPrompt(area51.CafeRoom["Coffee Machine"].Energy.Head)
+        
+        -- Restore original cframe / teleport back
+        
+        entityLib.restoreData(hrp, "CFrame")
+        entityLib.clearData(hrp, "CFrame")
     end
 
-    if energyDrink:FindFirstChild("Ammo") and energyDrink.Ammo.Value == 0 then
-        return nil, "Energy drink has no more charges left."
-    end
-
-    return energyDrink, nil
 end
 
-local function refillEnergyDrink()
-
-    local energyDrink = getEnergyDrink()
-    local hrp = getHRP()
-
-    if not energyDrink then return end
-
-    local remainingCharges = energyDrink.Ammo.Value
-    
-    if remainingCharges ~= 0 then
-        notify("Refill Failed", "You still have " .. remainingCharges .. " charges left.", 6, "Error")
-        return
-    end
-    
-    local origCFrame = entityLib.storeData(hrp, "CFrame", true)
-    
-    task.wait(0.01)
-    
-    entityLib.teleport(CFrame.new(178.023087, 333.499908, 597.890442, 0.0192538705, -8.12836092e-08, 0.99981463, 1.48566126e-09, 1, 8.12700662e-08, -0.99981463, -7.93774491e-11, 0.0192538705))
-    
-    task.wait(0.17)
-    
-    utils.fireProxPrompt(area51.CafeRoom["Coffee Machine"].Energy.Head)
-    
-    -- Restore original cframe / teleport back
-    
-    entityLib.restoreData(hrp, "CFrame")
-    entityLib.clearData(hrp, "CFrame")
-end
-
-healingGroup:AddButton({ Text = "Drink Energy Drink", Func = function()
+healingGroup:AddButton({ Text = "Drink Energy Drink", Disabled = not getEnergyDrinkState(), Func = function()
         local energyDrink, err = getEnergyDrink()
         local drinkAmount = options.energyDrinkAmount_Slider.Value
 
@@ -461,8 +542,8 @@ healingGroup:AddButton({ Text = "Drink Energy Drink", Func = function()
     end,
 })
 
-healingGroup:AddSlider("energyDrinkAmount_Slider", { Text = "Drink Amount", Tooltip = "How much to drink from the energy drink.", Default = 5, Min = 1, Max = 5, Rounding = 0 })
-healingGroup:AddButton({ Text = "Drink All", Func = function()
+healingGroup:AddSlider("energyDrinkAmount_Slider", { Text = "Drink Amount", Tooltip = "How much to drink from the energy drink.", Default = 5, Min = 1, Max = 5, Rounding = 0, Disabled = not getEnergyDrinkState() })
+healingGroup:AddButton({ Text = "Drink All", Disabled = not getEnergyDrinkState(), Func = function()
         local energyDrink, err = getEnergyDrink()
 
         if energyDrink then
@@ -479,7 +560,7 @@ healingGroup:AddButton({ Text = "Drink All", Func = function()
     end,
 })
 
-healingGroup:AddButton({ Text = "Refill", Func = function()
+healingGroup:AddButton({ Text = "Refill", Disabled = not getEnergyDrinkState(), Func = function()
         local energyDrink, err = getEnergyDrink()
 
         if not energyDrink then
@@ -592,15 +673,16 @@ local function startAutoRefillLoop()
     end)
 end
 
-autoDrinkToggle = healingGroup:AddToggle("autoDrink_Toggle", { Text = "Auto Drink", Tooltip = "Drinks the entire energy drink when you are below the threshold.", Default = false })
+-- AUTO DRINK
+
+autoDrinkToggle = healingGroup:AddToggle("autoDrink_Toggle", { Text = "Auto Drink", Tooltip = "Drinks the entire energy drink when you are below the threshold.", Default = false, Disabled = not getEnergyDrinkState() })
 
 local autoDrinkDepbox = healingGroup:AddDependencyBox()
-
 autoDrinkThresholdSlider = autoDrinkDepbox:AddSlider("autoDrinkThreshold_Slider", { Text = "Threshold", Tooltip = false, Default = 40, Min = 10, Max = getMaxThreshold(), Rounding = 0 })
 
 autoDrinkDepbox:SetupDependencies({ { toggles.autoDrink_Toggle, true } })
 
-autoRefillToggle = healingGroup:AddToggle("autoRefill_Toggle", { Text = "Auto Refill", Tooltip = "Refills your energy drink when it has no more charges left.", Default = false })
+autoRefillToggle = healingGroup:AddToggle("autoRefill_Toggle", { Text = "Auto Refill", Tooltip = "Refills your energy drink when it has no more charges left.", Default = false, Disabled = not getEnergyDrinkState() })
 
 toggles.autoDrink_Toggle:OnChanged(function(enabled)
     if enabled then
@@ -679,7 +761,7 @@ local function updateSoundLoop(soundName, isEnabled)
     end
 end
 
-soundsGroup:AddDropdown("disabledSoundsList_Dropdown", { Text = "Disabled Game Sounds", Tooltip = false, Values = { "Lightning", "Thunder", "Music" }, Default = 0, Multi = true,
+soundsGroup:AddDropdown("disabledSoundsList_Dropdown", { Text = "Disabled Ambience", Tooltip = false, Values = { "Lightning", "Thunder", "Music" }, Default = 0, Multi = true,
     Callback = function(valueTable)
         for option in pairs(disabledSounds) do
             local newState = valueTable[option] or false
@@ -692,7 +774,7 @@ soundsGroup:AddDropdown("disabledSoundsList_Dropdown", { Text = "Disabled Game S
     end,
 })
 
-soundsGroup:AddButton({ Text = "Disable All Sounds",
+soundsGroup:AddButton({ Text = "Disable All Ambience",
     Func = function()
         options.disabledSoundsList_Dropdown:SetValue({
             Lightning = true,
@@ -824,6 +906,8 @@ Visible = true })
 --      PLAYER: MOVEMENT GROUP  --
 -------------------------------------
 
+-- SPEED EXPLOIT
+
 movementGroup:AddToggle("speedExploit_Toggle", { Text = "Speed Exploit", Tooltip = false, Default = false })
 
 local speedExploitDepbox = movementGroup:AddDependencyBox()
@@ -832,23 +916,27 @@ speedExploitDepbox:AddDropdown("speedExploitMethod_Dropdown", { Text = "Method",
 speedExploitDepbox:AddSlider("speedExploitAmount_Slider", { Text = "Amount", Tooltip = false, Default = 20, Min = 16, Max = 100, Rounding = 0 })
 speedExploitDepbox:AddDivider()
 
+-- FLY
+
 movementGroup:AddToggle("enableFly_Toggle", { Text = "Enable Fly" })
 
 local flyDepbox = movementGroup:AddDependencyBox()
-
 flyDepbox:AddToggle("toggleFly_Toggle", { Text = "Fly" })
 :AddKeyPicker("fly_KeyPicker", { Text = "Fly", Default = "F", SyncToggleState = true, Mode = "Toggle", NoUI = false })
 local flyHorizSpeed_Slider = flyDepbox:AddSlider("flyHorizSpeed_Slider", { Text = "Horizontal Speed", Tooltip = "The speed you normally go at.", Default = 100, Min = 30, Max = 1000, Rounding = 0 })
 local flyVertSpeed_Slider = flyDepbox:AddSlider("flyVertSpeed_Slider", { Text = "Vertical Speed", Tooltip = "The speed you go when ascending/descending.", Default = 100, Min = 30, Max = 300, Rounding = 0 })
 flyDepbox:AddDivider()
 
+-- NOCLIP
+
 movementGroup:AddToggle("enableNoclip_Toggle", { Text = "Enable Noclip" })
 
 local noclipDepbox = movementGroup:AddDependencyBox()
-
 noclipDepbox:AddToggle("toggleNoclip_Toggle", { Text = "Noclip" })
 :AddKeyPicker("noclip_KeyPicker", { Text = "Noclip", Default = "G", SyncToggleState = true, Mode = "Toggle", NoUI = false })
 noclipDepbox:AddDivider()
+
+-- JUMPPOWER
 
 movementGroup:AddToggle("enableJumpPower_Toggle", { Text = "Enable JumpPower" })
 
@@ -937,6 +1025,8 @@ toggles.toggleNoclip_Toggle:OnChanged(function(noclipToggleEnabled)
     end
 end)
 
+-- SPEED EXPLOIT
+
 local method = options.speedExploitMethod_Dropdown.Value
 local slider = options.speedExploitAmount_Slider
 slider:SetMin(1)
@@ -953,7 +1043,7 @@ local humanoid, rootPart, bodyVelocity, velocityConnection
 -- Helpers
 
 local function getCharacterParts()
-	character = localplayer.Character or localplayer.CharacterAdded:Wait()
+	local character = localplayer.Character or localplayer.CharacterAdded:Wait()
 	humanoid = character:WaitForChild("Humanoid", 5)
 	rootPart = character:WaitForChild("HumanoidRootPart", 5)
 end
@@ -1055,12 +1145,34 @@ else
 	speedOnCharacterAdded(localplayer.Character)
 end
 
+-- WalkSpeed Enforcement -  Link the WalkSpeed assignment to every frame update
+runService.RenderStepped:Connect(function()
+	if humanoid and toggles.speedExploit_Toggle.Value and options.speedExploitMethod_Dropdown.Value == "WalkSpeed" then
+		local targetSpeed = options.speedExploitAmount_Slider.Value
+		if humanoid.WalkSpeed ~= targetSpeed then
+			humanoid.WalkSpeed = targetSpeed
+		end
+	end
+end)
+
 -------------------------------------
 --      PLAYER: OTHERS GROUP  --
 -------------------------------------
 
 othersGroup3:AddToggle("doorNoclip_Toggle", { Text = "Door Noclip" })
 othersGroup3:AddToggle("autoBacktrack_Toggle", { Text = "Backtrack", Tooltip = "Automatically teleports you back to your last death location." })
+
+-- FREECAM
+
+othersGroup3:AddToggle("freecam_Toggle", { Text = "Freecam", Tooltip = false, Default = false })
+
+local freecamDepbox = othersGroup3:AddDependencyBox()
+
+local freecamSpeedSlider = freecamDepbox:AddSlider("freecamSpeedSlider", { Text = "Speed", Tooltip = "The speed you move at in freecam.",  Default = 64, Min = 10, Max = 2000, Rounding = 0 })
+local freecamPanSpeedSlider = freecamDepbox:AddSlider("freecamPanSpeedSlider", { Text = "Pan Speed", Tooltip = "How fast your camera moves when moving your mouse around in freecam.",  Default = 8, Min = 2, Max = 30, Rounding = 0 })
+freecamDepbox:AddDivider()
+
+freecamDepbox:SetupDependencies({ { toggles.freecam_Toggle, true } })
 
 toggles.doorNoclip_Toggle:OnChanged(function(enabled)
     for _, part in ipairs(game.Workspace:GetDescendants()) do
@@ -1131,6 +1243,574 @@ localplayer.CharacterAdded:Connect(function(char)
     toggles.autoBacktrack_Toggle:SetDisabled(false)
 end)
 
+toggles.freecam_Toggle:OnChanged(function(enabled)
+	camLib.Freecam:updateSpeed(freecamSpeedSlider.Value)
+	camLib.Freecam:updatePanSpeed(freecamPanSpeedSlider.Value)
+
+	if enabled then
+		camLib.Freecam:enable()
+	else
+		camLib.Freecam:disable()
+	end
+end)
+
+options.freecamSpeedSlider:OnChanged(function(val)
+	camLib.Freecam:updateSpeed(freecamSpeedSlider.Value)
+end)
+
+options.freecamPanSpeedSlider:OnChanged(function(val)
+	camLib.Freecam:updatePanSpeed(freecamPanSpeedSlider.Value)
+end)
+
+-- =================================================
+--                   TAB: EXPLOITS                   --
+-- =================================================
+
+local exploitsGroup = tabs.exploits:AddLeftGroupbox("Exploits")
+local killersGroup = tabs.exploits:AddRightGroupbox("Killers")
+
+-------------------------------------
+--      EXPLOITS: EXPLOITS GROUP  --
+-------------------------------------
+
+local function singlePAP(weaponName)
+    local busy = teleporterInUse()
+
+    if busy then
+        notify("Error", "The teleporter is currently in use. Please try again in a minute.")
+        return
+    end
+
+	-- Weapon check
+
+	if not entityLib.getTool("Specific", weaponName) then
+		notify("Error", "You don't have " .. weaponName .. " in your inventory.", 6)
+		return false
+	end
+
+	-- Kill requirements
+
+	local requirements = require(game:GetService("StarterPlayer").StarterPlayerScripts.LocalAnimations["Classic area"].Teleportation.PackAPunch["Classic mode"].Requirements)
+	local requiredKills = requirements[weaponName]
+	local kills = game:GetService("Players").LocalPlayer.leaderstats["Killers Killed"].Value
+
+	if requiredKills and kills < requiredKills then
+		local needed = requiredKills - kills
+		notify("Error", weaponName .. " requires " .. requiredKills .. " kills to pack a punch. You need " .. needed .. " more.", 7)
+		return false
+	end
+
+    local hrp = getHRP()
+
+	-- Teleport to control panel
+
+    freeze(true)
+	entityLib.teleport(CFrame.new(110.864708, 313.499969, 72.9767151))
+    repeat task.wait(0.09) until entityLib.checkCFrame(hrp, CFrame.new(110.86470794677734, 313.4999694824219, 72.97671508789062), 5)
+	--task.wait(0.15)
+
+	-- Fire teleport prompt
+
+	utils.fireProxPrompt(area51.TeleporterRoom.Teleporter["Control Panels"].Middle.Teleport)
+    notify("Working..", "Teleporting in progress...\nPack a punching the " .. weaponName .. "...", 11)
+
+	-- Confirm teleport has started
+
+	local displayLabel = area51.TeleporterRoom.Teleporter["Control Panels"].Middle.Displayer.SurfaceGui.Frame.TextLabel
+    repeat task.wait() until string.find(displayLabel.Text, "Teleporting" )
+    notify("Working..", "Correct teleport.\nPack a punching the " .. weaponName .. "...", 12)
+
+	-- Teleport inside teleporter
+
+	local inside = area51.TeleporterRoom.Teleporter.Teleporter.Inside
+	inside.CanCollide = false
+	entityLib.teleport(CFrame.new(111.216148, 315.700012, 41.9078827))
+
+	local punchRoomCFrame = CFrame.new(109.300003, 335.499969, 62)
+	repeat task.wait() until entityLib.checkCFrame(hrp, punchRoomCFrame, 5)
+    notify("Working..", "Teleport finished.\nPack a punching the " .. weaponName .. "...", 9)
+
+	-- PAP weapon
+
+	game:GetService("Workspace").PACKAPUNCH.PAPStarted:FireServer(weaponName)
+	game:GetService("Workspace").PACKAPUNCH.PAPFinished:FireServer()
+    notify("Success", weaponName .. " has been pack a punched!", 7)
+
+    freeze(false)
+	return true
+end
+
+exploitsGroup:AddToggle("enableAimbot_Toggle", { Text = "Enable Aimbot", Tooltip = false })
+exploitsGroup:AddToggle("autoCollect_Toggle", { Text = "Auto Collect Ingredients", Tooltip = "Automatically collects all materials/ingredients added in V17.0." })
+exploitsGroup:AddButton({ Text = "Complete Area 51 Personnel",
+    Func = function()
+        local hrp = getHRP()
+        local origCFrame = entityLib.storeData(hrp, "CFrame", true)
+
+        utils.fireTouchEvent(hrp, game:GetService("Workspace").AREA51.AlienExit.Reward) -- Find the alien
+        utils.fireTouchEvent(hrp, area51.PlantRoom["Box of Shells"].Box) -- Find an ammo bag
+        utils.fireTouchEvent(hrp, game:GetService("Workspace").AREA51.ExecutionRoom.Reward) -- Access the execution room
+        -- Find the giant zombie
+        
+        entityLib.teleport(CFrame.new(177.195404, 313.499969, 577.864624, -0.00262195012, -7.50515117e-09, 0.999996543, 9.9084508e-12, 1, 7.50520268e-09, -0.999996543, 2.95866838e-11, -0.00262195012))
+        utils.fireTouchEvent(hrp, game:GetService("Workspace").AREA51.RadioactiveArea.GiantZombieRoom.GiantZombieEngine.Close.Door2)
+
+        utils.fireTouchEvent(hrp, workspace.Weapons.M14.Hitbox) -- Find the M14
+        utils.fireTouchEvent(hrp, workspace.Weapons["M16A2/M203"].Hitbox) -- Find the M16A2/M203
+        utils.fireTouchEvent(hrp, workspace.Weapons.MP5k.Hitbox) -- Find the MP5k
+
+        utils.fireTouchEvent(hrp, workspace.AREA51.RadioactiveArea.Floor1.Paper) -- Find the paper 1
+        utils.fireTouchEvent(hrp, workspace.AREA51.YellowBedRoom.Buro.Paper) -- Find the paper 2
+        utils.fireTouchEvent(hrp, workspace.AREA51.MeetingRoom.DeadGuy.Paper) -- Find the paper 3
+
+        utils.fireTouchEvent(hrp, workspace.Weapons.R870.Hitbox) -- Find the R870
+        utils.fireTouchEvent(hrp, workspace.Weapons.RayGun.Hitbox) -- Find the RayGun
+        utils.fireTouchEvent(hrp, workspace.Weapons.SVD.Hitbox) -- Find the SVD
+        utils.fireTouchEvent(hrp, workspace.Weapons["Desert Eagle"].Hitbox) -- Find the Desert Eagle
+
+        utils.fireTouchEvent(hrp, workspace.AREA51.SecretPath1.Reward) -- Find the secret path 1
+        utils.fireTouchEvent(hrp, workspace.AREA51.SecretPath2.Reward) -- Find the secret path 2
+        utils.fireTouchEvent(hrp, workspace.AREA51.SecretPath3.Reward) -- Find the secret path 3
+        utils.fireTouchEvent(hrp, workspace.AREA51.SecretPath4.Reward) -- Find the secret path 4
+        utils.fireTouchEvent(hrp, workspace.AREA51.SecretPath5.Reward) -- Find the secret path 5
+        utils.fireTouchEvent(hrp, workspace.AREA51.SecretPath6.Reward) -- Find the secret path 6
+
+        utils.fireTouchEvent(hrp, area51.Outside.Hangar.Right["Zombie Morph"].TheButton) -- Wear the zombie morph
+
+        -- Pack A Punch a weapon
+        repeat task.wait() until entityLib.getTool("Specific", "MP5k")
+        singlePAP("MP5k")
+
+        local returnCFrame = CFrame.new(219.199997, 323.500061, 845.900024)
+
+        -- Wait until you're at the return cframe/in the gun room place BEFORE breaking
+        repeat task.wait() until entityLib.checkCFrame(hrp, returnCFrame, 5)
+
+        entityLib.restoreData(hrp, "CFrame")
+        entityLib.clearData(hrp, "CFrame")
+    end,
+})
+
+local aimbotDepbox = exploitsGroup:AddDependencyBox()
+
+aimbotDepbox:AddDropdown("aimbotHitPart_Dropdown", { Text = "Hit Part", Tooltip = false, Values = { "Head", "HumanoidRootPart" }, Default = 1, Multi = false })
+aimbotDepbox:AddDropdown("aimbotTargetType_Dropdown", { Text = "Target Type", Tooltip = false, Values = { "Closest", "Closest to Cursor" }, Default = 2, Multi = false })
+aimbotDepbox:AddDropdown("aimbotExcludedKillers_Dropdown", { Text = "Excluded Killers", Tooltip = false, Values = killerNames, Default = { "Giant", "Jane" }, Multi = true, Searchable = true })
+aimbotDepbox:AddSlider("aimbotMaximumDistance_Slider", { Text = "Range", Tooltip = "Killers farther than this distance will not be targeted.", Default = 100, Min = 10, Max = 2000, Suffix = " Studs", Rounding = 1 })
+aimbotDepbox:AddSlider("aimbotSmoothing_Slider", { Text = "Smoothing", Tooltip = "How smooth aimbot should lock onto Killer's.", Default = 400, Min = 10, Max = 1000, Rounding = 0 })
+aimbotDepbox:AddToggle("aimbotVisibilityCheck_Toggle", { Text = "Visibility Check", Tooltip = "Whether to only target Killers that are visible and not beind walls.", Default = true })
+aimbotDepbox:AddDivider()
+
+aimbotDepbox:SetupDependencies({ { toggles.enableAimbot_Toggle, true } })
+
+local aimbotConnection
+
+-- Visibility check
+
+local function isVisible(targetPart)
+    if not toggles.aimbotVisibilityCheck_Toggle.Value then
+        return true
+    end
+
+    local char = localplayer.Character
+    if not char then return false end
+
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return false end
+
+    local params = RaycastParams.new()
+    params.FilterDescendantsInstances = {char}
+    params.FilterType = Enum.RaycastFilterType.Blacklist
+
+    local direction = (targetPart.Position - hrp.Position)
+
+    local result = workspace:Raycast(hrp.Position, direction, params)
+
+    if result then
+        return result.Instance:IsDescendantOf(targetPart.Parent)
+    end
+
+    return true
+end
+
+-- Exclusion check
+
+local function isExcluded(killer)
+    local excluded = options.aimbotExcludedKillers_Dropdown.Value
+
+    if not excluded then return false end
+
+    for name, enabled in pairs(excluded) do
+        if enabled and killer.Name == name then
+            return true
+        end
+    end
+
+    return false
+end
+
+-- Closest killer
+
+local function getClosestKiller()
+
+    local closest = nil
+    local shortestDistance = math.huge
+
+    local char = localplayer.Character
+    if not char then return end
+
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    local maxDistance = options.aimbotMaximumDistance_Slider.Value
+    local partName = options.aimbotHitPart_Dropdown.Value
+
+    for _, killer in pairs(killersFolder:GetChildren()) do
+
+        if isKillerAlive(killer) and not isExcluded(killer) then
+
+            local targetPart = killer:FindFirstChild(partName, true)
+
+            if targetPart then
+
+                local dist = (hrp.Position - targetPart.Position).Magnitude
+
+				if dist <= maxDistance and isVisible(targetPart) then
+					if dist < shortestDistance then
+						shortestDistance = dist
+						closest = targetPart
+					end
+				end
+
+            end
+        end
+    end
+
+	return closest
+end
+
+-- Closest to cursor
+
+local function getClosestToCursor()
+
+    local closest = nil
+    local shortestDistance = math.huge
+
+    local mousePos = uis:GetMouseLocation()
+    local partName = options.aimbotHitPart_Dropdown.Value
+
+    local char = localplayer.Character
+    if not char then return end
+
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    local maxDistance = options.aimbotMaximumDistance_Slider.Value
+
+    for _, killer in pairs(killersFolder:GetChildren()) do
+
+        if isKillerAlive(killer) and not isExcluded(killer) then
+
+            local targetPart = killer:FindFirstChild(partName, true)
+
+            if targetPart then
+
+                local dist3D = (hrp.Position - targetPart.Position).Magnitude
+
+                if dist3D <= maxDistance and isVisible(targetPart) then
+
+                    local screenPos, visible = camera:WorldToViewportPoint(targetPart.Position)
+
+                    if visible then
+
+                        local dist2D = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+
+                        if dist2D < shortestDistance then
+                            shortestDistance = dist2D
+                            closest = targetPart
+                        end
+
+                    end
+                end
+            end
+        end
+    end
+
+    return closest
+end
+
+-- Aimbot toggle
+
+toggles.enableAimbot_Toggle:OnChanged(function(state)
+
+	if state then
+
+		aimbotConnection = runService.RenderStepped:Connect(function()
+
+			local target
+			local targetType = options.aimbotTargetType_Dropdown.Value
+
+			if targetType == "Closest" then
+				target = getClosestKiller()
+			else
+				target = getClosestToCursor()
+			end
+
+			if target then
+
+				local char = localplayer.Character
+				local hrp = char and char:FindFirstChild("HumanoidRootPart")
+
+				if hrp then
+					local maxDistance = options.aimbotMaximumDistance_Slider.Value
+					local dist = (hrp.Position - target.Position).Magnitude
+
+					-- Enforce distance check while tracking
+					if dist <= maxDistance then
+
+						local camPos = camera.CFrame.Position
+						local goal = CFrame.new(camPos, target.Position)
+
+						local smoothing = options.aimbotSmoothing_Slider.Value
+						local alpha = math.clamp(1 / smoothing * 50, 0, 1)
+
+						camera.CFrame = camera.CFrame:Lerp(goal, alpha)
+					end
+				end
+			end
+		end)
+	else
+
+		if aimbotConnection then
+			aimbotConnection:Disconnect()
+			aimbotConnection = nil
+		end
+	end
+end)
+
+local autoCollectRunning = false
+local autoCollectThread
+
+toggles.autoCollect_Toggle:OnChanged(function(state)
+    autoCollectRunning = state
+
+    if state then
+        autoCollectThread = task.spawn(function()
+            while autoCollectRunning do
+                local char = game.Players.LocalPlayer.Character
+                local hrp = getHRP()
+
+                if hrp then
+                    for _, obj in ipairs(workspace:GetChildren()) do
+                        if (obj:IsA("Part") or obj:IsA("MeshPart")) and collectibles[obj.Name] then
+                            utils.fireTouchEvent(hrp, obj)
+                        end
+                    end
+                end
+
+                task.wait(0.2)
+            end
+        end)
+    end
+end)
+
+-------------------------------------
+--      EXPLOITS: KILLERS GROUP  --
+-------------------------------------
+
+-- DISABLE AURA
+
+killersGroup:AddToggle("disableAllKillers_Toggle", { Text = "Disable Aura", Tooltip = "Breaks the movement for all NEARBY killers within the specified amount of studs." })
+
+local disableKillersDepbox = killersGroup:AddDependencyBox()
+disableKillersDepbox:AddDropdown("disableAuraMethod_Dropdown", { Text = "Method", Tooltip = false, Values = { "Kill", "Disable Movement", "Disable Humanoid" }, Default = 2, Multi = false, Searchable = false })
+disableKillersDepbox:AddSlider("disableKillersDistance_Slider", { Text = "Range", Tooltip = "How far away to disable killers", Default = 20, Min = 10, Max = 50, Suffix = " Studs", Rounding = 0 })
+disableKillersDepbox:AddToggle("disableAuraDebugNotifs_Toggle", { Text = "Debug Notifications", Tooltip = "Sends a notification each time a killer is killed via Disable Aura." })
+disableKillersDepbox:AddDivider()
+
+-- KILLER GODMODE
+
+killersGroup:AddToggle("killerGodmode_Toggle", { Text = "Killer Godmode", Tooltip = "Makes you invincible to the killers by blocking killer interactions." })
+
+local killerGodmodeDepbox = killersGroup:AddDependencyBox()
+killerGodmodeDepbox:AddToggle("antiPinhead_Toggle", { Text = "Anti Pinhead", Tooltip = "Disables (mostly) Pinhead's spikes that he expels upon death." })
+killerGodmodeDepbox:AddLabel("Most melee attacks and ranged attacks can be disabled while some killers can not be disabled due damage being serversided. These killers include: Alien, Fishface, Robot, Chucky, Eyeless Jack, etc.", true)
+killerGodmodeDepbox:AddDivider()
+
+killersGroup:AddToggle("antiSlendermanJumpscare_Toggle", { Text = "Anti Slenderman Jumpscare", Tooltip = false })
+
+killerGodmodeDepbox:SetupDependencies({ { toggles.killerGodmode_Toggle, true } })
+disableKillersDepbox:SetupDependencies({ { toggles.disableAllKillers_Toggle, true } })
+
+local function disableAuraDebug(title, message)
+    if not toggles.disableAuraDebugNotifs_Toggle.Value then return end
+    notify(title, message, 4)
+end
+
+local affectedKillers = {}
+local proximityRange = options.disableKillersDistance_Slider.Value
+
+local function updateKiller(hum, model, method, inRange)
+    -- restore if leaving range
+    if not inRange and affectedKillers[hum] == "Disable Movement" then
+        entityLib.restoreData(hum, "WalkSpeed")
+        entityLib.restoreData(hum, "JumpPower")
+        entityLib.clearData(hum, "WalkSpeed")
+        entityLib.clearData(hum, "JumpPower")
+        affectedKillers[hum] = nil
+        if toggles.disableAuraDebugNotifs_Toggle.Value then
+            notify("Disable Aura", "Restored " .. model.Name .. "'s movement.", 3)
+        end
+    end
+
+    -- skip if not in range
+    if not inRange then return end
+
+    -- skip if method already applied
+    if affectedKillers[hum] == method then return end
+
+    -- restore previous movement if switching methods
+    if affectedKillers[hum] == "Disable Movement" then
+        entityLib.restoreData(hum, "WalkSpeed")
+        entityLib.restoreData(hum, "JumpPower")
+        entityLib.clearData(hum, "WalkSpeed")
+        entityLib.clearData(hum, "JumpPower")
+    end
+
+    -- apply new method
+    if method == "Kill" then
+        hum.Health = 0
+        if toggles.disableAuraDebugNotifs_Toggle.Value then
+            notify("Disable Aura", "Killed " .. model.Name, 3)
+        end
+    elseif method == "Disable Movement" then
+        if not entityLib.isStored(hum, "WalkSpeed") then
+            entityLib.storeData(hum, "WalkSpeed", true)
+        end
+        if not entityLib.isStored(hum, "JumpPower") then
+            entityLib.storeData(hum, "JumpPower", true)
+        end
+        hum.WalkSpeed = 0
+        hum.JumpPower = 0
+        if toggles.disableAuraDebugNotifs_Toggle.Value then
+            notify("Disable Aura", "Disabled " .. model.Name .. "'s movement.", 3)
+        end
+    elseif method == "Disable Humanoid" then
+        hum:Destroy()
+        if toggles.disableAuraDebugNotifs_Toggle.Value then
+            notify("Disable Aura", "Disabled " .. model.Name .. "'s humanoid.", 3)
+        end
+    end
+
+    affectedKillers[hum] = method
+end
+
+toggles.disableAllKillers_Toggle:OnChanged(function(enabled)
+    if enabled then
+        task.spawn(function()
+            while toggles.disableAllKillers_Toggle.Value do
+                local hrp = getHRP()
+                if not hrp then task.wait(0.3) continue end
+
+                local method = tostring(options.disableAuraMethod_Dropdown.Value)
+                local range = proximityRange or 30
+
+                for _, model in ipairs(killersFolder:GetChildren()) do
+                    if not model:IsA("Model") then continue end
+                    local hum = model:FindFirstChildOfClass("Humanoid")
+                    local root = model:FindFirstChild("HumanoidRootPart")
+                    if hum and root then
+                        local distance = entityLib.getEntityDistance(hrp, root)
+                        local inRange = distance <= range
+                        updateKiller(hum, model, method, inRange)
+                    end
+                end
+
+                task.wait(0.15)
+            end
+        end)
+    else
+        -- restore movement for all affected killers when toggled off
+        for hum, method in pairs(affectedKillers) do
+            if hum and method == "Disable Movement" then
+                entityLib.restoreData(hum, "WalkSpeed")
+                entityLib.restoreData(hum, "JumpPower")
+                entityLib.clearData(hum, "WalkSpeed")
+                entityLib.clearData(hum, "JumpPower")
+            end
+        end
+        affectedKillers = {}
+    end
+end)
+
+options.disableKillersDistance_Slider:OnChanged(function(val)
+    proximityRange = val
+end)
+
+options.disableKillersDistance_Slider:OnChanged(function(val)
+    proximityRange = val
+end)
+
+toggles.killerGodmode_Toggle:OnChanged(function(enabled)
+    if enabled then
+        task.spawn(function()
+            while toggles.killerGodmode_Toggle.Value do
+                for _, model in pairs(killersFolder:GetChildren()) do
+                    if model:IsA("Model") then
+                        for _, descendant in ipairs(model:GetDescendants()) do
+                            if descendant:IsA("TouchTransmitter") then
+                                descendant:Destroy()
+                            end
+                        end
+                    end
+                end
+                task.wait(0.5)
+            end
+        end)
+    end
+end)
+
+local pinheadConnection
+toggles.antiPinhead_Toggle:OnChanged(function(enabled)
+    if enabled and not pinheadconnection then
+        pinheadconnection = runService.Heartbeat:Connect(function()
+            for _, obj in ipairs(game:GetService("Workspace"):GetChildren()) do
+                if obj:IsA("Model") then
+                    for _, spike in ipairs(obj:GetChildren()) do
+                        if spike:IsA("BasePart") and spike.Name == "Spike" then
+                            spike:Destroy()
+                        end
+                    end
+                end
+            end
+        end)
+    elseif not enabled and pinheadconnection then
+        pinheadconnection:Disconnect()
+        pinheadconnection = nil
+    end
+end)
+
+toggles.antiSlendermanJumpscare_Toggle:OnChanged(function(enabled)
+    if enabled then
+        task.spawn(function()
+            while toggles.antiSlendermanJumpscare_Toggle.Value do
+                local gui = localplayer:FindFirstChild("PlayerGui"):FindFirstChild("Slender")
+                local slenderman = game:GetService("Workspace"):FindFirstChild("Killers") and game:GetService("Workspace").Killers:FindFirstChild("Slenderman")
+                
+                if slenderman and gui then
+                    gui.Enabled = false
+
+                    local deathSound = slenderman:FindFirstChild("HumanoidRootPart") and slenderman.HumanoidRootPart:FindFirstChild("SlenderTouch")
+                    if deathSound then
+                        deathSound:Stop()
+                    end
+                end
+
+                task.wait()
+            end
+        end)
+    end
+end)
 
 -- =================================================
 --                   TAB: VISUALS                   --
@@ -1147,9 +1827,7 @@ visualsGroup:AddToggle("killerESP_Toggle", { Text = "Killer ESP", Tooltip = fals
 
 local killerESPDepbox = visualsGroup:AddDependencyBox()
 
-excludedKillersDropdown = killerESPDepbox:AddDropdown("excludedKillers_Dropdown", { Text = "Excluded Killers", Tooltip = false, Values = { "Alien", "Ao Oni", "Captain Zombie",
-"Chucky", "Eyeless Jack", "Fishface", "Freddy Krueger", "Ghostface", "Granny", "Jack Torrance", "Jane", "Jason", "Jeff", "Leatherface", "Michael Myers", "Pennywise", "Pinhead",
-"Rake", "Robot", "Slenderman", "Smile Dog", "Sonic.exe", "Tails Doll", "Wendigo", "Yeti", "Zombie", "Fuwatti", "Giant", "Evil Lawn Mower" }, Default = { "Giant", "Jane" }, Multi = true, Searchable = true })
+excludedKillersDropdown = killerESPDepbox:AddDropdown("excludedKillers_Dropdown", { Text = "Excluded Killers", Tooltip = false, Values = killerNames, Default = { "Giant", "Jane" }, Multi = true, Searchable = true })
 killerESPDepbox:AddSlider("killerESPDistance_Slider", { Text = "Range", Tooltip = "How far away to highlight killers", Default = 150, Min = 100, Max = 1000, Suffix = " Studs", Rounding = 0 })
 killerESPDepbox:AddLabel("ESP Color"):AddColorPicker("killerESPColor_ColorPicker",{ Title = "ESP Color", Default = Color3.fromRGB(255, 0, 0), Transparency = 0.5 })
 killerESPDepbox:AddCheckbox("rainbowESPColor_Toggle", { Text = "Rainbow ESP Color" })
@@ -1267,6 +1945,12 @@ local function applyESP(folder)
 
     for _, child in ipairs(folder:GetChildren()) do
         if child:IsA("Model") and not excludedKillers[child.Name] then
+            local humanoid = child:FindFirstChildOfClass("Humanoid")
+            if not humanoid or humanoid.Health <= 0 then
+                clearESPForModel(child)
+                continue
+            end
+
             local root = child:FindFirstChild("HumanoidRootPart")
             if root then
                 local distance = entityLib.getEntityDistance(hrp, root)
@@ -1353,15 +2037,6 @@ toggles.killerESP_Toggle:OnChanged(function(enabled)
             espConnections["ChildAdded"] = killersFolder.ChildAdded:Connect(function()
                 applyESP(killersFolder)
             end)
-
-            espConnections["HealthCheck"] = runService.Heartbeat:Connect(function()
-                for _, killer in pairs(killersFolder:GetChildren()) do
-                    local humanoid = killer:FindFirstChildOfClass("Humanoid")
-                    if humanoid and humanoid.Health <= 0 then
-                        clearESP(killer)
-                    end
-                end
-            end)
         end
 
         -- Update
@@ -1369,7 +2044,8 @@ toggles.killerESP_Toggle:OnChanged(function(enabled)
         espConnections["LiveUpdate"] = task.spawn(function()
             while shouldRunLiveUpdate do
                 local hrp = getHRP()
-                if not hrp then task.wait(0.1); continue end
+                if not hrp then task.wait(0.1)
+continue end
 
                 for _, killer in ipairs(killersFolder:GetChildren()) do
                     if killer:IsA("Model") and not excludedKillers[killer.Name] then
@@ -1465,6 +2141,12 @@ toggles.toggleKillersNametags_Toggle:OnChanged(function()
 
     for _, child in ipairs(killersFolder:GetChildren()) do
         if child:IsA("Model") and not excludedKillers[child.Name] and killerESPToggle.Value then
+            local humanoid = child:FindFirstChildOfClass("Humanoid")
+            if not isKillerAlive(child) then
+                clearESPForModel(child)
+                continue
+            end
+
             local killerRoot = child:FindFirstChild("HumanoidRootPart")
             if killerRoot then
                 local distance = entityLib.getEntityDistance(hrp, killerRoot)
@@ -1910,7 +2592,7 @@ weaponsGroup:AddDropdown("weaponsList_Dropdown", { Text = "Obtain Weapon(s)", To
     end,
 })
 
-weaponsGroup:AddDropdown("giveWeaponMethod_Dropdown", { Text = "Method", Tooltip = false, Values = { "Normal", "Alternative" }, Default = 1, Multi = false, Searchable = false })
+weaponsGroup:AddDropdown("giveWeaponMethod_Dropdown", { Text = "Method", Tooltip = false, Values = { "Touch Events", "ProximityPrompt" }, Default = 1, Multi = false, Searchable = false })
 
 local function obtainSelectedWeapons()
 	local selected = options.weaponsList_Dropdown.Value
@@ -1948,7 +2630,7 @@ local function obtainSelectedWeapons()
 
 	local method = options.giveWeaponMethod_Dropdown.Value
 	for _, weapon in ipairs(weaponsToGive) do
-		if method == "Normal" then
+		if method == "Touch Events" then
 			utils.fireTouchEvent(hrp, weapon.Hitbox)
 		else
 			weapon.Hitbox.CanCollide = false
@@ -2018,7 +2700,7 @@ local function pap(weaponName, selectedWeapons, currentIndex)
 
     freeze(true)
 	entityLib.teleport(CFrame.new(110.864708, 313.499969, 72.9767151))
-    repeat task.wait(0.09) until entityLib.checkTeleport(hrp, CFrame.new(110.86470794677734, 313.4999694824219, 72.97671508789062), 5)
+    repeat task.wait(0.09) until entityLib.checkCFrame(hrp, CFrame.new(110.86470794677734, 313.4999694824219, 72.97671508789062), 5)
 	--task.wait(0.15)
 
 	-- Fire teleport prompt
@@ -2039,7 +2721,7 @@ local function pap(weaponName, selectedWeapons, currentIndex)
 	entityLib.teleport(CFrame.new(111.216148, 315.700012, 41.9078827))
 
 	local punchRoomCFrame = CFrame.new(109.300003, 335.499969, 62)
-	repeat task.wait() until entityLib.checkTeleport(hrp, punchRoomCFrame, 5)
+	repeat task.wait() until entityLib.checkCFrame(hrp, punchRoomCFrame, 5)
     notify("Working..", "Teleport finished.\nPack a punching the " .. weaponName .. "...", 9)
 
 	-- PAP weapon
@@ -2062,12 +2744,14 @@ local function pap(weaponName, selectedWeapons, currentIndex)
     end
 
     freeze(false)
-
 	return true
 end
 
-papWeaponBtn = weaponsGroup:AddButton({ Text = "Pack a Punch Weapon",
+papWeaponBtn = weaponsGroup:AddButton({ Text = "PAP Weapon",
     Func = function()
+        cancelPAPQueue = false
+        local origCFrame = getHRP().CFrame
+
         papWeaponBtn:SetDisabled(true)
         papHeldBtn:SetDisabled(true)
 
@@ -2104,7 +2788,7 @@ papWeaponBtn = weaponsGroup:AddButton({ Text = "Pack a Punch Weapon",
             local anyPunched = false
 
             for index, weaponName in ipairs(selectedWeapons) do
-                if died then break end
+                if died or cancelPAPQueue then break end
 
                 local hasBase = entityLib.getTool("Specific", weaponName)
                 local hasPAP = entityLib.getTool("Specific", "PAP" .. weaponName)
@@ -2117,18 +2801,42 @@ papWeaponBtn = weaponsGroup:AddButton({ Text = "Pack a Punch Weapon",
                         notify("Error", "Not enough kills to pack a punch " .. weaponName .. ". Need " .. (requiredKills - kills) .. " more kills.", 6)
                     else
                         repeat
-                            if died then break end
-                            if teleporterInUse() then
+                            if died or cancelPAPQueue then break end
+
+                            local busy = teleporterInUse()
+
+                            if busy and not wasTeleporterBusy then
+                                wasTeleporterBusy = true
+
                                 local pending = {}
                                 for i = index, #selectedWeapons do
                                     table.insert(pending, selectedWeapons[i])
                                 end
-                                notify("Waiting", "Teleporter in use. Waiting to pack a punch: " .. table.concat(pending, ", "), 4)
-                            end
-                            task.wait(2)
-                        until not teleporterInUse() or died
 
-                        if died then break end
+                                notify("Waiting", "Teleporter in use. Waiting to pack a punch: " .. table.concat(pending, ", "), 4)
+
+                            elseif not busy and wasTeleporterBusy then
+                                wasTeleporterBusy = false
+                                notify("Info", "Teleporter is now available.", 3)
+                            end
+
+                            task.wait(0.2)
+                        until not teleporterInUse() or died or cancelPAPQueue
+
+                        if cancelPAPQueue then
+                            notify("Info", "Pack-a-Punch queue cancelled. Waiting to return...", 5)
+
+                            local returnCFrame = CFrame.new(219.199997, 323.500061, 845.900024)
+
+                            -- 🔥 wait until you're at the return cframe/in the gun room place BEFORE breaking
+                            repeat
+                                task.wait()
+                                local currentHRP = getHRP()
+                            until (currentHRP and entityLib.checkCFrame(currentHRP, returnCFrame, 5)) or died
+
+                            break
+                        end
+
                         local success = pap(weaponName, selectedWeapons, index)
                         if success then
                             anyPunched = true
@@ -2138,8 +2846,27 @@ papWeaponBtn = weaponsGroup:AddButton({ Text = "Pack a Punch Weapon",
                         end
 
                         local hrp = getHRP()
-                        local returnCFrame = CFrame.new(219.199997, 323.500061, 845.900024, 1, 0, 0, 0, 1, 0, 0, 0, 1)
-                        repeat task.wait() until entityLib.checkTeleport(hrp, returnCFrame, 5) or died
+                        local returnCFrame = CFrame.new(219.199997, 323.500061, 845.900024)
+                        -- wait until ACTUAL current HRP reaches return position
+                        repeat
+                            task.wait()
+                            local currentHRP = getHRP()
+                        until (currentHRP and entityLib.checkCFrame(currentHRP, returnCFrame, 5)) or died
+
+                    end
+                end
+            end
+
+            -- after ALL weapons processed
+            if not died then
+                local currentHRP = getHRP()
+                if currentHRP and origCFrame then
+                    currentHRP.CFrame = origCFrame
+
+                    if cancelPAPQueue then
+                        --warn("Returned to original position (CANCELLED)")
+                    else
+                        --warn("Returned to original position (FINISHED)")
                     end
                 end
             end
@@ -2163,13 +2890,18 @@ papWeaponBtn = weaponsGroup:AddButton({ Text = "Pack a Punch Weapon",
     end,
 })
 
-papHeldBtn = weaponsGroup:AddButton({ Text = "Pack a Punch Held Weapon",
+papHeldBtn = papWeaponBtn:AddButton({ Text = "PAP Held Weapon",
 	Func = function()
-		local heldWeapon = tostring(entityLib.getTool("Held"))
-		if not heldWeapon then
-			notify("Error", "You're not holding a weapon.", 5)
-			return
-		end
+        cancelPAPQueue = false
+        local origCFrame = getHRP().CFrame
+        
+        local heldTool = entityLib.getTool("Held")
+        if not heldTool then
+            notify("Error", "You're not holding a weapon.", 5)
+            return
+        end
+
+        local heldWeapon = heldTool.Name
 
 		papWeaponBtn:SetDisabled(true)
 		papHeldBtn:SetDisabled(true)
@@ -2190,18 +2922,30 @@ papHeldBtn = weaponsGroup:AddButton({ Text = "Pack a Punch Held Weapon",
 			if died then return end
 
 			local success = pap(heldWeapon)
-			if success and not died then
-				local hrp = getHRP()
-				local returnCFrame = CFrame.new(219.199997, 323.500061, 845.900024)
-				repeat task.wait() until entityLib.checkTeleport(hrp, returnCFrame, 5) or died
+            if success and not died then
+                local returnCFrame = CFrame.new(219.199997, 323.500061, 845.900024)
 
-				if not died then
-					notify("Success", heldWeapon .. " has been pack a punched!", 6)
-					if toggles.clearOnAction_Toggle.Value then
-						options.weaponsList_Dropdown:SetValue({})
-					end
-				end
-			end
+                -- wait for REAL current HRP to reach return position
+                repeat
+                    task.wait()
+                    local currentHRP = getHRP()
+                until (currentHRP and entityLib.checkCFrame(currentHRP, returnCFrame, 5)) or died
+
+                -- teleport back
+                if not died then
+                    local currentHRP = getHRP()
+                    if currentHRP and origCFrame then
+                        currentHRP.CFrame = origCFrame
+                        --warn("Returned to original position (held weapon)")
+                    end
+
+                    notify("Success", heldWeapon .. " has been pack a punched!", 6)
+
+                    if toggles.clearOnAction_Toggle.Value then
+                        options.weaponsList_Dropdown:SetValue({})
+                    end
+                end
+            end
 
 			if not died then
 				papWeaponBtn:SetDisabled(false)
@@ -2231,6 +2975,14 @@ weaponsGroup:AddButton({ Text = "Select All Weapons",
 weaponsGroup:AddButton({ Text = "Clear Selection",
     Func = function()
         options.weaponsList_Dropdown:SetValue(nil)
+    end,
+})
+
+weaponsGroup:AddButton({ Text = "Clear Queue", Tooltip = "Stops and clears the Pack a Punch queue.",
+    Func = function()
+        cancelPAPQueue = true
+
+        notify("Success", "Pack a Punch queue has been cleared and stopped.", 5)
     end,
 })
 
@@ -2286,13 +3038,16 @@ local zombieMorphDepbox = defenseGroup:AddDependencyBox()
 zombieMorphDepbox:AddToggle("disableSelfGlow_Toggle", { Text = "Disable Self Glow", Tooltip = "Disables the green glow from you only." })
 
 defenseGroup:AddToggle("obtainArmor_Toggle", { Text = "Obtain Armor", Tooltip = false })
-defenseGroup:AddToggle("obtainHelmet_Toggle", { Text = "Obtain Helmet", Tooltip = false, Disabled = not (getMode() == "Extreme") }), DisabledTooltip = "This feature is not available in this mode.",
+defenseGroup:AddToggle("obtainHelmet_Toggle", { Text = "Obtain Helmet", Tooltip = false, Disabled = not (getMode() == "Extreme"), DisabledTooltip = "This feature is not available in this mode." })
+--defenseGroup:AddToggle("obtainHelmet_Toggle", { Text = "Obtain Helmet", Tooltip = false, Disabled = not (getMode() == "Extreme") }), DisabledTooltip = "This feature is not available in this mode.",
 
 zombieMorphDepbox:SetupDependencies({ { toggles.zombieMorph_Toggle, true } })
 
 toggles.zombieMorph_Toggle:OnChanged(function(enabled)
     if enabled then
         local char = localplayer.Character
+        --[[
+
         local chest = char:FindFirstChild("Chest")
 
         -- Zombie morph check
@@ -2302,6 +3057,8 @@ toggles.zombieMorph_Toggle:OnChanged(function(enabled)
             toggles.zombieMorph_Toggle:SetValue(false)
             return
         end
+
+        ]]
 
         -- Morph
 
@@ -2326,6 +3083,9 @@ end)
 toggles.obtainArmor_Toggle:OnChanged(function(enabled)
     if enabled then
         local char = localplayer.Character
+
+        --[[
+
         local armor = char:FindFirstChild("VestArmor")
 
         if armor then
@@ -2334,6 +3094,8 @@ toggles.obtainArmor_Toggle:OnChanged(function(enabled)
             return
         end
 
+        ]]
+
         local hrp = getHRP()
         utils.fireTouchEvent(hrp, area51.Amory2Room.Armory.Giver)
     end
@@ -2341,6 +3103,8 @@ end)
 
 toggles.obtainHelmet_Toggle:OnChanged(function(enabled)
     if enabled then
+        --[[
+
         local char = localplayer.Character
         local hasHelmet = false
 
@@ -2355,6 +3119,8 @@ toggles.obtainHelmet_Toggle:OnChanged(function(enabled)
             toggles.obtainHelmet_Toggle:SetValue(false)
             return
         end
+
+        ]]
 
         local hrp = getHRP()
         utils.fireTouchEvent(hrp, area51.ComputersRoom.Helmet)
@@ -2416,14 +3182,14 @@ autoReloadDepbox:AddSlider("autoReloadDelay_Slider", { Text = "Delay", Tooltip =
     end
 })
 
-othersGroup:AddToggle("enableGunMods_Toggle", { Text = "Enable Gun Mods", Tooltip = false })
+othersGroup:AddToggle("enableGunMods_Toggle", { Text = "Enable Gun Mods", Tooltip = "Usage of any gun mods has a high chance of resulting in a permanent game ban.", Risky = true })
 
 local gunModsDepbox = othersGroup:AddDependencyBox()
 
-gunModsDepbox:AddToggle("infiniteAmmoGunMod_Toggle", { Text = "Infinite Ammo", Tooltip = false })
-gunModsDepbox:AddToggle("fullAutoGunMod_Toggle", { Text = "Fully Automatic", Tooltip = false })
-gunModsDepbox:AddToggle("fireRateGunMod_Toggle", { Text = "Rapid Fire", Tooltip = false })
-gunModsDepbox:AddSlider("bulletCountGunMod_Slider", { Text = "Bullet Count", Tooltip = false, Default = 1, Min = 1, Max = 100, Suffix = " Bullet", Rounding = 0,
+gunModsDepbox:AddToggle("infiniteAmmoGunMod_Toggle", { Text = "Infinite Ammo", Tooltip = false, Risky = true })
+gunModsDepbox:AddToggle("fullAutoGunMod_Toggle", { Text = "Fully Automatic", Tooltip = false, Risky = true })
+gunModsDepbox:AddToggle("fireRateGunMod_Toggle", { Text = "Rapid Fire", Tooltip = false, Risky = true })
+gunModsDepbox:AddSlider("bulletCountGunMod_Slider", { Text = "Bullet Count", Tooltip = false, Default = 1, Min = 1, Max = 100, Suffix = " Bullet", Rounding = 0, Risky = true,
     Callback = function(val)
         options.bulletCountGunMod_Slider:SetSuffix(getSuffix(options.bulletCountGunMod_Slider, "Bullet"))
     end
@@ -2501,149 +3267,7 @@ end)
 --                   TAB: MISCELLANEOUS                   --
 -- =================================================
 
-local killersGroup = tabs.misc:AddLeftGroupbox("Killers")
-local othersGroup2 = tabs.misc:AddRightGroupbox("Others")
-
--------------------------------------
---      MISCELLANEOUS: KILLERS GROUP  --
--------------------------------------
-
-
-local proximityRange = 30
-
-killersGroup:AddToggle("disableAllKillers_Toggle", { Text = "Disable Aura", Tooltip = "Breaks the movement for all NEARBY killers within the specified amount of studs." })
-
-local disableKillersDepbox = killersGroup:AddDependencyBox()
-
-disableKillersDepbox:AddSlider("disableKillersDistance_Slider", { Text = "Range", Tooltip = "How far away to disable killers", Default = 30, Min = 10, Max = 150, Suffix = " Studs", Rounding = 0 })
-
-killersGroup:AddToggle("killerGodmode_Toggle", { Text = "Killer Godmode", Tooltip = "Makes you invincible to the killers by blocking killer interactions." })
-
-local killerGodmodeDepbox = killersGroup:AddDependencyBox()
-
-killerGodmodeDepbox:AddToggle("antiPinhead_Toggle", { Text = "Anti Pinhead", Tooltip = "Disables (mostly) Pinhead's spikes that he expels upon death." })
-killerGodmodeDepbox:AddLabel("Some killers can NOT be disabled due to the killer's attack or damage being serversided. These killers include: Alien, Fishface, Robot, etc.", true)
-
-killersGroup:AddToggle("antiSlendermanJumpscare_Toggle", { Text = "Anti Slenderman Jumpscare", Tooltip = false })
-
-killerGodmodeDepbox:SetupDependencies({ { toggles.killerGodmode_Toggle, true } })
-disableKillersDepbox:SetupDependencies({ { toggles.disableAllKillers_Toggle, true } })
-
-local frozenKillers = {}
-toggles.disableAllKillers_Toggle:OnChanged(function(enabled)
-    if enabled then
-        task.spawn(function()
-            while toggles.disableAllKillers_Toggle.Value do
-                local player = game.Players.LocalPlayer
-                local hrp = getHRP()
-                if not hrp then task.wait(0.5); continue end
-
-                for _, model in pairs(killersFolder:GetChildren()) do
-                    if model:IsA("Model") then
-                        local hum = model:FindFirstChildOfClass("Humanoid")
-                        local root = model:FindFirstChild("HumanoidRootPart")
-                        if hum and root then
-                            local distance = entityLib.getEntityDistance(hrp, root)
-
-                            if distance <= proximityRange then
-                                if not frozenKillers[hum] then
-                                    if not entityLib.isStored(hum, "WalkSpeed") then
-                                        entityLib.storeData(hum, "WalkSpeed", true)
-                                    end
-                                    hum.WalkSpeed = 0
-                                    frozenKillers[hum] = true
-                                end
-                            else
-                                if frozenKillers[hum] then
-                                    entityLib.restoreData(hum, "WalkSpeed")
-                                    frozenKillers[hum] = nil
-                                end
-                            end
-                        end
-                    end
-                end
-
-                task.wait(0.2)
-            end
-        end)
-    else
-        for _, model in pairs(killersFolder:GetChildren()) do
-            if model:IsA("Model") then
-                local hum = model:FindFirstChildOfClass("Humanoid")
-                if hum then
-                    entityLib.restoreData(hum, "WalkSpeed")
-                    entityLib.clearData(hum, "WalkSpeed")
-                end
-            end
-        end
-        frozenKillers = {}
-    end
-end)
-
-options.disableKillersDistance_Slider:OnChanged(function(val)
-    proximityRange = val
-end)
-
-toggles.killerGodmode_Toggle:OnChanged(function(enabled)
-    if enabled then
-        task.spawn(function()
-            while toggles.killerGodmode_Toggle.Value do
-                for _, model in pairs(killersFolder:GetChildren()) do
-                    if model:IsA("Model") then
-                        for _, descendant in ipairs(model:GetDescendants()) do
-                            if descendant:IsA("TouchTransmitter") then
-                                descendant:Destroy()
-                            end
-                        end
-                    end
-                end
-                task.wait(0.5)
-            end
-        end)
-    end
-end)
-
-local pinheadConnection
-toggles.antiPinhead_Toggle:OnChanged(function(enabled)
-    if enabled and not pinheadconnection then
-        pinheadconnection = runService.Heartbeat:Connect(function()
-            for _, obj in ipairs(game:GetService("Workspace"):GetChildren()) do
-                if obj:IsA("Model") then
-                    for _, spike in ipairs(obj:GetChildren()) do
-                        if spike:IsA("BasePart") and spike.Name == "Spike" then
-                            spike:Destroy()
-                        end
-                    end
-                end
-            end
-        end)
-    elseif not enabled and pinheadconnection then
-        pinheadconnection:Disconnect()
-        pinheadconnection = nil
-    end
-end)
-
-toggles.antiSlendermanJumpscare_Toggle:OnChanged(function(enabled)
-    if enabled then
-        task.spawn(function()
-            while toggles.antiSlendermanJumpscare_Toggle.Value do
-                local gui = localplayer:FindFirstChild("PlayerGui"):FindFirstChild("Slender")
-                local slenderman = game:GetService("Workspace"):FindFirstChild("Killers") and game:GetService("Workspace").Killers:FindFirstChild("Slenderman")
-                
-                if slenderman and gui then
-                    gui.Enabled = false
-
-                    local deathSound = slenderman:FindFirstChild("HumanoidRootPart") and slenderman.HumanoidRootPart:FindFirstChild("SlenderTouch")
-                    if deathSound then
-                        deathSound:Stop()
-                    end
-                end
-
-                task.wait()
-            end
-        end)
-    end
-end)
+local othersGroup2 = tabs.misc:AddLeftGroupbox("Others")
 
 -------------------------------------
 --      MISCELLANEOUS: OTHERS GROUP  --
@@ -2769,11 +3393,6 @@ localplayer.CharacterAdded:Connect(function(char)
 	end
 end)
 
-
-
-
-
-
 -- =================================================
 --                   TAB: UI SETTINGS                   --
 -- =================================================
@@ -2788,6 +3407,8 @@ menuGroup:AddToggle("notifSound_Toggle", { Text = "Notification Alert Sounds", T
 local notifSoundDepbox = menuGroup:AddDependencyBox()
 
 local notifAlertVolume_Slider = notifSoundDepbox:AddSlider("notifAlertVolumeSlider", { Text = "Alert Volume", Tooltip = false, Default = 1, Min = 0.1, Max = 6, Rounding = 1 })
+notifSoundDepbox:AddDivider()
+
 notifSoundDepbox:SetupDependencies({ { toggles.notifSound_Toggle, true } })
 
 menuGroup:AddDropdown("NotificationSide", { Text = "Notification Side", Values = { "Left", "Right" }, Default = "Right", Callback = function(Value) library:SetNotifySide(Value) end })
@@ -2808,7 +3429,8 @@ local function unloadModules()
     "enableNoclip_Toggle", "enableJumpPower_Toggle", "doorNoclip_Toggle", "removeFog_Toggle", "killerESP_Toggle", "toggleKillersNametags_Toggle", "enableFOV_Toggle", "disableCactuses_Toggle",
     "removeBearTraps_Toggle", "disableRadioactiveZone_Toggle", "removeBarriers_Toggle", "removeEntrance_Toggle", "disableRadioactiveFog_Toggle", "disableKillParts_Toggle", "viewAlienCode_Toggle",
     "fireOnRespawn_Toggle", "zombieMorph_Toggle", "disableSelfGlow_Toggle", "obtainArmor_Toggle", "autoReloadWeapons_Toggle", "disableAllKillers_Toggle", "killerGodmode_Toggle", "antiPinhead_Toggle",
-    "antiSlendermanJumpscare_Toggle", "weaponSpam_Toggle", "rainbowESPColor_Toggle", "rainbowNameTagColor_Toggle", "antiInk_Toggle", "antiTailsPopup_Toggle", "obtainHelmet_Toggle", "autoBacktrack_Toggle" }
+    "antiSlendermanJumpscare_Toggle", "weaponSpam_Toggle", "rainbowESPColor_Toggle", "rainbowNameTagColor_Toggle", "antiInk_Toggle", "antiTailsPopup_Toggle", "obtainHelmet_Toggle", "autoBacktrack_Toggle",
+    "freecam_Toggle", "enableAimbot_Toggle", "autoCollect_Toggle" }
 
 	for _, moduleName in ipairs(modules) do
 		if toggles[moduleName] and toggles[moduleName].Value == true then

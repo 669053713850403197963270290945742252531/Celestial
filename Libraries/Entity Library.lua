@@ -259,7 +259,16 @@ end
 local storedData = {}
 
 local function getStorageKey(object)
-    return typeof(object) == "Instance" and object:IsA("Humanoid") and game.Players:GetPlayerFromCharacter(object.Parent) or object
+    if typeof(object) == "Instance" then
+        local character = object:FindFirstAncestorOfClass("Model")
+        local player = character and game.Players:GetPlayerFromCharacter(character)
+
+        if player then
+            return player
+        end
+    end
+
+    return object
 end
 
 entityLib.storeData = function(object, propertyName, force)
@@ -282,8 +291,10 @@ end
 
 entityLib.restoreData = function(object, propertyName)
     local key = getStorageKey(object)
-    if key and storedData[key] and storedData[key][propertyName] ~= nil then
-        object[propertyName] = storedData[key][propertyName]
+    local value = key and storedData[key] and storedData[key][propertyName]
+
+    if value ~= nil and object and object.Parent then
+        object[propertyName] = value
     end
 end
 
