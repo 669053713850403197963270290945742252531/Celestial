@@ -11,6 +11,7 @@ local tweenService = game:GetService("TweenService")
 local teleportService = game:GetService("TeleportService")
 local starterGui = game:GetService("StarterGui")
 local marketplaceService = game:GetService("MarketplaceService")
+local http = game:GetService("HttpService")
 
 local player = players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
@@ -794,6 +795,14 @@ utils.fetchResetButtonState = function()
     end
 
     return false
+end
+
+-- PlaceID > UniverseId
+utils.fetchUniverseID = function(placeId)
+    local response = game:HttpGet("https://apis.roblox.com/universes/v1/places/" .. placeId .. "/universe")
+    local data = http:JSONDecode(response)
+
+    return data.universeId
 end
 
 return utils
