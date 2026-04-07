@@ -1,10 +1,12 @@
 repeat task.wait() until game:IsLoaded()
 
-local settingsShield = game:GetService("CoreGui").RobloxGui.SettingsClippingShield.SettingsShield.MenuContainer
+local BottomButtonFrame = game:GetService("CoreGui").RobloxGui.SettingsClippingShield.SettingsShield.MenuContainer.Page.BottomButtonFrame
+local MenuContainer = game:GetService("CoreGui").RobloxGui.SettingsClippingShield.SettingsShield.MenuContainer
+local MenuButtons = BottomButtonFrame.MenuButtons
 
 -- Preventing multiple script executions
 
-for _, inst in pairs(settingsShield.Page.BottomButtonFrame:GetDescendants()) do
+for _, inst in pairs(BottomButtonFrame:GetDescendants()) do
     if inst.Name == "RejoinButton" then
         warn("Cannot overwrite the current rejoin button.")
         return
@@ -13,12 +15,11 @@ end
 
 --------- CONSTANTS --------------
 
-local respawnButton = settingsShield.Page.BottomButtonFrame.ResetCharacterButtonButton
-local newButtonsFolder = Instance.new("Folder", respawnButton.Parent)
-
 local uis = game:GetService("UserInputService")
 local tps = game:GetService("TeleportService")
 local localplayer = game:GetService("Players").LocalPlayer
+
+
 
 ---------- FUNCTIONS ---------
 
@@ -33,10 +34,25 @@ end
 
 -------------- INSTANCES --------------
 
+local respawnButtonContainer = MenuButtons.MenuButtonContainer2
+local newButtonContainer = respawnButtonContainer:Clone()
+newButtonContainer.Parent = MenuButtons
+newButtonContainer.Name = "MenuButtonContainer4"
+
+local rejoinButton = newButtonContainer.MenuButton
+local label = newButtonContainer.MenuButton.ButtonText
+label.Text = "Rejoin"
+
+-- Applying the custom hint image
+
+local hint = newButtonContainer.MenuButton.Hint
+hint.Image = "rbxassetid://125851991683380"
+
+--[[
 -- Tweak UIListLayout of the bottom button container to accommodate the rejoin button
 
-local buttonLayout = game:GetService("CoreGui").RobloxGui.SettingsClippingShield.SettingsShield.MenuContainer.Page.BottomButtonFrame.UIListLayout
-local buttonFrame = game:GetService("CoreGui").RobloxGui.SettingsClippingShield.SettingsShield.MenuContainer.Page.BottomButtonFrame
+local buttonLayout = MenuContainer.Page.MenuListLayout
+local buttonFrame = BottomButtonFrame
 
 buttonLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
 buttonFrame.Size = UDim2.new(1, 0, 0, 113)
@@ -73,10 +89,7 @@ newButton.MouseLeave:Connect(function()
     newButton.BackgroundTransparency = 1
 end)
 
--- Applying the custom hint image
 
-local hint = newButton.ResetCharacterHint
-hint.Image = "rbxassetid://125851991683380"
 
 -- Triggering the rejoin function on keybind
 
@@ -97,3 +110,5 @@ uis.InputBegan:Connect(function(input)
         newButton.BackgroundTransparency = 1
 	end	
 end)
+
+]]
