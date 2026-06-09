@@ -2,6 +2,8 @@ repeat task.wait() until game:IsLoaded()
 
 local auth = {}
 
+getgenv()._celestial_auth = auth
+
 local player = game:GetService("Players").LocalPlayer
 local httpService = game:GetService("HttpService")
 local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Core%20Utilities.lua"))()
@@ -10,7 +12,7 @@ local hwid = game:GetService("RbxAnalyticsService"):GetClientId()
 local hashedHWID = utils.hash(hwid, "SHA-384")
 
 local authConfig = {
-    logExecutions = false,
+    logExecutions = true,
     logBreaches = false
 }
 
@@ -55,10 +57,8 @@ local function logEvent(eventType)
     local url = ""
     if eventType == "execution" then
         url = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Webhooks/Execution.lua"
-        warn("[Celestial] Execution log sent.")
     elseif eventType == "breach" then
         url = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Webhooks/Breach.lua"
-        warn("[Celestial] Breach log sent.")
     end
 
     if url ~= "" then
@@ -246,11 +246,5 @@ function auth.runAntiHookChecks()
     setreadonly(mt, true)
     return true
 end
-
-task.spawn(function()
-    task.wait(2)
-
-    auth.clear()
-end)
 
 return auth
