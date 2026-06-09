@@ -67,9 +67,7 @@ embedLib.createEmbed = function(args)
         description = description,
         color = integerColor,
         url = titleUrl,
-        thumbnail = {
-            url = thumbnail or ""
-        },
+        thumbnail = thumbnail and { url = thumbnail } or nil,
 
         fields = {},
 

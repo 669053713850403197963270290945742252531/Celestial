@@ -1,5 +1,6 @@
-local webhookUrl = "https://discord.com/api/webhooks/1387691970490531982/7BlMni3EGmBBiBOev2uY6NC8ExsfOWgdJOcNGuugAvrNWULZqWauL1RtmlRPuLR7LXzx"
+local webhookUrl = "https://discord.com/api/webhooks/1514040672431374506/TJBm2XLMOcPftkn7EWgMYt7MbroTRedf_GLRFSNUlYMdMPbvnpVbOTE_nxR1R_8Zboop"
 local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Core%20Utilities.lua"))()
+local embedLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Embed%20Library.lua"))()
 
 local auth = loadstring(readfile("Celestial/Authentication.lua"))()
 auth.trigger()
@@ -8,97 +9,48 @@ if auth.kicked then return end
 
 local players = game:GetService("Players")
 local player = players.LocalPlayer
-local httpService = game:GetService("HttpService")
 local gameName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
 
--- Fields
+-- Build embed
 
-local fields = {
-    {
-        name = "Execution Date",
-        value = "**" .. os.date("%x") .. " | " .. utils.getTime(true) .. " : " .. os.date("%Z") .. "**",
-        inline = true
+local embed = embedLib.createEmbed({
+    webhookUrl = webhookUrl,
+    title = "**__Celestial has been executed__**",
+    url = "https://roblox.com/users/" .. player.UserId .. "/profile",
+    color = Color3.fromRGB(0, 170, 0), -- #00AA00 = 2752256
+    author = {
+        name = "Celestial",
+        icon_url = "Celestial"
     },
-    {
-        name = "Linked Account",
-        value = "<@" .. auth.currentUser.DiscordId .. ">",
-        inline = true
-    },
-    {
-        name = "",
-        value = "[Game Page](https://www.roblox.com/games/" .. game.PlaceId .. ")",
-        inline = true
-    },
-    {
-        name = "Identifier",
-        value = auth.currentUser.Identifier,
-        inline = true
-    },
-    {
-        name = "Account Age",
-        value = player.AccountAge .. " Days",
-        inline = true
-    },
-    {
-        name = "Owner",
-        value = auth.isOwner(),
-        inline = true
-    },
-    {
-        name = "Exploit",
-        value = identifyexecutor(),
-        inline = true
-    },
-    {
-        name = "HWID",
-        value = "||" .. auth.hwid("Hashed") .. "||",
-        inline = true
-    },
-    {
-        name = "HWID [Dehashed]",
-        value = "||" .. auth.hwid("Normal") .. "||",
-        inline = true
-    },
-    {
-        name = "Key",
-        value = "||" .. auth.currentUser.Key .. "||",
-        inline = true
+    footer = {
+        enabled = true,
+        displaySeconds = true,
+        icon = "Celestial"
     }
-}
-
--- Notes field
-
-if auth.currentUser.Notes ~= "false" then
-    table.insert(fields, {
-        name = "Notes",
-        value = auth.currentUser.Notes,
-        inline = false
-    })
-end
-
-table.insert(fields, {
-    name = "Server Join Code",
-    value = "```" .. [[game:GetService("TeleportService")]] .. ":TeleportToPlaceInstance(" .. game.PlaceId..", '" .. game.JobId.."')" .. "```",
-    inline = false
 })
 
--- Build data
+--[[
+-- Add fields
 
-local data = {
-    embeds = {
-        {
-            title = "**__Celestial has been executed__**",
-            url = "https://roblox.com/users/" .. player.UserId .. "/profile",
-            type = "rich",
-            color = tonumber(2752256),
-            fields = fields
-        }
-    }
-}
+embedLib.addField(embed, "Execution Date", "**" .. os.date("%x") .. " | " .. utils.getTime(true) .. " : " .. os.date("%Z") .. "**", true)
+embedLib.addField(embed, "Linked Account", "<@" .. auth.currentUser.DiscordId .. ">", true)
+embedLib.addField(embed, "", "[Game Page](https://www.roblox.com/games/" .. game.PlaceId .. ")", true)
+embedLib.addField(embed, "Identifier", auth.currentUser.Identifier, true)
+embedLib.addField(embed, "Account Age", player.AccountAge .. " Days", true)
+embedLib.addField(embed, "Owner", tostring(auth.isOwner()), true)
+embedLib.addField(embed, "Exploit", identifyexecutor(), true)
+embedLib.addField(embed, "HWID", "||" .. auth.hwid("Hashed") .. "||", true)
+embedLib.addField(embed, "HWID [Dehashed]", "||" .. auth.hwid("Normal") .. "||", true)
+embedLib.addField(embed, "Key", "||" .. auth.currentUser.Key .. "||", true)
+
+-- Conditional fields
+
+if auth.currentUser.Notes ~= "false" then
+    embedLib.addField(embed, "Notes", auth.currentUser.Notes, false)
+end]]
+
+--embedLib.addField(embed, "Server Join Code", "```" .. [[game:GetService("TeleportService")]] .. ":TeleportToPlaceInstance(" .. game.PlaceId .. ", '" .. game.JobId .. "')" .. "```", false)
 
 -- Send
 
-local encodedData = httpService:JSONEncode(data)
-local headers = {["content-type"] = "application/json"}
-local args = {Url = webhookUrl, Body = encodedData, Method = "POST", Headers = headers}
-request(args)
+embedLib.sendEmbed(embed, "Celestial", "Celestial")
