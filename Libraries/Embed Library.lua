@@ -95,15 +95,23 @@ embedLib.createEmbed = function(args)
             time = getTime(true)
         end
 
+        -- Resolve icon shorthand
+        local footerIcon = footer.icon
+        if footerIcon == "Celestial" then
+            footerIcon = "https://i.imgur.com/8OzNxqE.png"
+        elseif footerIcon == "Corrade Private" then
+            footerIcon = "https://i.imgur.com/OrzOOD2.jpeg"
+        end
+
         if not footer.name then
             embed.footer = {
                 text = getDate() .. " | " .. time,
-                icon_url = footer.icon
+                icon_url = footerIcon
             }
         else
             embed.footer = {
                 text = footer.name,
-                icon_url = footer.icon
+                icon_url = footerIcon
             }
         end
     end
@@ -145,13 +153,16 @@ embedLib.addTimestampField = function(embed, name, format, inline)
 end
 
 embedLib.sendEmbed = function(embed, username, avatarUrl)
-    webhookUrl = embed.webhookUrl
+    local webhookUrl = embed.webhookUrl
 
     if not webhookUrl then
         warn("❌ No Webhook URL provided.")
         return
     end
-    
+
+    -- Remove internal key before sending
+    embed.webhookUrl = nil
+
     if avatarUrl == "Celestial" then
         avatarUrl = "https://i.imgur.com/8OzNxqE.png"
     elseif avatarUrl == "Corrade Private" then
@@ -170,6 +181,8 @@ embedLib.sendEmbed = function(embed, username, avatarUrl)
         ["Content-Type"] = "application/json"
     }
 
+    print(encodedData)
+
     local response = request({
         Url = webhookUrl,
         Method = "POST",
@@ -179,7 +192,6 @@ embedLib.sendEmbed = function(embed, username, avatarUrl)
 
     if response.Success then
         print("✅ Embed sent successfully!")
-        data = {}
     else
         warn("❌ Failed to send embed: ", response.StatusMessage)
     end

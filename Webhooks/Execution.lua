@@ -1,6 +1,6 @@
 local webhookUrl = "https://discord.com/api/webhooks/1514040672431374506/TJBm2XLMOcPftkn7EWgMYt7MbroTRedf_GLRFSNUlYMdMPbvnpVbOTE_nxR1R_8Zboop"
 local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Core%20Utilities.lua"))()
-local embedLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Embed%20Library.lua"))()
+local embedLib = loadstring(readfile("Celestial/Libraries/Embed Library.lua"))() --[[loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Embed%20Library.lua"))()]]
 
 local auth = loadstring(readfile("Celestial/Authentication.lua"))()
 auth.trigger()
@@ -29,7 +29,6 @@ local embed = embedLib.createEmbed({
     }
 })
 
---[[
 -- Add fields
 
 embedLib.addField(embed, "Execution Date", "**" .. os.date("%x") .. " | " .. utils.getTime(true) .. " : " .. os.date("%Z") .. "**", true)
@@ -45,9 +44,9 @@ embedLib.addField(embed, "Key", "||" .. auth.currentUser.Key .. "||", true)
 
 -- Conditional fields
 
-if auth.currentUser.Notes ~= "false" then
+if auth.currentUser.Notes and auth.currentUser.Notes ~= "false" then
     embedLib.addField(embed, "Notes", auth.currentUser.Notes, false)
-end]]
+end
 
 --embedLib.addField(embed, "Server Join Code", "```" .. [[game:GetService("TeleportService")]] .. ":TeleportToPlaceInstance(" .. game.PlaceId .. ", '" .. game.JobId .. "')" .. "```", false)
 
