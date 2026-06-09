@@ -4,7 +4,6 @@ local player = game:GetService("Players").LocalPlayer
 local hwid = game:GetService("RbxAnalyticsService"):GetClientId()
 local hashedHwid = utils.hash(hwid, "SHA-384")
 
-print("-----------------------------------------------------------")
 setclipboard(hashedHwid)
 
 warn("Copied hwid to clipboard: ", hashedHwid)

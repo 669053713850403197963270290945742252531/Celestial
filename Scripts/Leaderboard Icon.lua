@@ -10,7 +10,7 @@ local function dbg(...)
 	end
 end
 
-print("LeaderboardIcons V1.0 : Developed and maintained by Corrade (corradeknight)")
+print("LeaderboardIcons V1.1 : Developed and maintained by Corrade (corradeknight)")
 
 -- ======================================================================================
 -- GLOBAL STATE
@@ -28,12 +28,20 @@ getgenv().LeaderboardIconState = GLOBAL
 -- ======================================================================================
 local VALID_ICONS = {
 	Tilt = "rbxassetid://114636716613785",
-	["Robux 2x"] = "rbxassetid://77772001289949",
 	Verified = "rbxassetid://135448908172999",
-	Developer = "rbxassetid://91735576838877",
-	Premium = "rbxassetid://104491688501469",
-	Starcode1 = "rbxassetid://92180350165859",
-	Starcode2 = "rbxassetid://85454647920537",
+	RobloxPlus = "rbxassetid://129793086213570",
+	RobuxSmall = "rbxassetid://100349919905467",
+	ColoredLogo = "rbxassetid://94955518243563",
+	Intern = "rbxassetid://96993958997760",
+	Premium = "rbxassetid://111877695678060",
+	Developer = "rbxassetid://130290464816218",
+	StarCreator = "rbxassetid://135999957751650",
+
+	OG_RobuxGreen = "rbxassetid://113230964686328",
+	OG_RobuxWhite = "rbxassetid://138142212440328",
+	OG_Owner = "rbxassetid://77788653508383",
+	OG_Star = "rbxassetid://114744551969671",
+	OG_Tix = "rbxassetid://96223500495378"
 }
 
 -- C:\Users\Ztucc\AppData\Local\Roblox\Versions\version-f8f53a67efca4c34\content\textures\ui\PurchasePrompt

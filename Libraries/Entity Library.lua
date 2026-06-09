@@ -200,14 +200,14 @@ entityLib.kill = function(useSpawnPoint)
     if useSpawnPoint == true then
         local respawnTime = players.RespawnTime
         local origCFrame = hrp.CFrame
-        print("Saved CFrame: ", origCFrame)
+        --print("Saved CFrame: ", origCFrame)
 
         humanoid.Health = 0
 
         -- Wait for respawn
 
         local newCharacter = player.CharacterAdded:Wait()
-        print("Character respawned.")
+        --print("Character respawned.")
 
         -- Wait for the new HRP to exist
 
@@ -369,23 +369,29 @@ entityLib.playerTeleport = function(delay)
 end
 
 entityLib.fetchFPS = function()
+    -- Initialize deltaTime
     local deltaTime = nil
 
     -- Connect to RenderStepped and disconnect after first frame
-
     local connection
-    connection = runService.RenderStepped:Connect(function(dt)
+    connection = game:GetService("RunService").RenderStepped:Connect(function(dt)
         deltaTime = dt
         connection:Disconnect()
     end)
 
     -- Wait for RenderStepped and deltaTime is set
-    
     while deltaTime == nil do
         task.wait()
     end
 
-    return math.floor(1 / deltaTime)
+    -- Calculate FPS, considering the possibility of very small deltaTime values
+    local fps = math.floor(1 / deltaTime)
+    if fps < 1 then
+        -- If fps is less than 1, set it to the lowest possible value (1) to avoid division by zero or negative values
+        fps = 1
+    end
+
+    return fps
 end
 
 entityLib.fetchPing = function()

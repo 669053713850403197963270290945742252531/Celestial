@@ -284,7 +284,7 @@ function InstanceInspector.GetTree(config)
 	assert(config and config.Path, "Path is required")
 
 	local root = config.Path
-	warn("Tree for " .. root.Name) -- 🔥 execution header
+	--warn("Tree for " .. root.Name) -- execution header
 
 	local results = {}
 
@@ -315,7 +315,7 @@ end
 function InstanceInspector.GetProperties(instance, config)
 	assert(instance, "Instance is required")
 
-	warn("Properties for " .. instance.Name)
+	--warn("Properties for " .. instance.Name)
 
 	local categorized = {}
 	local allowDupes = config and config.AllowDuplicateProperties

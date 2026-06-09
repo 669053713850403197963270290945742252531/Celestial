@@ -567,6 +567,19 @@ function celestialFunctions.cmdError(ctx, msg) -- define context in the args bec
 	celestialFunctions.errorMsgFor(ctx.ErrorTarget, msg)
 end
 
+-- Blocking script if the LocalPlayer cannot chat
+local success, canChat = pcall(function()
+    return TextChatService:CanUserChatAsync(player.UserId)
+end)
+
+
+if celestialFunctions.fetchStatus(localplayer) and success and not canChat then
+	print("cannot be executed")
+	celestialFunctions.chatMsg('<font color="rgb(255,80,80)">[ERROR] Commands cannot be executed on this client due to age verification or other privacy related issues. The script has been terminated.</font>')
+end
+
+-- celestialFunctions.chatMsg(string.format('<font color="rgb(255,80,80)">[ERROR] %s</font>', msg))
+
 --[[
         ==========================
 =============== COMMAND REGISTRATION ==================
