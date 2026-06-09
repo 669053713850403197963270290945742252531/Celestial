@@ -147,7 +147,7 @@ end
 
 -- Main trigger authorization function
 auth.trigger = function()
-    print("[Celestial] Trigger called.")
+    --print("[Celestial] Trigger called.")
 
     if not whitelistedUsers then
         warn("[Celestial] Whitelist is nil.")
@@ -157,13 +157,13 @@ auth.trigger = function()
     end
 
     local isAuthorized, userData = auth.isAuthorized()
-    print("[Celestial] isAuthorized =", isAuthorized)
-    print("[Celestial] userData =", userData and userData.Key or "nil")
+    --print("[Celestial] isAuthorized =", isAuthorized)
+    --print("[Celestial] userData =", userData and userData.Key or "nil")
 
     if isAuthorized and userData then
         local scriptKey = getgenv().script_key
-        print("[Celestial] scriptKey =", scriptKey)
-        print("[Celestial] expected =", userData.Key)
+        --print("[Celestial] scriptKey =", scriptKey)
+        --print("[Celestial] expected =", userData.Key)
 
         if typeof(scriptKey) ~= "string" or userData.Key ~= scriptKey then
             warn("[Celestial] Invalid or missing script key.")
@@ -174,7 +174,7 @@ auth.trigger = function()
             return
         end
 
-        if authConfig.logExecutions then logEvent("execution") warn("[Celestial] Passed all checks. Logging execution.") end
+        --if authConfig.logExecutions then logEvent("execution") warn("[Celestial] Passed all checks. Logging execution.") end
     else
         warn("[Celestial] Not authorized. Copying HWID to clipboard.")
         setclipboard(hashedHWID)

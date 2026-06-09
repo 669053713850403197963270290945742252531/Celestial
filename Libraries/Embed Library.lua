@@ -181,7 +181,7 @@ embedLib.sendEmbed = function(embed, username, avatarUrl)
         ["Content-Type"] = "application/json"
     }
 
-    print(encodedData)
+    --print(encodedData)
 
     local response = request({
         Url = webhookUrl,
@@ -191,9 +191,9 @@ embedLib.sendEmbed = function(embed, username, avatarUrl)
     })
 
     if response.Success then
-        print("✅ Embed sent successfully!")
+        --print("✅ Embed sent successfully!")
     else
-        warn("❌ Failed to send embed: ", response.StatusMessage)
+        --warn("❌ Failed to send embed: ", response.StatusMessage)
     end
 end
 
