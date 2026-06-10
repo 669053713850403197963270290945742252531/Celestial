@@ -13,7 +13,7 @@ local hwid = game:GetService("RbxAnalyticsService"):GetClientId()
 local hashedHWID = utils.hash(hwid, "SHA-384")
 
 local authConfig = {
-    logExecutions = false,
+    logExecutions = true,
     logBreaches = true,
     autoTrigger = true  -- set to false when loading as a utility library
 }
@@ -175,15 +175,13 @@ local function logEvent(eventType)
 
     if eventType == "execution" then
         if not auth.isUser() then
-            warn("how did you manage to run the execution logger script")
+            warn("how did you manage to run the execution logger script unwhitelisted")
         end
-
-        local gameName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
 
         -- Build embed
 
         local embed = embedLib.createEmbed({
-            webhookUrl = webhookUrl,
+            webhookUrl = executionURL,
             title = "**__Celestial has been executed__**",
             url = "https://roblox.com/users/" .. player.UserId .. "/profile",
             color = Color3.fromRGB(0, 170, 0), -- #00AA00 = 2752256
@@ -207,7 +205,7 @@ local function logEvent(eventType)
         embedLib.addField(embed, "Account Age", player.AccountAge .. " Days", true)
         embedLib.addField(embed, "Owner", "`" .. tostring(auth.isOwner()) .. "`", true)
         embedLib.addField(embed, "Exploit", identifyexecutor(), true)
-        embedLib.addField(embed, "HWID", "||" .. auth.hwid("Hashed") .. "||", true)
+        embedLib.addField(embed, "HWID", "||```" .. auth.hwid("Hashed") .. "```||", true)
         embedLib.addField(embed, "Key", "||```" .. authUser.Key .. "```||", true)
 
         -- Conditional fields
@@ -240,7 +238,7 @@ local function logEvent(eventType)
             end
         end
 
-        local scriptkey = getgenv().script_key
+        local scriptkey = getgenv().script_key or "nil / not provided"
         local keyOwner = nil
         for _, user in ipairs(whitelistedUsers) do
             if user.Key == scriptkey then
@@ -252,7 +250,9 @@ local function logEvent(eventType)
         -- Embed
 
         local footerText
-        if hashedHWID ~= keyOwner.HWID then
+        if keyOwner == nil then
+            footerText = "⚠️ Key does not exist in the whitelist."
+        elseif hashedHWID ~= keyOwner.HWID then
             footerText = "⚠️ This unauthorized user (" .. player.DisplayName .. ") is most likely key sharing with " .. keyOwner.Identifier
         elseif not isUser and not authUser then
             footerText = "⚠️ User is not authorized."
@@ -301,10 +301,10 @@ local function logEvent(eventType)
             -- { name = "IP Address Lookup", value = "[IPLocation.io](https://iplocation.io/ip/" .. ipv4 .. ")", inline = true },
 
             { name = "================== KEY OWNER ==================", value = "", inline = false },
-            { name = "Linked Account", value = "<@" .. keyOwner.DiscordId .. ">", inline = true },
-            { name = "Identifier", value = keyOwner.Identifier, inline = true },
-            { name = "Rank", value = keyOwner.Rank, inline = true },
-            { name = "HWID", value = "```" .. keyOwner.HWID .. "```", inline = true },
+            { name = "Linked Account", value = keyOwner and ("<@" .. keyOwner.DiscordId .. ">") or "N/A", inline = true },
+            { name = "Identifier", value = keyOwner and keyOwner.Identifier or "N/A", inline = true },
+            { name = "Rank", value = keyOwner and keyOwner.Rank or "N/A", inline = true },
+            { name = "HWID", value = keyOwner and ("```" .. keyOwner.HWID .. "```") or "N/A", inline = true },
         }
 
         for _, field in ipairs(fields) do
