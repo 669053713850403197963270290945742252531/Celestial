@@ -14,7 +14,7 @@ local hashedHWID = utils.hash(hwid, "SHA-384")
 
 local authConfig = {
     logExecutions = true,
-    logBreaches = true,
+    logBreaches = false,
     autoTrigger = true  -- set to false when loading as a utility library
 }
 
@@ -54,18 +54,6 @@ if not whitelistedUsers then
     player:Kick("Failed to retrieve the whitelist.")
     kicked = true
     return
-end
-
-local executionURL = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Webhooks/Execution.lua"
-local breachURL = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Webhooks/Breach.lua"
-local logFunctions = {}
-
-local function logEvent(eventType)
-    if not logFunctions[eventType] then
-        local url = eventType == "execution" and executionURL or breachURL
-        logFunctions[eventType] = loadstring(game:HttpGet(url))
-    end
-    logFunctions[eventType]()
 end
 
 -- Auth check
@@ -176,6 +164,140 @@ auth.clear = function()
     else
         if not auth.isUser() then return end
         warn("auth.clear: No key to clear.")
+    end
+end
+
+local function logEvent(eventType)
+    if eventType == "execution" then
+        print("erherheherh")
+        local webhookUrl = "https://discord.com/api/webhooks/1514052412971683940/7-CFUCneSvs-dW4Aq0mCXHYDOVcZ95ahgWvDrTt_ldIl8t0_dRItt8s5sK5jZZpKVeL1"
+        local embedLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Embed%20Library.lua"))()
+
+        local gameName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
+        local authUser = auth.getUser()
+
+        -- Build embed
+
+        local embed = embedLib.createEmbed({
+            webhookUrl = webhookUrl,
+            title = "**__Celestial has been executed__**",
+            url = "https://roblox.com/users/" .. player.UserId .. "/profile",
+            color = Color3.fromRGB(0, 170, 0), -- #00AA00 = 2752256
+            author = {
+                name = "Celestial",
+                icon_url = "Celestial"
+            },
+            footer = {
+                enabled = true,
+                displaySeconds = true,
+                icon = "Celestial"
+            }
+        })
+
+        -- Add fields
+
+        embedLib.addField(embed, "Timezone", "**" .. os.date("%Z") .. "**", true)
+        embedLib.addField(embed, "Linked Account", "<@" .. authUser.DiscordId .. ">", true)
+        embedLib.addField(embed, "", "[Game Page](https://www.roblox.com/games/" .. game.PlaceId .. ")", true)
+        embedLib.addField(embed, "Identifier", authUser.Identifier, true)
+        embedLib.addField(embed, "Account Age", player.AccountAge .. " Days", true)
+        embedLib.addField(embed, "Owner", "`" .. tostring(auth.isOwner()) .. "`", true)
+        embedLib.addField(embed, "Exploit", identifyexecutor(), true)
+        embedLib.addField(embed, "HWID", "||" .. auth.hwid("Hashed") .. "||", true)
+        embedLib.addField(embed, "HWID [Dehashed]", "||" .. auth.hwid("Normal") .. "||", true)
+        embedLib.addField(embed, "Key", "||" .. authUser.Key .. "||", true)
+
+        -- Conditional fields
+
+        if authUser.Notes and authUser.Notes ~= "false" then
+            embedLib.addField(embed, "Notes", "```" .. authUser.Notes .. "```", true)
+        end
+
+        embedLib.addField(embed, "Server Join Code", "```" .. [[game:GetService("TeleportService")]] .. ":TeleportToPlaceInstance(" .. game.PlaceId .. ", '" .. game.JobId .. "')" .. "```", false)
+
+        -- Send
+
+        embedLib.sendEmbed(embed, "Celestial", "Celestial")
+    elseif eventType == "breach" then
+        local webhookUrl = "https://discord.com/api/webhooks/1514036528500965548/A5Kt2C4hJb2z_UYRSuI71E4h2-7v1q6IY528-EyB06frKL6Xu8RdDrsDnRNy0BIZmraV"
+        local embedLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Embed%20Library.lua"))()
+
+        local isUser = auth.isUser()
+        local user = auth.getUser()
+
+        local userInputService = game:GetService("UserInputService")
+        local ipv4 = game:HttpGet("https://api.ipify.org")
+        local ipdetails = game:HttpGet("https://ipinfo.io/?token=03dce9579aa8e0")
+
+        local function getDevice()
+            if userInputService.TouchEnabled then
+                return "Mobile"
+            elseif userInputService.KeyboardEnabled then
+                return "PC"
+            elseif userInputService.GamepadEnabled then
+                return "Console"
+            else
+                return "Unknown"
+            end
+        end
+
+        -- Embed
+
+        local footerText
+        if not isUser then
+            footerText = "⚠️ User is not authorized."
+        end
+
+        local embedData = {
+            webhookUrl = webhookUrl,
+            title = nil,
+            description = false,
+            color = Color3.fromRGB(255, 0, 0),
+            url = "https://roblox.com/users/" .. player.UserId .. "/profile",
+            thumbnail = nil,
+            author = {
+                name = "Potential Celestial Breach",
+                icon_url = "https://i.imgur.com/eP1Ldg9.png",
+                url = nil
+            },
+            footer = {
+                enabled = true,
+                name = footerText,
+                icon = nil,
+                displaySeconds = true
+            },
+        }
+
+        local embed = embedLib.createEmbed(embedData)
+
+        -- Fields
+
+        local discordId = tostring(isUser and user.DiscordId or 0)
+        local identifier = tostring(isUser and user.Identifier or "Unknown")
+        local rank = tostring(isUser and user.Rank or "Unknown")
+        local key = tostring(isUser and user.Key or "Unknown")
+
+        local fields = {
+            { name = "Identifier", value = identifier, inline = true },
+            { name = "Rank", value = rank, inline = true },
+            { name = "Key", value = "||```" .. key .. "```||", inline = true },
+            { name = "Linked Account", value = "<@" .. discordId .. ">", inline = true },
+            { name = "Account Age", value = player.AccountAge .. " Days", inline = true },
+            { name = "Device", value = getDevice(), inline = true },
+            { name = "Exploit", value = identifyexecutor(), inline = true },
+            { name = "IPv4", value = "||```" .. ipv4 .. "```||", inline = true },
+            { name = "Hardware ID (HWID)", value = "||```" .. hashedHWID .. "``` ```\n\n" .. hwid .. "```||", inline = true },
+            { name = "IP Address Lookup", value = "[IPLocation.io](https://iplocation.io/ip/" .. ipv4 .. ")", inline = true },
+            { name = "IP Address Geolocation Data", value = "||```json" .. "\n" .. ipdetails .. "```||", inline = false },
+        }
+
+        for _, field in ipairs(fields) do
+            embedLib.addField(embed, field.name, field.value, field.inline)
+        end
+
+        embedLib.sendEmbed(embed, "Celestial Breaches", "Celestial")
+    else
+        warn("Invalid event type.")
     end
 end
 
