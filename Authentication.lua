@@ -8,16 +8,21 @@ local player = game:GetService("Players").LocalPlayer
 local httpService = game:GetService("HttpService")
 local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Core%20Utilities.lua"))()
 
+-- Capture originals before anything can hook them
+local originalKick = player.Kick
+
 local hwid = game:GetService("RbxAnalyticsService"):GetClientId()
 local hashedHWID = utils.hash(hwid, "SHA-384")
 
 local authConfig = {
     logExecutions = true,
-    logBreaches = false
+    logBreaches = false,
+    autoTrigger = true  -- set to false when loading as a utility library
 }
 
-auth.currentUser = nil
-auth.kicked = false
+-- Private local — never on the auth table
+local currentUser = nil
+local kicked = false
 
 -- Fetch whitelist
 
@@ -28,7 +33,7 @@ local function fetchData(url)
 
     if not success then
         player:Kick("Failed to fetch data from URL: " .. url)
-        auth.kicked = true
+        kicked = true
         return nil
     end
 
@@ -38,7 +43,7 @@ local function fetchData(url)
 
     if not successDecode then
         player:Kick("Failed to decode JSON data from URL: " .. url)
-        auth.kicked = true
+        kicked = true
         return nil
     end
 
@@ -49,54 +54,78 @@ local whitelistURL = "https://raw.githubusercontent.com/669053713850403197963270
 local whitelistedUsers = fetchData(whitelistURL)
 if not whitelistedUsers then
     player:Kick("Failed to retrieve the whitelist.")
-    auth.kicked = true
+    kicked = true
     return
 end
 
-local function logEvent(eventType)
-    local url = ""
-    if eventType == "execution" then
-        url = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Webhooks/Execution.lua"
-    elseif eventType == "breach" then
-        url = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Webhooks/Breach.lua"
-    end
+local executionURL = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Webhooks/Execution.lua"
+local breachURL = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Webhooks/Breach.lua"
+local logFunctions = {}
 
-    if url ~= "" then
-        loadstring(game:HttpGet(url))()
+local function logEvent(eventType)
+    if not logFunctions[eventType] then
+        local url = eventType == "execution" and executionURL or breachURL
+        logFunctions[eventType] = loadstring(game:HttpGet(url))
     end
+    logFunctions[eventType]()
 end
 
 -- Auth check
 
+-- Auth check — populate private local
 for _, user in ipairs(whitelistedUsers) do
     if user.HWID == hashedHWID then
-        auth.currentUser = user
+        currentUser = user  -- private local, not auth.currentUser
     end
 end
 
-auth.isUser = function()
-    return auth.currentUser ~= nil
-end
-
-auth.isAuthorized = function()
-    for _, user in ipairs(whitelistedUsers) do
-        if user.HWID == hashedHWID then
-            auth.currentUser = user
-            return true, user
-        end
+-- Private, unexposed version
+local function isAuthorizedInternal()
+    if currentUser then
+        return true, currentUser
     end
-    auth.currentUser = nil
     return false, nil
 end
 
-auth.isOwner = function()
-    local authorized, user = auth.isAuthorized()
-    return authorized and user and user.Rank == "Owner"
-end
+-- Public facing one still exists for your other scripts
+auth.isAuthorized = newcclosure(function()
+    return isAuthorizedInternal()
+end)
+
+-- Read-only getter for external scripts
+-- Returns a copy so callers can't mutate the original
+auth.getUser = newcclosure(function()
+    if currentUser == nil then return nil end
+    return {
+        Identifier = currentUser.Identifier,
+        HWID = currentUser.HWID,
+        DiscordId = currentUser.DiscordId,
+        Key = currentUser.Key,
+        JoinDate = currentUser.JoinDate,
+        Rank = currentUser.Rank,
+        Notes = currentUser.Notes
+    }
+end)
+
+auth.isKicked = newcclosure(function()
+    return kicked
+end)
+
+
+
+
+auth.isUser = newcclosure(function()
+    return currentUser ~= nil
+end)
+
+auth.isOwner = newcclosure(function()
+    return currentUser ~= nil and currentUser.Rank == "Owner"
+end)
 
 auth.fetchConfig = function(configName)
-    if typeof(configName) ~= "string" or configName == nil then
-		warn("Argument #1 (configName) expected a string value and a valid config name but got a " .. typeof(configName) .. " value and an invalid config name.")
+    if type(configName) ~= "string" then
+        warn("Argument #1 (configName) expected a string value and a valid config name but got a " .. typeof(configName) .. " value and an invalid config name.")
+        return nil
     end
 
     configName = string.lower(configName)
@@ -121,8 +150,6 @@ auth.hwid = function(mode)
     end
 end
 
--- Supported exploits
-
 auth.exploitSupported = function()
     local supported = {
         ["AWP"] = true,
@@ -139,55 +166,14 @@ auth.exploitSupported = function()
     local exec = identifyexecutor()
     if not supported[exec] then
         player:Kick("Celestial does not support " .. exec)
-        auth.kicked = true
+        kicked = true
     end
 
     return true
 end
 
--- Main trigger authorization function
-auth.trigger = function()
-    --print("[Celestial] Trigger called.")
-
-    if not whitelistedUsers then
-        warn("[Celestial] Whitelist is nil.")
-        player:Kick("Failed to retrieve whitelist.")
-        auth.kicked = true
-        return
-    end
-
-    local isAuthorized, userData = auth.isAuthorized()
-    --print("[Celestial] isAuthorized =", isAuthorized)
-    --print("[Celestial] userData =", userData and userData.Key or "nil")
-
-    if isAuthorized and userData then
-        local scriptKey = getgenv().script_key
-        --print("[Celestial] scriptKey =", scriptKey)
-        --print("[Celestial] expected =", userData.Key)
-
-        if typeof(scriptKey) ~= "string" or userData.Key ~= scriptKey then
-            warn("[Celestial] Invalid or missing script key.")
-            if authConfig.logBreaches then logEvent("breach") end
-            setclipboard(scriptKey or "nil")
-            player:Kick("Invalid script key: " .. tostring(scriptKey))
-            auth.kicked = true
-            return
-        end
-
-        --if authConfig.logExecutions then logEvent("execution") warn("[Celestial] Passed all checks. Logging execution.") end
-    else
-        warn("[Celestial] Not authorized. Copying HWID to clipboard.")
-        setclipboard(hashedHWID)
-		if authConfig.logBreaches then logEvent("breach") end
-		player:Kick("You are not authorized to use this script.")
-        auth.kicked = true
-    end
-end
-
-local originalTrigger = auth.trigger
-
 auth.clear = function()
-    if typeof(getgenv().script_key) ~= "nil" then
+    if getgenv().script_key ~= nil then
         getgenv().script_key = nil
     else
         if not auth.isUser() then return end
@@ -195,56 +181,80 @@ auth.clear = function()
     end
 end
 
--- Save original __namecall before anything else
-local mt = getrawmetatable(game)
-setreadonly(mt, false)
-local originalNamecall = mt.__namecall
-setreadonly(mt, true)
+-- ================ PROTECTION ================
 
--- Anti-hook check
-function auth.runAntiHookChecks()
-    local mt = getrawmetatable(game)
-    setreadonly(mt, false)
-
-    if mt.__namecall ~= originalNamecall then
-        setreadonly(mt, true)
-        if authConfig.logBreaches then logEvent("breach") end
-        player:Kick("Tampering detected: __namecall metamethod hooked.")
-        auth.kicked = true
-        return false
+-- Private trigger — not on the auth table, unreachable from outside
+local function internalTrigger()
+    if not whitelistedUsers then
+        warn("[Celestial] Whitelist is nil.")
+        player:Kick("Failed to retrieve whitelist.")
+        kicked = true
+        return
     end
 
-    -- Ensure Kick function cannot be overwritten
+    local isAuthorized, userData = isAuthorizedInternal()  -- private, not auth.isAuthorized
+
+    if isAuthorized and userData then
+        local scriptKey = getgenv().script_key
+
+        if typeof(scriptKey) ~= "string" or userData.Key ~= scriptKey then
+            warn("[Celestial] Invalid or missing script key.")
+            if authConfig.logBreaches then logEvent("breach") end
+            setclipboard(scriptKey or "nil")
+            player:Kick("Invalid script key: " .. tostring(scriptKey))
+            kicked = true
+            return
+        end
+
+        if authConfig.logExecutions then logEvent("execution") end
+    else
+        warn("[Celestial] Not authorized. Copying HWID to clipboard.")
+        setclipboard(hashedHWID)
+        if authConfig.logBreaches then logEvent("breach") end
+        player:Kick("You are not authorized to use this script.")
+        kicked = true
+    end
+end
+
+-- Public facing trigger delegates to the private local
+-- Overwriting auth.trigger from outside has no effect on internalTrigger
+auth.trigger = function()
+    internalTrigger()
+end
+
+local runAntiHookChecks = function()
+
+    -- 1. Kick
     local currentKick = player.Kick
-    if not rawequal(currentKick, originalKick) then
-        setreadonly(mt, true)
+    if not rawequal(currentKick, originalKick) or isfunctionhooked(originalKick) then
         if authConfig.logBreaches then logEvent("breach") end
         player:Kick("Tampering detected: Kick function has been overwritten.")
-        auth.kicked = true
+        kicked = true
         return false
     end
 
-    if not rawequal(auth.trigger, originalTrigger) then
-        setreadonly(mt, true)
+    -- 2. identifyexecutor
+    if isfunctionhooked(identifyexecutor) then
         if authConfig.logBreaches then logEvent("breach") end
-        player:Kick("Tampering detected: auth.trigger overwritten.")
-        auth.kicked = true
+        player:Kick("Tampering detected: identifyexecutor has been hooked.")
+        kicked = true
         return false
     end
 
-    local currentExecutor = identifyexecutor()
-    local expectedExecutor = realIdentifyExecutor()
-
-    if currentExecutor ~= expectedExecutor then
-        setreadonly(mt, true)
-        if authConfig.logBreaches then logEvent("breach") end
-        player:Kick("Tampering detected: exploit identification mismatch (" .. tostring(currentExecutor) .. " vs " .. tostring(expectedExecutor) .. ").")
-        auth.kicked = true
-        return false
-    end
-
-    setreadonly(mt, true)
     return true
 end
+
+auth.runAntiHookChecks = runAntiHookChecks
+
+-- Run auth on load — before any external script can interfere
+if authConfig.autoTrigger and not getgenv()._celestial_noauth then
+    internalTrigger()
+end
+getgenv()._celestial_noauth = nil  -- clean up after
+
+game:GetService("RunService").Heartbeat:Connect(newcclosure(function()
+    if kicked then return end
+    runAntiHookChecks()
+end))
 
 return auth
