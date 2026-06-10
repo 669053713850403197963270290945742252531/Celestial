@@ -174,8 +174,11 @@ local function logEvent(eventType)
     local authUser = auth.getUser()
 
     if eventType == "execution" then
+        if not auth.isUser() then
+            warn("how did you manage to run the execution logger script")
+        end
+
         local gameName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
-        local authUser = auth.getUser()
 
         -- Build embed
 
@@ -205,7 +208,6 @@ local function logEvent(eventType)
         embedLib.addField(embed, "Owner", "`" .. tostring(auth.isOwner()) .. "`", true)
         embedLib.addField(embed, "Exploit", identifyexecutor(), true)
         embedLib.addField(embed, "HWID", "||" .. auth.hwid("Hashed") .. "||", true)
-        embedLib.addField(embed, "HWID [Dehashed]", "||" .. auth.hwid("Normal") .. "||", true)
         embedLib.addField(embed, "Key", "||```" .. authUser.Key .. "```||", true)
 
         -- Conditional fields
