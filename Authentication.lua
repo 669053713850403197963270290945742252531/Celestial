@@ -13,8 +13,8 @@ local hwid = game:GetService("RbxAnalyticsService"):GetClientId()
 local hashedHWID = utils.hash(hwid, "SHA-384")
 
 local authConfig = {
-    logExecutions = false,
-    logBreaches = false,
+    logExecutions = true,
+    logBreaches = true,
     autoTrigger = true  -- set to false when loading as a utility library
 }
 
