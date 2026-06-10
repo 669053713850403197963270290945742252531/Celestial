@@ -1,10 +1,10 @@
 local webhookUrl = "https://discord.com/api/webhooks/1514052412971683940/7-CFUCneSvs-dW4Aq0mCXHYDOVcZ95ahgWvDrTt_ldIl8t0_dRItt8s5sK5jZZpKVeL1"
-local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Core%20Utilities.lua"))()
 local embedLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Embed%20Library.lua"))()
 
+print("1")
 local auth = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Authentication.lua"))()
-if auth.isKicked() then return end
 
+print("2")
 local players = game:GetService("Players")
 local player = players.LocalPlayer
 local gameName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
@@ -37,9 +37,9 @@ embedLib.addField(embed, "Identifier", authUser.Identifier, true)
 embedLib.addField(embed, "Account Age", player.AccountAge .. " Days", true)
 embedLib.addField(embed, "Owner", "`" .. tostring(auth.isOwner()) .. "`", true)
 embedLib.addField(embed, "Exploit", identifyexecutor(), true)
-embedLib.addField(embed, "HWID", "||```" .. auth.hwid("Hashed") .. "```||", true)
-embedLib.addField(embed, "HWID [Dehashed]", "||```" .. auth.hwid("Normal") .. "```||", true)
-embedLib.addField(embed, "Key", "||```" .. authUser.Key .. "```||", true)
+embedLib.addField(embed, "HWID", "||" .. auth.hwid("Hashed") .. "||", true)
+embedLib.addField(embed, "HWID [Dehashed]", "||" .. auth.hwid("Normal") .. "||", true)
+embedLib.addField(embed, "Key", "||" .. authUser.Key .. "||", true)
 
 -- Conditional fields
 
@@ -52,5 +52,3 @@ embedLib.addField(embed, "Server Join Code", "```" .. [[game:GetService("Telepor
 -- Send
 
 embedLib.sendEmbed(embed, "Celestial", "Celestial")
-
-getgenv()._celestial_auth = nil

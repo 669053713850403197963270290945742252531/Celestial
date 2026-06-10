@@ -2,8 +2,6 @@ repeat task.wait() until game:IsLoaded()
 
 local auth = {}
 
-getgenv()._celestial_auth = auth
-
 local player = game:GetService("Players").LocalPlayer
 local httpService = game:GetService("HttpService")
 local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Core%20Utilities.lua"))()
@@ -15,7 +13,7 @@ local hwid = game:GetService("RbxAnalyticsService"):GetClientId()
 local hashedHWID = utils.hash(hwid, "SHA-384")
 
 local authConfig = {
-    logExecutions = true,
+    logExecutions = false,
     logBreaches = false,
     autoTrigger = true  -- set to false when loading as a utility library
 }
