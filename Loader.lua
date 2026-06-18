@@ -256,14 +256,7 @@ Loading:SetDescription("Validating user...")
 
 local user = auth.getUser()
 if not user then
-
-
-
-
-
-
-
-
+    localplayer:Kick("how the hell did you not get kicked from the auth?? how the fuck did you encounter the not user check?? your hooks and circumvention methods win. this time.")
     return
 else
     Loading.Sidebar:AddLabel("Identifier: " .. user.Identifier)
@@ -282,8 +275,8 @@ end)
 
 local gameName = ok and info.Name or "Unknown Game"
 local games = {
-    [123974602339071] = "Celestial/test 1.lua",  -- Baseplate (test game)
-    [155382109] = "Celestial/test 2.lua"  -- SAKTKIA51 - Lobby
+    [123974602339071] = "Celestial/test 1.lua",
+    [155382109] = "Celestial/test 2.lua"
 }
 
 local scriptPath = games[game.PlaceId]
