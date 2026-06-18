@@ -1,0 +1,1 @@
+print("baseplate game script loaded")
