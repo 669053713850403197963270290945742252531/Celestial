@@ -1,12 +1,12 @@
 [
     {
-        "Identifier": "Corrade",
-        "HWID": "2489bdd441bb33ecf9a33c110ba7e22de2b1588facffed1f6f41539c62b79c1d",
         "DiscordId": "999776749070078004",
-        "Rank": "Owner",
+        "HWID": "2489bdd441bb33ecf9a33c110ba7e22de2b1588facffed1f6f41539c62b79c1d",
+        "Identifier": "Corrade",
         "JoinDate": "12/10/2025 8:36:25 AM",
         "Key": "Gj3c3g0fgjbmxlzpweo54901f",
-        "Notes": "ts notes"
+        "Notes": "ts notes",
+        "Rank": "Owner"
     },
     {
         "DiscordId": "89550090379946397",
@@ -15,8 +15,7 @@
         "JoinDate": "9/22/2025, 12:53:02 AM",
         "Key": "XfC6CaV44KjmYDAYQko87rWHeX3QVdMPm312f",
         "Notes": "idk why i always test with this dude",
-        "Rank": "User",
-        "whitelisted": true
+        "Rank": "User"
     },
     {
         "DiscordId": "155149108183695360",
@@ -25,8 +24,7 @@
         "JoinDate": "9/24/2025, 12:22:47 AM",
         "Key": "PQzPTwWvvCgx4rSXmqSVMAwcqc4yuf0z51",
         "Notes": "",
-        "Rank": "User",
-        "whitelisted": true
+        "Rank": "User"
     },
     {
         "DiscordId": "1218229252692906089",
@@ -35,7 +33,6 @@
         "JoinDate": "9/24/2025, 12:25:29 AM",
         "Key": "AZjS7yISFcXfES4FPj8y7cBjlbeKZVVHyFCVagdE",
         "Notes": "",
-        "Rank": "User",
-        "whitelisted": true
+        "Rank": "User"
     }
 ]
