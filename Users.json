@@ -6,15 +6,15 @@
         "Rank": "Owner",
         "JoinDate": "6/19/2026, 12:24:54 AM",
         "Key": "lNf6C905Hlt9BwHY26VX1rSaAowRIqnPSVVf62U",
-        "Notes": "ts notes"
+        "Notes": null
     },
     {
-        "Identifier": "CaptainEz",
-        "HWID": "cbd3cfb9b9f51bbbfbf08759e243f5b3519cbf6ecc219ee95fe7c667e32c0a8d",
         "DiscordId": "89550090379946397",
-        "Rank": "User",
+        "HWID": "cbd3cfb9b9f51bbbfbf08759e243f5b3519cbf6ecc219ee95fe7c667e32c0a8d",
+        "Identifier": "CaptainEz",
         "JoinDate": "6/19/2026, 12:25:09 AM",
         "Key": "9U8x2KN4Vvxu8gtvv1gr8Y1goSOxc",
-        "Notes": "idk why i always test with this dude"
+        "Notes": "idk why i always test with this dude",
+        "Rank": "User"
     }
 ]
