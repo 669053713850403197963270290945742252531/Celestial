@@ -1,38 +1,41 @@
 [
     {
         "Identifier": "Corrade",
-        "HWID": "58cbb8bfc53cf360a629efe72027048dad09ac6ef2566977d8cf3d4491ea3c24932d5e740b2d5698a7309adac8ece576",
+        "HWID": "2489bdd441bb33ecf9a33c110ba7e22de2b1588facffed1f6f41539c62b79c1d",
         "DiscordId": "999776749070078004",
-        "Key": "Gj3c3g0fgjbmxlzpweo54901f",
-        "JoinDate": "12/10/2025 8:36:25 AM",
         "Rank": "Owner",
+        "JoinDate": "12/10/2025 8:36:25 AM",
+        "Key": "Gj3c3g0fgjbmxlzpweo54901f",
         "Notes": "ts notes"
     },
     {
-        "Identifier": "CaptainEz",
-        "HWID": "cd0aa9856147b6c5b4ff2b7dfee5da20aa38253099ef1b4a64aced233c9afe29",
         "DiscordId": "89550090379946397",
-        "Key": "XfC6CaV44KjmYDAYQko87rWHeX3QVdMPm312f",
+        "HWID": "cd0aa9856147b6c5b4ff2b7dfee5da20aa38253099ef1b4a64aced233c9afe29",
+        "Identifier": "CaptainEz",
         "JoinDate": "9/22/2025, 12:53:02 AM",
+        "Key": "XfC6CaV44KjmYDAYQko87rWHeX3QVdMPm312f",
+        "Notes": "idk why i always test with this dude",
         "Rank": "User",
-        "Notes": "idk why i always test with this dude"
+        "whitelisted": true
     },
     {
-        "Identifier": "Dyno",
-        "HWID": "0a5eb100225ebf54b099b54dbc1a6da4de910efb553f9b76970cf93f7fe8b1a0",
         "DiscordId": "155149108183695360",
-        "Key": "PQzPTwWvvCgx4rSXmqSVMAwcqc4yuf0z51",
+        "HWID": "0a5eb100225ebf54b099b54dbc1a6da4de910efb553f9b76970cf93f7fe8b1a0",
+        "Identifier": "Dyno",
         "JoinDate": "9/24/2025, 12:22:47 AM",
+        "Key": "PQzPTwWvvCgx4rSXmqSVMAwcqc4yuf0z51",
+        "Notes": "",
         "Rank": "User",
-        "Notes": null
+        "whitelisted": true
     },
     {
-        "Identifier": "roblox update track",
-        "HWID": "f315794fa1fbbb5a7a910bc0ced6e476d7e37cc623f0f5211a4fa6edd6e50e00",
         "DiscordId": "1218229252692906089",
-        "Rank": "User",
+        "HWID": "f315794fa1fbbb5a7a910bc0ced6e476d7e37cc623f0f5211a4fa6edd6e50e00",
+        "Identifier": "roblox update track",
         "JoinDate": "9/24/2025, 12:25:29 AM",
         "Key": "AZjS7yISFcXfES4FPj8y7cBjlbeKZVVHyFCVagdE",
-        "Notes": null
+        "Notes": "",
+        "Rank": "User",
+        "whitelisted": true
     }
 ]
