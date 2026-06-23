@@ -10,7 +10,7 @@ local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/6690537
 local originalKick = player.Kick
 
 local hwid = game:GetService("RbxAnalyticsService"):GetClientId()
-local hashedHWID = utils.hash(hwid, "SHA-384")
+local hashedHWID = utils.hash(hwid, "SHA-256")
 
 local authConfig = {
     logExecutions = true,

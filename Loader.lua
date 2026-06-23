@@ -256,7 +256,7 @@ Loading:SetDescription("Validating user...")
 
 local user = auth.getUser()
 if not user then
-    localplayer:Kick("how the hell did you not get kicked from the auth?? how the fuck did you encounter the not user check?? your hooks and circumvention methods win. this time.")
+    localplayer:Kick("Invalid user.")
     return
 else
     Loading.Sidebar:AddLabel("Identifier: " .. user.Identifier)

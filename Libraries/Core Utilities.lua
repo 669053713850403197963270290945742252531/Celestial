@@ -671,6 +671,7 @@ utils.hash = function(text, algorithm)
     local hashFunction = validAlgorithms[algorithm]
     if not hashFunction then
         warn("utils.hash: Invalid hash algorithm: " .. tostring(algorithm))
+        return
     end
     
     return hashFunction(text)
