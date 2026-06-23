@@ -161,6 +161,8 @@ assetLib.fetchAsset = function(fileName, mp3Volume)
         end
 
         local resolvedFile = getcustomasset(fullPath)
+        print("🔍 | Fetching asset '" .. fileName .. "' -> " .. tostring(resolvedFile))
+
         local newMp3Sound = Instance.new("Sound", gethui())
         newMp3Sound.SoundId = resolvedFile
         newMp3Sound.Name = "_CelestialNotif"
@@ -176,7 +178,9 @@ assetLib.fetchAsset = function(fileName, mp3Volume)
     else
         -- Handle txt or lua files separately
 
-        return fetchTextAsset(fileName) or getcustomasset(fullPath)
+        local resolvedPath = getcustomasset(fullPath)
+        print("🔍 | Fetching asset '" .. fileName .. "' -> " .. tostring(resolvedPath))
+        return fetchTextAsset(fileName) or resolvedPath
     end
 end
 

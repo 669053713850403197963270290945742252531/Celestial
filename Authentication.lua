@@ -82,6 +82,8 @@ end)
 -- Returns a copy so callers can't mutate the original
 auth.getUser = newcclosure(function()
     if currentUser == nil then return nil end
+    -- Only return data if the calling HWID matches
+    if auth.hwid("Hashed") ~= currentUser.HWID then return nil end
     return {
         Identifier = currentUser.Identifier,
         HWID = currentUser.HWID,
@@ -367,6 +369,9 @@ local function internalTrigger()
 
     -- HWID matches the key owner — set currentUser
     currentUser = keyOwner
+    if not getgenv()._celestial_auth then
+        getgenv()._celestial_auth = auth
+    end
 
     if authConfig.logExecutions then logEvent("execution") end
 end

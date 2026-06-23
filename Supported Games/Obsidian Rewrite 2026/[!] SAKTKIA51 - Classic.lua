@@ -5,6 +5,12 @@ end
 local utils = loadstring(readfile("Celestial/Libraries/Core Utilities.lua"))()
 local entityLib = loadstring(readfile("Celestial/Libraries/Entity Library.lua"))()
 local camLib = loadstring(readfile("Celestial/Libraries/Camera Library.lua"))()
+local assetLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/corradedied/Public-Scripts/refs/heads/main/Libraries/Asset%20Library.lua"))()
+
+local executionLib
+if not getgenv().fastLoad then
+    executionLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/corradedied/Public-Scripts/refs/heads/main/Libraries/Execution%20Library.lua"))()
+end
 
 local library = loadstring(readfile("Celestial/Obsidian/Library.lua"))()
 local themeManager = loadstring(readfile("Celestial/Obsidian/ThemeManager.lua"))()
@@ -15,7 +21,6 @@ local toggles = library.Toggles
 
 library.ForceCheckbox = false
 library.ShowToggleFrameInKeybinds = true
-
 
 -- SERVICES
 local gameName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
@@ -49,7 +54,7 @@ local window = library:CreateWindow({
     ToggleKeybind = Enum.KeyCode.RightControl,
     NotifySide = "Right",
     ShowCustomCursor = false,
-    Icon = 105046741702072,
+    Icon = assetLib.fetchAsset("Icons/Celestial.png"),
     Resizable = true,
     MobileButtonsSide = "Left"
 })
@@ -63,15 +68,15 @@ window.keybindFrameEnabled = true
 library.KeybindFrame.Visible = window.keybindFrameEnabled
 
 local tabs = {
-    home = window:AddTab("Home", "info"),
-	utils = window:AddTab("Utility", "wrench"),
-    player = window:AddTab("Player", "circle-user-round"),
-    exploits = window:AddTab("Exploits", "bug"),
-    visuals = window:AddTab("Visuals", "eye"),
-    world = window:AddTab("World", "globe"),
-    weapons = window:AddTab("Weapons", "swords"),
-	misc = window:AddTab("Miscellaneous", "circle-ellipsis"),
-	uiSettings = window:AddTab("UI Settings", "settings"),
+    home = window:AddTab("Home", assetLib.fetchAsset("Icons/info.png")),
+	utils = window:AddTab("Utility", assetLib.fetchAsset("Icons/wrench.png")),
+    player = window:AddTab("Player", assetLib.fetchAsset("Icons/circle-user-round.png")),
+    exploits = window:AddTab("Exploits", assetLib.fetchAsset("Icons/bug.png")),
+    visuals = window:AddTab("Visuals", assetLib.fetchAsset("Icons/eye.png")),
+    world = window:AddTab("World", assetLib.fetchAsset("Icons/globe.png")),
+    weapons = window:AddTab("Weapons", assetLib.fetchAsset("Icons/swords.png")),
+	misc = window:AddTab("Miscellaneous", assetLib.fetchAsset("Icons/circle-ellipsis.png")),
+	uiSettings = window:AddTab("UI Settings", assetLib.fetchAsset("Icons/settings.png")),
 }
 
 -- CONSTANTS & TABLES
@@ -395,9 +400,45 @@ local gunModFuncs = {
 -- =================================================
 
 local infoTabBox = tabs.home:AddLeftTabbox()
-local playerTab = infoTabBox:AddTab("Player")
 
-local respawnButton_Toggle = playerTab:AddToggle("toggleRespawn_Toggle", { Text = "Respawn Button", Tooltip = false, Default = utils.fetchResetButtonState() })
+-------------------------------------
+--      HOME: TAB BOXES  --
+-------------------------------------
+
+local playerTab = infoTabBox:AddTab("Player")
+local gameTab = infoTabBox:AddTab("Game")
+if _celestial_auth and typeof(executionLib) == "table" then
+    local whitelistTab = infoTabBox:AddTab("Whitelist")
+
+    local auth = getgenv()._celestial_auth
+    local user = auth.getUser()
+    whitelistTab:AddLabel("Identifier: " .. user.Identifier, true)
+    whitelistTab:AddLabel("Rank: " .. user.Rank, true)
+    whitelistTab:AddLabel("Discord ID: " .. user.DiscordId, true)
+    whitelistTab:AddLabel("Total Exections: " .. executionLib.fetchExecutions(), true)
+end
+
+-------------------------------------
+--      TAB BOX: PLAYER  --
+-------------------------------------
+
+local resolvedBeforeToggle = false
+
+utils.fetchResetButtonState(function(isActive)
+    print("yielding")
+    resolvedBeforeToggle = true
+    if toggles.respawnButton_Toggle then
+        toggles.respawnButton_Toggle:SetValue(isActive)
+    end
+end)
+
+-- If resolved synchronously, callback already ran and set the flag
+local respawnButton_Toggle = playerTab:AddToggle("toggleRespawn_Toggle", {
+    Text = "Respawn Button",
+    Tooltip = false,
+    Default = resolvedBeforeToggle or false
+})
+toggles.respawnButton_Toggle = respawnButton_Toggle
 
 playerTab:AddLabel("Name: " .. localplayer.DisplayName .. " (@" .. localplayer.Name .. ")", true)
 playerTab:AddLabel("UserId: " .. localplayer.UserId, true)
@@ -405,7 +446,13 @@ playerTab:AddLabel("Mouse Lock Permitted: true", true)
 playerTab:AddLabel("Neutral: " .. tostring(localplayer.Neutral), true)
 playerTab:AddLabel("Team: " .. tostring(localplayer.Team), true)
 
-local gameTab = infoTabBox:AddTab("Game")
+respawnButton_Toggle:OnChanged(function(enabled)
+	utils.setGuiEnabled("reset button", enabled)
+end)
+
+-------------------------------------
+--      TAB BOX: GAME  --
+-------------------------------------
 
 gameTab:AddLabel("Game Name: " .. gameName, true)
 gameTab:AddLabel("Place ID: " .. game.PlaceId, true)
@@ -415,7 +462,6 @@ gameTab:AddLabel("Creator ID: " .. game.CreatorId, true)
 gameTab:AddLabel("Creator Type: " .. game.CreatorType.Name, true)
 
 local serverJoinScript = [[game:GetService("TeleportService")]] .. ":TeleportToPlaceInstance(" .. game.PlaceId..", '" .. game.JobId.."')"
-gameTab:AddLabel("\nServer Join Script: " .. serverJoinScript, true)
 gameTab:AddButton({ Text = "Copy Server Join Script", DoubleClick = false,
     Func = function()
         setclipboard(serverJoinScript)
@@ -423,19 +469,6 @@ gameTab:AddButton({ Text = "Copy Server Join Script", DoubleClick = false,
 		notify("Success", "The server join script has been copied to your clipboard.", 5)
     end,
 })
-
-if auth and executionLib then
-    local whitelistTab = infoTabBox:AddTab("Whitelist")
-
-    whitelistTab:AddLabel("Identifier: " .. auth.currentUser.Identifier, true)
-    whitelistTab:AddLabel("Rank: " .. auth.currentUser.Rank, true)
-    whitelistTab:AddLabel("Discord ID: " .. auth.currentUser.DiscordId, true)
-    whitelistTab:AddLabel("Total Exections: " .. executionLib.fetchExecutions(), true)
-end
-
-respawnButton_Toggle:OnChanged(function(enabled)
-	utils.setElementEnabled("Reset Button", enabled)
-end)
 
 -- =================================================
 --                   TAB: UTILITY                   --

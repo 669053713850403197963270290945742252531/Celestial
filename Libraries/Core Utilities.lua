@@ -735,9 +735,47 @@ utils.checkFunction = function(functionName)
     end
 end
 
-utils.fetchResetButtonState = function()
-    local resetCharBtn = game:GetService("CoreGui").RobloxGui.SettingsClippingShield.SettingsShield.MenuContainer.Page.BottomButtonFrame.MenuButtons.MenuButtonContainer2.MenuButton
-    return resetCharBtn.Active
+utils.fetchResetButtonState = function(callback)
+    local function getButton()
+        return game:GetService("CoreGui").RobloxGui.SettingsClippingShield.SettingsShield.MenuContainer.Page.BottomButtonFrame.MenuButtons.MenuButtonContainer2.MenuButton
+    end
+
+    local function resolve()
+        -- Yield inside the coroutine until the full path exists
+        local root = game:GetService("CoreGui").RobloxGui
+        local path = {
+            "SettingsClippingShield",
+            "SettingsShield",
+            "MenuContainer",
+            "Page",
+            "BottomButtonFrame",
+            "MenuButtons",
+            "MenuButtonContainer2",
+            "MenuButton",
+        }
+
+        local current = root
+        for _, name in ipairs(path) do
+            while not current:FindFirstChild(name) do
+                current.ChildAdded:Wait()
+            end
+            current = current[name]
+        end
+
+        -- Button now guaranteed to exist
+        if callback then
+            callback(current.Active)
+        end
+        return current.Active
+    end
+
+    if callback then
+        -- Non-blocking path: fire callback asynchronously whenever it resolves
+        coroutine.wrap(resolve)()
+    else
+        -- Synchronous path: caller is already inside a coroutine/thread and wants the value
+        return resolve()
+    end
 end
 
 -- PlaceID > UniverseId

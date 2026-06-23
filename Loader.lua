@@ -127,8 +127,8 @@ local assets = {
     ["Icons/settings.png"]          = "https://i.e-z.host/jjjf7zlh.png",
     ["Icons/globe.png"]             = "https://i.e-z.host/nk3myn7k.png",
     ["Icons/circle-user-round.png"] = "https://i.e-z.host/mb3ax783.png",
-    ["Sounds/success.mp3"]          = "https://i.e-z.host/d0f9729n.mp3",
-    ["plans.txt"]                   = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Plans.txt"
+    ["Icons/Celestial.png"]         = "https://i.e-z.host/h3pn12th.png",
+    ["Sounds/success.mp3"]          = "https://i.e-z.host/d0f9729n.mp3"
 }
 
 local function getExtension(path)
