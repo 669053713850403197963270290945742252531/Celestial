@@ -7031,7 +7031,7 @@ function Library:CreateWindow(WindowInfo)
             CanvasSize = UDim2.fromScale(0, 0),
             Position = UDim2.fromOffset(0, 49),
             ScrollBarThickness = 0,
-            Size = UDim2.new(0, InitialLeftWidth, 1, -70),
+            Size = UDim2.new(0, InitialLeftWidth, 1, -(49 + 20 + WindowInfo.CornerRadius)),
             Parent = MainFrame,
         })
         New("UIListLayout", {
@@ -7046,7 +7046,7 @@ function Library:CreateWindow(WindowInfo)
             end,
             Name = "Container",
             Position = UDim2.new(1, 0, 0, 49),
-            Size = UDim2.new(1, -InitialLeftWidth - 1, 1, -70),
+            Size = UDim2.new(1, -InitialLeftWidth - 1, 1, -(49 + 20 + WindowInfo.CornerRadius)),
             Parent = MainFrame,
         })
         New("UIPadding", {
@@ -7101,6 +7101,8 @@ function Library:CreateWindow(WindowInfo)
 
         ResizeButton.Position = UDim2.new(1, -Radius / 4, 0, 0)
         BottomBackground.Size = UDim2.new(1, 0, 0, 20 + Radius)
+        Tabs.Size = UDim2.new(Tabs.Size.X.Scale, Tabs.Size.X.Offset, 1, -(49 + 20 + Radius))
+        Container.Size = UDim2.new(Container.Size.X.Scale, Container.Size.X.Offset, 1, -(49 + 20 + Radius))
 
         for _, Tab in Library.Tabs do
             if Tab.IsKeyTab then
@@ -7157,8 +7159,8 @@ function Library:CreateWindow(WindowInfo)
 
         TitleHolder.Size = UDim2.new(0, Width, 1, 0)
         RightWrapper.Size = UDim2.new(1, -Width - 57 - 1, 1, -16)
-        Tabs.Size = UDim2.new(0, Width, 1, -70)
-        Container.Size = UDim2.new(1, -Width - 1, 1, -70)
+        Tabs.Size = UDim2.new(0, Width, 1, -(49 + 20 + WindowInfo.CornerRadius))
+        Container.Size = UDim2.new(1, -Width - 1, 1, -(49 + 20 + WindowInfo.CornerRadius))
 
         if WindowInfo.EnableCompacting then
             ApplyCompact()
@@ -7650,6 +7652,10 @@ function Library:CreateWindow(WindowInfo)
                 GroupboxHolder.Size = UDim2.new(1, 0, 0, (GroupboxList.AbsoluteContentSize.Y / Library.DPIScale) + 49)
             end
 
+            GroupboxList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+                Groupbox:Resize()
+            end)
+
             setmetatable(Groupbox, BaseGroupbox)
 
             Groupbox:Resize()
@@ -7906,6 +7912,10 @@ function Library:CreateWindow(WindowInfo)
 
                     TabboxHolder.Size = UDim2.new(1, 0, 0, (List.AbsoluteContentSize.Y / Library.DPIScale) + 49)
                 end
+
+                List:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+                    Tab:Resize()
+                end)
 
                 function Tab:UpdateCorners()
                     LeftCover.Visible = TabIndex ~= 1
