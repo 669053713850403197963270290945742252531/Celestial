@@ -38,8 +38,6 @@ if typeof(clonefunction) == "function" then
     end
 end
 
--- ["Crimson Steel"] 		= { 1, httpService:JSONDecode([[{"FontColor":"bf0004","MainColor":"1c1c1c","AccentColor":"840003","BackgroundColor":"141414","OutlineColor":"323232"}]]) },
-
 local ThemeManager = {}
 do
     local ThemeFields = { "FontColor", "MainColor", "AccentColor", "BackgroundColor", "OutlineColor" }
@@ -50,79 +48,75 @@ do
     ThemeManager.AppliedToTab = false
     ThemeManager.BuiltInThemes = {
         ["Default"] = {
-            2,
-            { FontColor = "bf0004", MainColor = "1c1c1c", AccentColor = "840003", BackgroundColor = "141414", OutlineColor = "323232" },
-        },
-        ["Obsidian"] = {
-            2,
+            1,
             { FontColor = "ffffff", MainColor = "191919", AccentColor = "7d55ff", BackgroundColor = "0f0f0f", OutlineColor = "282828" },
         },
         ["BBot"] = {
-            3,
+            2,
             { FontColor = "ffffff", MainColor = "1e1e1e", AccentColor = "7e48a3", BackgroundColor = "232323", OutlineColor = "141414" },
         },
         ["Fatality"] = {
-            4,
+            3,
             { FontColor = "ffffff", MainColor = "1e1842", AccentColor = "c50754", BackgroundColor = "191335", OutlineColor = "3c355d" },
         },
         ["Jester"] = {
-            5,
+            4,
             { FontColor = "ffffff", MainColor = "242424", AccentColor = "db4467", BackgroundColor = "1c1c1c", OutlineColor = "373737" },
         },
         ["Mint"] = {
-            6,
+            5,
             { FontColor = "ffffff", MainColor = "242424", AccentColor = "3db488", BackgroundColor = "1c1c1c", OutlineColor = "373737" },
         },
         ["Tokyo Night"] = {
-            7,
+            6,
             { FontColor = "ffffff", MainColor = "191925", AccentColor = "6759b3", BackgroundColor = "16161f", OutlineColor = "323232" },
         },
         ["Ubuntu"] = {
-            8,
+            7,
             { FontColor = "ffffff", MainColor = "3e3e3e", AccentColor = "e2581e", BackgroundColor = "323232", OutlineColor = "191919" },
         },
         ["Quartz"] = {
-            9,
+            8,
             { FontColor = "ffffff", MainColor = "232330", AccentColor = "426e87", BackgroundColor = "1d1b26", OutlineColor = "27232f" },
         },
         ["Nord"] = {
-            10,
+            9,
             { FontColor = "eceff4", MainColor = "3b4252", AccentColor = "88c0d0", BackgroundColor = "2e3440", OutlineColor = "4c566a" },
         },
         ["Dracula"] = {
-            11,
+            10,
             { FontColor = "f8f8f2", MainColor = "44475a", AccentColor = "ff79c6", BackgroundColor = "282a36", OutlineColor = "6272a4" },
         },
         ["Monokai"] = {
-            12,
+            11,
             { FontColor = "f8f8f2", MainColor = "272822", AccentColor = "f92672", BackgroundColor = "1e1f1c", OutlineColor = "49483e" },
         },
         ["Gruvbox"] = {
-            13,
+            12,
             { FontColor = "ebdbb2", MainColor = "3c3836", AccentColor = "fb4934", BackgroundColor = "282828", OutlineColor = "504945" },
         },
         ["Solarized"] = {
-            14,
+            13,
             { FontColor = "839496", MainColor = "073642", AccentColor = "cb4b16", BackgroundColor = "002b36", OutlineColor = "586e75" },
         },
         ["Catppuccin"] = {
-            15,
+            14,
             { FontColor = "d9e0ee", MainColor = "302d41", AccentColor = "f5c2e7", BackgroundColor = "1e1e2e", OutlineColor = "575268" },
         },
         ["One Dark"] = {
-            16,
+            15,
             { FontColor = "abb2bf", MainColor = "282c34", AccentColor = "c678dd", BackgroundColor = "21252b", OutlineColor = "5c6370" },
         },
         ["Cyberpunk"] = {
-            17,
+            16,
             { FontColor = "f9f9f9", MainColor = "262335", AccentColor = "00ff9f", BackgroundColor = "1a1a2e", OutlineColor = "413c5e" },
         },
         ["Oceanic Next"] = {
-            18,
+            17,
             { FontColor = "d8dee9", MainColor = "1b2b34", AccentColor = "6699cc", BackgroundColor = "16232a", OutlineColor = "343d46" },
         },
         ["Material"] = {
-            19,
+            18,
             { FontColor = "eeffff", MainColor = "212121", AccentColor = "82aaff", BackgroundColor = "151515", OutlineColor = "424242" },
         }
     }
@@ -290,7 +284,7 @@ do
             LibraryScheme["Font"] = Font.fromEnum(Enum.Font.Code)
         end
 
-        for _, field in { "Red", "Dark", "White" } do
+        for _, field in { "RedColor", "DarkColor", "WhiteColor" } do
             LibraryScheme[field] = self.Library.Scheme[field]
         end
 
@@ -494,14 +488,14 @@ do
         end)
     end
 
-    function ThemeManager:CreateGroupBox(tab)
+    function ThemeManager:CreateGroupBox(tab, icon)
         assert(self.Library, "Must set ThemeManager.Library first!")
-        return tab:AddLeftGroupbox("Themes", "paintbrush")
+        return tab:AddLeftGroupbox("Themes", icon or "paintbrush")
     end
 
-    function ThemeManager:ApplyToTab(tab)
+    function ThemeManager:ApplyToTab(tab, icon)
         assert(self.Library, "Must set ThemeManager.Library first!")
-        local groupbox = self:CreateGroupBox(tab)
+        local groupbox = self:CreateGroupBox(tab, icon)
         self:CreateThemeManager(groupbox)
     end
 
