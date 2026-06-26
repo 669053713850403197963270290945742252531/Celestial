@@ -1056,7 +1056,7 @@ function IsValidCustomIcon(Icon: string)
 end
 
 local function IsFileBackedIcon(Icon: string)
-	return typeof(Icon) == "string" and (Icon:match("^content://") or Icon:match("^rbxasset://%x+/"))
+    return typeof(Icon) == "string" and (Icon:match("^content://") or Icon:match("^rbxasset://%x+/"))
 end
 
 type Icon = {
