@@ -206,11 +206,6 @@ local Library = {
     ShowToggleFrameInKeybinds = true,
     NotifyOnError = false,
 
-    -- Set to true (e.g. Library.SliderEditDebug = true) to print step-by-step
-    -- diagnostics every time a right click happens over a slider, so you can see
-    -- exactly which check is failing if right-click-to-edit isn't working.
-    SliderEditDebug = true,
-
     CantDragForced = false,
 
     Signals = {},
@@ -417,8 +412,7 @@ local Templates = {
         Disabled = false,
         Visible = true,
 
-        -- Right-click on the slider bar to type an exact value.
-        EnableRightClickEdit = true,
+        AllowEdits = true,
     },
     Dropdown = {
         Values = {},
@@ -1394,16 +1388,6 @@ function Library:MouseIsOverFrame(Frame: GuiObject, Mouse: Vector2): boolean
         and Mouse.X <= AbsPos.X + AbsSize.X
         and Mouse.Y >= AbsPos.Y
         and Mouse.Y <= AbsPos.Y + AbsSize.Y
-end
-
--- Internal helper used by the slider right-click-to-edit feature.
--- Only prints when Library.SliderEditDebug is true, so it's silent by default.
-function Library:SliderDebugLog(SliderText: string, ...: any)
-    if not Library.SliderEditDebug then
-        return
-    end
-
-    print(string.format("[SliderEdit:%s]", tostring(SliderText)), ...)
 end
 
 function Library:SafeCallback(Func: (...any) -> ...any, ...: any)
@@ -4401,7 +4385,8 @@ do
             end
 
             if
-                typeof(Info.VerifyValue) == "function" and (Text ~= Input.EmptyReset and Info.VerifyValue(Text) ~= true)
+                typeof(Info.VerifyValue) == "function"
+                and (Text ~= Input.EmptyReset and Info.VerifyValue(Text) ~= true)
             then
                 Text = Input.EmptyReset
             end
@@ -4514,7 +4499,7 @@ do
             Disabled = Info.Disabled,
             Visible = Info.Visible,
 
-            EnableRightClickEdit = Info.EnableRightClickEdit,
+            AllowEdits = Info.AllowEdits,
 
             Type = "Slider",
         }
@@ -4596,31 +4581,21 @@ do
         local SliderEditing = false
 
         local function OpenSliderInput(Source: string)
-            Library:SliderDebugLog(Slider.Text, "OpenSliderInput called from", Source)
-
-            if not Slider.EnableRightClickEdit then
-                Library:SliderDebugLog(Slider.Text, "ABORT: EnableRightClickEdit is false")
+            if not Slider.AllowEdits then
                 return
             end
             if Slider.Disabled then
-                Library:SliderDebugLog(Slider.Text, "ABORT: Slider.Disabled is true")
                 return
             end
             if SliderEditing then
-                Library:SliderDebugLog(Slider.Text, "ABORT: already editing")
                 return
             end
 
-            -- The box always edits the raw numeric Slider.Value, never the formatted
-            -- display text, so this works fine even when Info.FormatDisplayValue is set
-            -- (e.g. a slider that shows "Everything"/"Nothing" instead of numbers).
             SliderEditing = true
             SliderInputBox.Text = tostring(Slider.Value)
             DisplayLabel.Visible = false
             SliderInputBox.Visible = true
             SliderInputBox:CaptureFocus()
-
-            Library:SliderDebugLog(Slider.Text, "Input box opened, CaptureFocus called")
         end
 
         local function CloseSliderInput(Commit)
@@ -4641,26 +4616,14 @@ do
                         Library:SafeCallback(Slider.Changed, Slider.Value)
                     end
                 end
-                Library:SliderDebugLog(Slider.Text, "Closed with commit, text was", SliderInputBox.Text)
-            else
-                Library:SliderDebugLog(Slider.Text, "Closed without commit")
             end
             Slider:Display()
         end
 
-        -- PRIMARY PATH: Bar.MouseButton2Click is a normal GuiButton event. This is the
-        -- same kind of event already used elsewhere in this library for right-click
-        -- menus (e.g. the KeyPicker), and it does fire correctly in protected GUIs, so
-        -- it's the most reliable trigger.
         Bar.MouseButton2Click:Connect(function()
-            Library:SliderDebugLog(Slider.Text, "Bar.MouseButton2Click fired")
             OpenSliderInput("Bar.MouseButton2Click")
         end)
 
-        -- FALLBACK / DIAGNOSTIC PATH: global UserInputService.InputBegan with a manual
-        -- bounding-box check. Kept as a fallback in case MouseButton2Click is ever
-        -- swallowed (e.g. by Active being false), and logs every branch so you can see
-        -- exactly where detection fails if right-click edit still isn't working.
         Library:GiveSignal(UserInputService.InputBegan:Connect(function(Input: InputObject)
             if Library.Unloaded then
                 return
@@ -4677,44 +4640,10 @@ do
                 return
             end
 
-            -- From here on we know it's specifically a right mouse button input, so log
-            -- every gate it passes through or fails at.
-            Library:SliderDebugLog(
-                Slider.Text,
-                "UserInputService.InputBegan saw MouseButton2",
-                "State =",
-                Input.UserInputState.Name,
-                "Position =",
-                tostring(Input.Position)
-            )
-
-            if not IsClickInput(Input, true) then
-                Library:SliderDebugLog(
-                    Slider.Text,
-                    "FAIL: IsClickInput returned false. UserInputState =",
-                    Input.UserInputState.Name,
-                    "Library.IsRobloxFocused =",
-                    tostring(Library.IsRobloxFocused)
-                )
-                return
-            end
-
-            local OverBar = Library:MouseIsOverFrame(Bar, Input.Position)
-            Library:SliderDebugLog(
-                Slider.Text,
-                "MouseIsOverFrame =",
-                tostring(OverBar),
-                "Bar.AbsolutePosition =",
-                tostring(Bar.AbsolutePosition),
-                "Bar.AbsoluteSize =",
-                tostring(Bar.AbsoluteSize)
-            )
-
             if not OverBar then
                 return
             end
 
-            Library:SliderDebugLog(Slider.Text, "All checks passed via fallback path")
             OpenSliderInput("UserInputService.InputBegan (fallback)")
         end))
 
@@ -4847,14 +4776,12 @@ do
             Slider:UpdateColors()
         end
 
-        function Slider:SetRightClickEditEnabled(Enabled: boolean)
-            Slider.EnableRightClickEdit = Enabled
+        function Slider:SetAllowEdits(Enabled: boolean)
+            Slider.AllowEdits = Enabled
 
             if not Enabled and SliderEditing then
                 CloseSliderInput(false)
             end
-
-            Library:SliderDebugLog(Slider.Text, "EnableRightClickEdit set to", tostring(Enabled))
         end
 
         function Slider:SetVisible(Visible: boolean)
@@ -9480,14 +9407,10 @@ function Library:CreateLoading(LoadingInfo)
         end
 
         TweenService:Create(MainFrame, Library.TweenInfo, { Size = UDim2.fromOffset(FinalWidth, FinalHeight) }):Play()
-        TweenService:Create(
-            SideBar,
-            Library.TweenInfo,
-            {
-                Position = UDim2.fromOffset(Loading.ContentWidth, 0),
-                Size = UDim2.new(0, ShowSidebar and Loading.SidebarWidth or 0, 1, 0),
-            }
-        ):Play()
+        TweenService:Create(SideBar, Library.TweenInfo, {
+            Position = UDim2.fromOffset(Loading.ContentWidth, 0),
+            Size = UDim2.new(0, ShowSidebar and Loading.SidebarWidth or 0, 1, 0),
+        }):Play()
         TweenService:Create(
             Container,
             Library.TweenInfo,
