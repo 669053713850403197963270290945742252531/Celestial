@@ -1101,15 +1101,12 @@ function Library:GetCustomIcon(IconName: string)
     end
 
     if IsFileBackedIcon(IconName) or (typeof(IconName) == "string" and IconName:match("^rbxassetid://")) then
-        -- content:// (getcustomasset) or rbxassetid:// passed directly as an icon
-        -- treat as grayscale; no Custom flag so AccentColor tinting is applied.
         return {
             Url = IconName,
             ImageRectOffset = Vector2.zero,
             ImageRectSize = Vector2.zero,
         }
     elseif IsValidCustomIcon(IconName) then
-        -- Full-color built-in asset (rbxasset://, rbxthumb://, etc.) to preserve original colors.
         return {
             Url = IconName,
             ImageRectOffset = Vector2.zero,
@@ -1218,8 +1215,6 @@ local function ParentUI(UI: Instance, SkipHiddenUI: boolean?)
     pcall(protectgui, UI)
     SafeParentUI(UI, gethui)
 end
-
--- Destroy previous interface instances
 
 for _, prevUI in gethui():GetChildren() do
     if prevUI:IsA("ScreenGui") and prevUI.Name == "Obsidian" then
@@ -2275,7 +2270,7 @@ function Library:AddContextMenu(
         Parent = Menu,
     })
 
-    local Corner
+    local Corner;
     if IgnoreCornerRadius ~= true then
         if SpecificCornersOnly == "top" then
             Corner = New("UICorner", {
@@ -2284,8 +2279,7 @@ function Library:AddContextMenu(
                 BottomRightRadius = UDim.new(0, 0),
                 BottomLeftRadius = UDim.new(0, 0),
                 Parent = Menu,
-            })
-table.insert(Library.SpecificCorners, Corner)
+            }); table.insert(Library.SpecificCorners, Corner)
         elseif SpecificCornersOnly == "bottom" then
             Corner = New("UICorner", {
                 TopLeftRadius = UDim.new(0, 0),
@@ -2293,8 +2287,7 @@ table.insert(Library.SpecificCorners, Corner)
                 BottomRightRadius = UDim.new(0, Library.CornerRadius / 2),
                 BottomLeftRadius = UDim.new(0, Library.CornerRadius / 2),
                 Parent = Menu,
-            })
-table.insert(Library.SpecificCorners, Corner)
+            }); table.insert(Library.SpecificCorners, Corner)
         elseif SpecificCornersOnly == "no_left" then
             Corner = New("UICorner", {
                 TopLeftRadius = UDim.new(0, 0),
@@ -2302,8 +2295,7 @@ table.insert(Library.SpecificCorners, Corner)
                 BottomRightRadius = UDim.new(0, Library.CornerRadius / 2),
                 BottomLeftRadius = UDim.new(0, 0),
                 Parent = Menu,
-            })
-table.insert(Library.SpecificCorners, Corner)
+            }); table.insert(Library.SpecificCorners, Corner)
         elseif SpecificCornersOnly == "no_top_left" then
             Corner = New("UICorner", {
                 TopLeftRadius = UDim.new(0, 0),
@@ -2311,14 +2303,12 @@ table.insert(Library.SpecificCorners, Corner)
                 BottomRightRadius = UDim.new(0, Library.CornerRadius / 2),
                 BottomLeftRadius = UDim.new(0, Library.CornerRadius / 2),
                 Parent = Menu,
-            })
-table.insert(Library.SpecificCorners, Corner)
+            }); table.insert(Library.SpecificCorners, Corner)
         else
             Corner = New("UICorner", {
                 CornerRadius = UDim.new(0, Library.CornerRadius / 2),
                 Parent = Menu,
-            })
-table.insert(Library.Corners, Corner)
+            }); table.insert(Library.Corners, Corner)
         end
     end
 
@@ -2889,8 +2879,7 @@ do
             BottomRightRadius = UDim.new(0, Library.CornerRadius / 2),
             BottomLeftRadius = UDim.new(0, Library.CornerRadius / 2),
             Parent = Picker,
-        })
-table.insert(Library.SpecificCorners, PickerCorner)
+        }); table.insert(Library.SpecificCorners, PickerCorner)
 
         if IsForButton then
             local Holder = New("Frame", {
@@ -3334,8 +3323,7 @@ table.insert(Library.SpecificCorners, PickerCorner)
             local Input
             local ActiveModifiers = {}
 
-            local GetInput = nil
-GetInput = function()
+            local GetInput = nil; GetInput = function()
                 Input = UserInputService.InputBegan:Wait()
                 if UserInputService:GetFocusedTextBox() ~= nil then
                     return true
@@ -3644,8 +3632,7 @@ GetInput = function()
             BottomRightRadius = UDim.new(0, Library.CornerRadius / 2),
             BottomLeftRadius = UDim.new(0, Library.CornerRadius / 2),
             Parent = Holder,
-        })
-table.insert(Library.SpecificCorners, ColorPickerCorner)
+        }); table.insert(Library.SpecificCorners, ColorPickerCorner)
 
         local HolderTransparency = New("ImageLabel", {
             Image = CustomImageManager.GetAsset("TransparencyTexture"),
@@ -6002,8 +5989,7 @@ do
             BottomRightRadius = UDim.new(0, Library.CornerRadius / 2),
             BottomLeftRadius = UDim.new(0, Library.CornerRadius / 2),
             Parent = DisplayContainer,
-        })
-table.insert(Library.SpecificCorners, DropdownCorner)
+        }); table.insert(Library.SpecificCorners, DropdownCorner)
 
         local DisplayImage = New("ImageLabel", {
             BackgroundTransparency = 1,
@@ -6236,8 +6222,7 @@ table.insert(Library.SpecificCorners, DropdownCorner)
                         BottomRightRadius = UDim.new(0, Library.CornerRadius / 2),
                         BottomLeftRadius = UDim.new(0, Library.CornerRadius / 2),
                         Parent = Container,
-                    })
-table.insert(Library.SpecificCorners, Corner)
+                    }); table.insert(Library.SpecificCorners, Corner)
                 end
 
                 local Image = ValueImage and New("ImageLabel", {
@@ -6748,8 +6733,9 @@ table.insert(Library.SpecificCorners, Corner)
             elseif state == Enum.UserInputState.End or state == Enum.UserInputState.Cancel then
                 Pinching = false
             end
-        end));
-(Viewport.Object :: PVInstance).Parent = ViewportFrame
+        end))
+
+        ;(Viewport.Object :: PVInstance).Parent = ViewportFrame
         if Viewport.AutoFocus then
             FocusCamera()
         end
@@ -6765,7 +6751,8 @@ table.insert(Library.SpecificCorners, Corner)
                 Viewport.Object:Destroy()
             end
 
-            Viewport.Object = Object;(Viewport.Object :: PVInstance).Parent = ViewportFrame
+            Viewport.Object = Object
+            ;(Viewport.Object :: PVInstance).Parent = ViewportFrame
 
             Groupbox:Resize()
         end
@@ -9061,8 +9048,7 @@ function Library:CreateWindow(WindowInfo)
                     BottomRightRadius = UDim.new(0, 0),
                     BottomLeftRadius = UDim.new(0, 0),
                     Parent = Button,
-                })
-table.insert(Library.SpecificCorners, ButtonCorner)
+                }); table.insert(Library.SpecificCorners, ButtonCorner)
 
                 local ButtonContent = New("Frame", {
                     AnchorPoint = Vector2.new(0.5, 0.5),
@@ -11049,7 +11035,7 @@ function Library:CreateLoading(LoadingInfo)
         end
     end
 
-    Loading.Continue = Loading.Destroy
+    Loading.Continue = Loading.Destroy;
 
     if Library.Toggle and Library.Toggled and Library.Unloaded ~= true then
         Library:Toggle(false)
