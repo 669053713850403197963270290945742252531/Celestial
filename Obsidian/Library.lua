@@ -8299,10 +8299,6 @@ function Library:CreateWindow(WindowInfo)
 
     local function SetUICorner(UICorner, Corner, HalfCurrent, HalfValue, Value)
         local Current = UICorner[Corner]
-        if Current.Offset == 0 and Current.Scale == 0 then
-            return
-        end
-
         UICorner[Corner] = Current.Offset == HalfCurrent and HalfValue or Value
     end
 
@@ -8334,7 +8330,7 @@ function Library:CreateWindow(WindowInfo)
         Radius = math.min(Radius, 20)
 
         local RadiusHalf = UDim.new(0, Radius / 2)
-        local RadiusUDim = UDim.new(0, Radius / 2)
+        local RadiusUDim = UDim.new(0, Radius)
         local HalfCurrent = Library.CornerRadius / 2
 
         for _, UICorner in Library.Corners do
@@ -10365,6 +10361,7 @@ function Library:CreateWindow(WindowInfo)
         Library.IsRobloxFocused = false
     end))
 
+    Library.Window = Window
     return Window
 end
 

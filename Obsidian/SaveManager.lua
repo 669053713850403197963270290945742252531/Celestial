@@ -437,15 +437,50 @@ local SaveManager = {} do
                 return
             end
 
-            local success, err = self:Save(name)
-            if not success then
-                self.Library:Notify("Failed to create config: " .. err)
-                return
+            local function doSave()
+                local success, err = self:Save(name)
+                if not success then
+                    self.Library:Notify("Failed to create config: " .. err)
+                    return
+                end
+
+                self.Library:Notify(string.format("Created config %q", name))
+                self.Library.Options.SaveManager_ConfigList:SetValues(self:RefreshConfigList())
+                self.Library.Options.SaveManager_ConfigList:SetValue(nil)
             end
 
-            self.Library:Notify(string.format("Created config %q", name))
-            self.Library.Options.SaveManager_ConfigList:SetValues(self:RefreshConfigList())
-            self.Library.Options.SaveManager_ConfigList:SetValue(nil)
+            local existingConfigs = self:RefreshConfigList()
+            local alreadyExists = table.find(existingConfigs, name)
+
+            if alreadyExists then
+                local Dialog
+                Dialog = self.Library.Window:AddDialog("SaveManager_CreateOverwrite", {
+                    Title = "Config already exists",
+                    Description = string.format("A config named %q already exists. Overwriting will replace it with your current settings.", name),
+                    AutoDismiss = true,
+                    FooterButtons = {
+                        Cancel = {
+                            Title = "Cancel",
+                            Variant = "Ghost",
+                            Order = 1,
+                            Callback = function()
+                                Dialog:Dismiss()
+                            end,
+                        },
+                        Overwrite = {
+                            Title = "Overwrite",
+                            Variant = "Destructive",
+                            Order = 2,
+                            Callback = function()
+                                Dialog:Dismiss()
+                                doSave()
+                            end,
+                        },
+                    },
+                })
+            else
+                doSave()
+            end
         end)
 
         section:AddDivider()
@@ -453,6 +488,10 @@ local SaveManager = {} do
         section:AddDropdown("SaveManager_ConfigList", { Text = "Config list", Values = self:RefreshConfigList(), AllowNull = true })
         section:AddButton("Load config", function()
             local name = self.Library.Options.SaveManager_ConfigList.Value
+            if not name or name == "" then
+                self.Library:Notify("No config selected", 2)
+                return
+            end
 
             local success, err = self:Load(name)
             if not success then
@@ -464,28 +503,84 @@ local SaveManager = {} do
         end)
         section:AddButton("Overwrite config", function()
             local name = self.Library.Options.SaveManager_ConfigList.Value
-
-            local success, err = self:Save(name)
-            if not success then
-                self.Library:Notify("Failed to overwrite config: " .. err)
+            if not name or name == "" then
+                self.Library:Notify("No config selected", 2)
                 return
             end
 
-            self.Library:Notify(string.format("Overwrote config %q", name))
+            local Dialog
+            Dialog = self.Library.Window:AddDialog("SaveManager_OverwriteConfig", {
+                Title = "Overwrite config",
+                Description = string.format("Are you sure you want to overwrite %q with your current settings? This cannot be undone.", name),
+                AutoDismiss = true,
+                FooterButtons = {
+                    Cancel = {
+                        Title = "Cancel",
+                        Variant = "Ghost",
+                        Order = 1,
+                        Callback = function()
+                            Dialog:Dismiss()
+                        end,
+                    },
+                    Overwrite = {
+                        Title = "Overwrite",
+                        Variant = "Destructive",
+                        Order = 2,
+                        Callback = function()
+                            Dialog:Dismiss()
+                            local success, err = self:Save(name)
+                            if not success then
+                                self.Library:Notify("Failed to overwrite config: " .. err)
+                                return
+                            end
+
+                            self.Library:Notify(string.format("Overwrote config %q", name))
+                        end,
+                    },
+                },
+            })
         end)
 
         section:AddButton("Delete config", function()
             local name = self.Library.Options.SaveManager_ConfigList.Value
-
-            local success, err = self:Delete(name)
-            if not success then
-                self.Library:Notify("Failed to delete config: " .. err)
+            if not name or name == "" then
+                self.Library:Notify("No config selected", 2)
                 return
             end
 
-            self.Library:Notify(string.format("Deleted config %q", name))
-            self.Library.Options.SaveManager_ConfigList:SetValues(self:RefreshConfigList())
-            self.Library.Options.SaveManager_ConfigList:SetValue(nil)
+            local Dialog
+            Dialog = self.Library.Window:AddDialog("SaveManager_DeleteConfig", {
+                Title = "Delete config",
+                Description = string.format("Are you sure you want to delete %q? This cannot be undone.", name),
+                AutoDismiss = true,
+                FooterButtons = {
+                    Cancel = {
+                        Title = "Cancel",
+                        Variant = "Ghost",
+                        Order = 1,
+                        Callback = function()
+                            Dialog:Dismiss()
+                        end,
+                    },
+                    Delete = {
+                        Title = "Delete",
+                        Variant = "Destructive",
+                        Order = 2,
+                        Callback = function()
+                            Dialog:Dismiss()
+                            local success, err = self:Delete(name)
+                            if not success then
+                                self.Library:Notify("Failed to delete config: " .. err)
+                                return
+                            end
+
+                            self.Library:Notify(string.format("Deleted config %q", name))
+                            self.Library.Options.SaveManager_ConfigList:SetValues(self:RefreshConfigList())
+                            self.Library.Options.SaveManager_ConfigList:SetValue(nil)
+                        end,
+                    },
+                },
+            })
         end)
 
         section:AddButton("Refresh list", function()
@@ -495,6 +590,10 @@ local SaveManager = {} do
 
         section:AddButton("Set as autoload", function()
             local name = self.Library.Options.SaveManager_ConfigList.Value
+            if not name or name == "" then
+                self.Library:Notify("No config selected", 2)
+                return
+            end
 
             local success, err = self:SaveAutoloadConfig(name)
             if not success then
@@ -506,14 +605,38 @@ local SaveManager = {} do
             self.AutoloadConfigLabel:SetText("Current autoload config: " .. name)
         end)
         section:AddButton("Reset autoload", function()
-            local success, err = self:DeleteAutoLoadConfig()
-            if not success then
-                self.Library:Notify("Failed to set autoload config: " .. err)
-                return
-            end
+            local Dialog
+            Dialog = self.Library.Window:AddDialog("SaveManager_ResetAutoload", {
+                Title = "Reset autoload config",
+                Description = "Are you sure you want to clear the autoload config? No config will be loaded automatically on next launch.",
+                AutoDismiss = true,
+                FooterButtons = {
+                    Cancel = {
+                        Title = "Cancel",
+                        Variant = "Ghost",
+                        Order = 1,
+                        Callback = function()
+                            Dialog:Dismiss()
+                        end,
+                    },
+                    Reset = {
+                        Title = "Reset",
+                        Variant = "Destructive",
+                        Order = 2,
+                        Callback = function()
+                            Dialog:Dismiss()
+                            local success, err = self:DeleteAutoLoadConfig()
+                            if not success then
+                                self.Library:Notify("Failed to set autoload config: " .. err)
+                                return
+                            end
 
-            self.Library:Notify("Set autoload to none")
-            self.AutoloadConfigLabel:SetText("Current autoload config: none")
+                            self.Library:Notify("Set autoload to none")
+                            self.AutoloadConfigLabel:SetText("Current autoload config: none")
+                        end,
+                    },
+                },
+            })
         end)
 
         self.AutoloadConfigLabel = section:AddLabel("Current autoload config: " .. self:GetAutoloadConfig(), true)
