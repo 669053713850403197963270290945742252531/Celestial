@@ -703,7 +703,7 @@ local function CheckDepbox(Box, Search)
 end
 local function RestoreDepbox(Box)
     for _, ElementInfo in Box.Elements do
-        ElementInfo.Holder.Visible = typeof(ElementInfo.Visible) == "boolean" and ElementInfo.Visible or true
+        ElementInfo.Holder.Visible = ElementInfo.Visible ~= false
 
         if ElementInfo.SubButton then
             ElementInfo.Base.Visible = ElementInfo.Visible
@@ -865,7 +865,7 @@ local function ResetTab(Tab)
 
     for _, Groupbox in Tab.Groupboxes do
         for _, ElementInfo in Groupbox.Elements do
-            ElementInfo.Holder.Visible = typeof(ElementInfo.Visible) == "boolean" and ElementInfo.Visible or true
+            ElementInfo.Holder.Visible = ElementInfo.Visible ~= false
 
             if ElementInfo.SubButton then
                 ElementInfo.Base.Visible = ElementInfo.Visible
@@ -888,7 +888,7 @@ local function ResetTab(Tab)
     for _, Tabbox in Tab.Tabboxes do
         for _, SubTab in Tabbox.Tabs do
             for _, ElementInfo in SubTab.Elements do
-                ElementInfo.Holder.Visible = typeof(ElementInfo.Visible) == "boolean" and ElementInfo.Visible or true
+                ElementInfo.Holder.Visible = ElementInfo.Visible ~= false
 
                 if ElementInfo.SubButton then
                     ElementInfo.Base.Visible = ElementInfo.Visible
@@ -6179,12 +6179,30 @@ do
             return ReturnCount == true and GetTableSize(Table) or Table
         end
 
+        -- Drag-select state (Multi only): shared across all buttons in one list build
+        local DragSelecting = false
+        local DragSelectState = false -- the select/deselect direction locked on drag start
+        local DragInputEndedConn = nil
+
+        local function StopDragSelect()
+            DragSelecting = false
+            DragSelectState = false
+            if DragInputEndedConn then
+                DragInputEndedConn:Disconnect()
+                DragInputEndedConn = nil
+            end
+        end
+
         local Buttons = {}
         function Dropdown:BuildDropdownList()
             local Values = Dropdown.Values
             local DisabledValues = Dropdown.DisabledValues
 
+            -- Clean up any in-progress drag when the list is rebuilt
+            StopDragSelect()
+
             for Button, _ in Buttons do
+                if not Button.Parent then continue end
                 Button.Parent:Destroy()
             end
             table.clear(Buttons)
@@ -6275,7 +6293,12 @@ do
                 end
 
                 if not IsDisabled then
+                    -- Standard click: toggle this item on MouseButton1Click
                     Button.MouseButton1Click:Connect(function()
+                        -- If we just finished a drag that covered this button, skip the
+                        -- synthetic click that fires after InputEnded to avoid a double-toggle.
+                        if DragSelecting then return end
+
                         local Try = not Selected
 
                         if not (Dropdown:GetActiveValues(true) == 1 and not Try and not Info.AllowNull) then
@@ -6298,6 +6321,60 @@ do
                         Library:SafeCallback(Dropdown.Callback, Dropdown.Value)
                         Library:SafeCallback(Dropdown.Changed, Dropdown.Value)
                     end)
+
+                    -- Drag-select: only for Multi dropdowns
+                    if Info.Multi then
+                        -- InputBegan on this button starts (or continues) a drag
+                        Button.InputBegan:Connect(function(Input)
+                            if Input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+
+                            -- Lock drag direction to the opposite of the current state for this item
+                            DragSelectState = not Selected
+                            DragSelecting = true
+
+                            -- Apply immediately to the item the drag started on
+                            local Try = DragSelectState
+                            if not (Dropdown:GetActiveValues(true) == 1 and not Try and not Info.AllowNull) then
+                                Selected = Try
+                                Dropdown.Value[Value] = Selected and true or nil
+                                for _, OtherButton in Buttons do
+                                    OtherButton:UpdateButton()
+                                end
+                            end
+                            Table:UpdateButton()
+                            Dropdown:Display()
+
+                            -- Stop drag when mouse button is released anywhere
+                            if DragInputEndedConn then
+                                DragInputEndedConn:Disconnect()
+                            end
+                            DragInputEndedConn = UserInputService.InputEnded:Connect(function(EndInput)
+                                if EndInput.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+                                -- Fire callbacks once at the end of the full drag gesture
+                                Library:UpdateDependencyBoxes()
+                                Library:SafeCallback(Dropdown.Callback, Dropdown.Value)
+                                Library:SafeCallback(Dropdown.Changed, Dropdown.Value)
+                                StopDragSelect()
+                            end)
+                            table.insert(Dropdown.Connections, DragInputEndedConn)
+                        end)
+
+                        -- MouseEnter: extend the drag to this item if dragging
+                        Button.MouseEnter:Connect(function()
+                            if not DragSelecting then return end
+
+                            local Try = DragSelectState
+                            if not (Dropdown:GetActiveValues(true) == 1 and not Try and not Info.AllowNull) then
+                                Selected = Try
+                                Dropdown.Value[Value] = Selected and true or nil
+                                for _, OtherButton in Buttons do
+                                    OtherButton:UpdateButton()
+                                end
+                            end
+                            Table:UpdateButton()
+                            Dropdown:Display()
+                        end)
+                    end
                 end
 
                 Table:UpdateButton()
@@ -8905,6 +8982,10 @@ function Library:CreateWindow(WindowInfo)
                 Elements = {},
             }
 
+            function Groupbox:SetVisible(Visible)
+                self.BoxHolder.Visible = Visible
+            end
+
             function Groupbox:Resize()
                 GroupboxHolder.Size = UDim2.new(1, 0, 0, (GroupboxList.AbsoluteContentSize.Y / Library.DPIScale) + 49)
             end
@@ -8944,17 +9025,20 @@ function Library:CreateWindow(WindowInfo)
             setmetatable(Groupbox, BaseGroupbox)
 
             Groupbox:Resize()
+            if Info.Visible == false then
+                BoxHolder.Visible = false
+            end
             Tab.Groupboxes[Info.Name] = Groupbox
 
             return Groupbox
         end
 
-        function Tab:AddLeftGroupbox(Name, IconName)
-            return Tab:AddGroupbox({ Side = 1, Name = Name, IconName = IconName })
+        function Tab:AddLeftGroupbox(Name, IconName, Visible)
+            return Tab:AddGroupbox({ Side = 1, Name = Name, IconName = IconName, Visible = Visible })
         end
 
-        function Tab:AddRightGroupbox(Name, IconName)
-            return Tab:AddGroupbox({ Side = 2, Name = Name, IconName = IconName })
+        function Tab:AddRightGroupbox(Name, IconName, Visible)
+            return Tab:AddGroupbox({ Side = 2, Name = Name, IconName = IconName, Visible = Visible })
         end
 
         function Tab:AddTabbox(Info)
