@@ -730,6 +730,7 @@ local function ApplySearchToTab(Tab, Search)
 
     local HasVisible = false
 
+    --// Loop through Groupboxes to get Elements Info
     for _, Groupbox in Tab.Groupboxes do
         if Groupbox.Visible == false then
             continue
