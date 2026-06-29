@@ -184,8 +184,8 @@ local Library = {
     KeybindToggles = {},
 
     Notifications = {},
-    NotificationQueue = {}, -- ordered insertion array; parallel to Notifications for eviction
-    MaxNotifications = 10,  -- drop oldest when this cap is exceeded (0 = unlimited)
+    NotificationQueue = {},
+    MaxNotifications = 10,
     Dialogues = {},
     ActiveLoading = nil,
     ActiveDialog = nil,
@@ -7892,7 +7892,7 @@ function Library:Notify(...)
 
         task.delay(Library.NotifyTweenInfo.Time, function()
             Library.Notifications[FakeBackground] = nil
-            -- Remove from the ordered queue so the slot is freed for future notifications.
+
             local Idx = table.find(Library.NotificationQueue, FakeBackground)
             if Idx then
                 table.remove(Library.NotificationQueue, Idx)
@@ -7943,8 +7943,6 @@ function Library:Notify(...)
     Library.Notifications[FakeBackground] = Data
     table.insert(Library.NotificationQueue, FakeBackground)
 
-    -- Evict the oldest notification when the cap is exceeded.
-    -- MaxNotifications == 0 means unlimited; Persist notifications are never evicted.
     if Library.MaxNotifications > 0 then
         while #Library.NotificationQueue > Library.MaxNotifications do
             local Oldest = table.remove(Library.NotificationQueue, 1)
