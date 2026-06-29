@@ -197,6 +197,9 @@ local Library = {
     TweenInfo = TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
     NotifyTweenInfo = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 
+    Animations = false,
+    WindowAnimationInfo = TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+
     Toggled = false,
     Unloaded = false,
 
@@ -335,7 +338,9 @@ local Templates = {
 
         Font = Enum.Font.Code,
         ToggleKeybind = Enum.KeyCode.RightControl,
-        
+
+        Animations = false,
+
         ShowMobileButtons = true,
         MobileButtonsSide = "Left",
 
@@ -8027,6 +8032,7 @@ function Library:CreateWindow(WindowInfo)
     Library.Scheme.Font = WindowInfo.Font
     Library.ToggleKeybind = WindowInfo.ToggleKeybind
     Library.GlobalSearch = WindowInfo.GlobalSearch
+    Library.Animations = WindowInfo.Animations
 
     local IsDefaultSearchbarSize = WindowInfo.SearchbarSize == UDim2.fromScale(1, 1)
     local MainFrame
@@ -8410,6 +8416,8 @@ function Library:CreateWindow(WindowInfo)
 
     --// Window Table \\--
     local Window = {}
+    local Fading = false
+    local TransparencyCache = {}
 
     local function SetUICorner(UICorner, Corner, HalfCurrent, HalfValue, Value)
         local Current = UICorner[Corner]
@@ -10367,6 +10375,10 @@ function Library:CreateWindow(WindowInfo)
     end
 
     function Window:Toggle(Value: boolean?)
+        if Fading then
+            return
+        end
+
         if Library.ActiveLoading then
             if Value == true then
                 return
@@ -10383,7 +10395,61 @@ function Library:CreateWindow(WindowInfo)
             Library.Toggled = not Library.Toggled
         end
 
-        MainFrame.Visible = Library.Toggled
+        if Library.Animations then
+            local FadeTime = Library.WindowAnimationInfo.Time
+            Fading = true
+
+            if Library.Toggled then
+                MainFrame.Visible = true
+            end
+
+            local function FadeInstance(Desc, Properties)
+                local Cache = TransparencyCache[Desc]
+                if not Cache then
+                    Cache = {}
+                    TransparencyCache[Desc] = Cache
+                end
+
+                for _, Prop in Properties do
+                    if not Library.Toggled then
+                        Cache[Prop] = Desc[Prop]
+                    end
+
+                    if Cache[Prop] ~= nil and Cache[Prop] ~= 1 then
+                        TweenService:Create(Desc, Library.WindowAnimationInfo, {
+                            [Prop] = Library.Toggled and Cache[Prop] or 1,
+                        }):Play()
+                    end
+                end
+            end
+
+            FadeInstance(MainFrame, { "BackgroundTransparency" })
+
+            for _, Desc in MainFrame:GetDescendants() do
+                local Properties = {}
+
+                if Desc:IsA("GuiObject") then
+                    table.insert(Properties, "BackgroundTransparency")
+                end
+
+                if Desc:IsA("ImageLabel") or Desc:IsA("ImageButton") then
+                    table.insert(Properties, "ImageTransparency")
+                elseif Desc:IsA("TextLabel") or Desc:IsA("TextBox") or Desc:IsA("TextButton") then
+                    table.insert(Properties, "TextTransparency")
+                elseif Desc:IsA("UIStroke") then
+                    table.insert(Properties, "Transparency")
+                end
+
+                FadeInstance(Desc, Properties)
+            end
+
+            task.delay(FadeTime, function()
+                MainFrame.Visible = Library.Toggled
+                Fading = false
+            end)
+        else
+            MainFrame.Visible = Library.Toggled
+        end
 
         if WindowInfo.UnlockMouseWhileOpen then
             ModalElement.Modal = Library.Toggled
