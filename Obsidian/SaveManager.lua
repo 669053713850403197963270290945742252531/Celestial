@@ -110,6 +110,23 @@ local SaveManager = {} do
                 end
             end,
         },
+        GroupBox = {
+            Save = function(idx, object)
+                return { type = "GroupBox", idx = idx, collapsed = object.Collapsed }
+            end,
+            Load = function(idx, data)
+                if type(data.collapsed) ~= "boolean" then return end
+                for _, Tab in pairs(SaveManager.Library.Tabs) do
+                    if Tab.Groupboxes then
+                        local groupbox = Tab.Groupboxes[idx]
+                        if groupbox and groupbox.Collapsed ~= data.collapsed then
+                            groupbox:SetCollapsed(data.collapsed)
+                            return
+                        end
+                    end
+                end
+            end,
+        },
     }
 
     function SaveManager:SetLibrary(library)
@@ -233,6 +250,14 @@ local SaveManager = {} do
             if self.Ignore[idx] then continue end
 
             table.insert(data.objects, self.Parser[option.Type].Save(idx, option))
+        end
+
+        for _, Tab in pairs(self.Library.Tabs) do
+            if not Tab.Groupboxes then continue end
+            for name, groupbox in pairs(Tab.Groupboxes) do
+                if self.Ignore[name] then continue end
+                table.insert(data.objects, self.Parser.GroupBox.Save(name, groupbox))
+            end
         end
 
         local success, encoded = pcall(HttpService.JSONEncode, HttpService, data)
