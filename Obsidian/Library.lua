@@ -1234,6 +1234,12 @@ local function ParentUI(UI: Instance, SkipHiddenUI: boolean?)
     SafeParentUI(UI, gethui)
 end
 
+for _, prevUI in gethui():GetChildren() do
+    if prevUI:IsA("ScreenGui") and prevUI.Name == "Obsidian" then
+        prevUI:Destroy()
+    end
+end
+
 local ScreenGui = New("ScreenGui", {
     Name = "Obsidian",
     DisplayOrder = 998,
