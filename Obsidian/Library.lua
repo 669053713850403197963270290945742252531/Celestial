@@ -347,7 +347,7 @@ local Templates = {
 
         Animations = {
             ToggleWindow = false,
-            TabAnimations = true,
+            TabAnimations = false,
         },
         TabTransitionTime = 0.22,
         TabWipeOffset = 26,
@@ -1243,6 +1243,12 @@ local function ParentUI(UI: Instance, SkipHiddenUI: boolean?)
 
     pcall(protectgui, UI)
     SafeParentUI(UI, gethui)
+end
+
+for _, prevUI in gethui():GetChildren() do
+    if prevUI:IsA("ScreenGui") and prevUI.Name == "Obsidian" then
+        prevUI:Destroy()
+    end
 end
 
 local ScreenGui = New("ScreenGui", {
@@ -8095,7 +8101,10 @@ function Library:CreateWindow(WindowInfo)
     if typeof(WindowInfo) == "table" then
         if typeof(WindowInfo.Animations) == "boolean" then
             local ToggleWindow = WindowInfo.Animations
-            WindowInfo.Animations = { ToggleWindow = ToggleWindow }
+            WindowInfo.Animations = {
+                ToggleWindow = ToggleWindow,
+                TabAnimations = ToggleWindow,
+            }
         end
         if typeof(WindowInfo.TabAnimations) == "boolean" and typeof(WindowInfo.Animations) ~= "table" then
             WindowInfo.Animations = {}
