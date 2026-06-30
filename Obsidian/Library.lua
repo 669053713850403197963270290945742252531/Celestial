@@ -2351,6 +2351,7 @@ function Library:AddContextMenu(
 )
     local Menu
     local ParentGui = Holder:FindFirstAncestorOfClass("ScreenGui")
+    local MenuZIndex = math.max(10, Holder.ZIndex + 1)
     if ParentGui ~= ScreenGui and (Library.ActiveLoading and ParentGui ~= Library.ActiveLoading.ScreenGui) then
         ParentGui = ScreenGui
     end
@@ -2367,7 +2368,7 @@ function Library:AddContextMenu(
             Size = typeof(Size) == "function" and Size() or Size,
             TopImage = "rbxasset://textures/ui/Scroll/scroll-middle.png",
             Visible = false,
-            ZIndex = 10,
+            ZIndex = MenuZIndex,
             Parent = ParentGui,
         })
     else
@@ -2375,7 +2376,7 @@ function Library:AddContextMenu(
             BackgroundColor3 = "BackgroundColor",
             Size = typeof(Size) == "function" and Size() or Size,
             Visible = false,
-            ZIndex = 10,
+            ZIndex = MenuZIndex,
             Parent = ParentGui,
         })
     end
@@ -4462,6 +4463,15 @@ do
                 end
             end
 
+            if Label.Addons then
+                for Index = #Label.Addons, 1, -1 do
+                    local Addon = table.remove(Label.Addons, Index)
+                    if Addon and Addon.Destroy then
+                        Addon:Destroy()
+                    end
+                end
+            end
+
             if TextLabel then 
                 TextLabel:Destroy() 
             end
@@ -5675,7 +5685,7 @@ do
             Size = UDim2.fromScale(1, 1),
             Text = "",
             TextSize = 14,
-            ZIndex = 2,
+            ZIndex = Bar.ZIndex + 2,
             Parent = Bar,
         })
         New("UIStroke", {
@@ -5692,7 +5702,7 @@ do
                 Size = UDim2.fromScale(1, 1),
                 Text = "",
                 TextSize = 14,
-                ZIndex = 3,
+                ZIndex = Bar.ZIndex + 3,
                 Visible = false,
                 ClearTextOnFocus = false,
                 Parent = Bar,
@@ -5708,6 +5718,7 @@ do
         local Fill = New("Frame", {
             BackgroundColor3 = "AccentColor",
             Size = UDim2.fromScale(0.5, 1),
+            ZIndex = Bar.ZIndex + 1,
             Parent = Bar,
         })
 
@@ -8950,6 +8961,7 @@ function Library:CreateWindow(WindowInfo)
             Connections = {},
             Destroyed = false,
 
+            Window = Window,
             Groupboxes = {},
             Tabboxes = {},
             DependencyGroupboxes = {},
@@ -9843,7 +9855,7 @@ function Library:CreateWindow(WindowInfo)
                 CanvasSize = UDim2.fromScale(0, 0),
                 ScrollBarThickness = 0,
                 Size = UDim2.fromScale(1, 1),
-                Visible = true,
+                Visible = false,
                 Parent = Container,
             })
             New("UIListLayout", {
@@ -9866,6 +9878,7 @@ function Library:CreateWindow(WindowInfo)
             Elements = {},
             Description = Description,
             IsKeyTab = true,
+            Window = Window,
         }
 
         function Tab:AddKeyBox(Callback)
@@ -10266,6 +10279,7 @@ function Library:CreateWindow(WindowInfo)
         })
 
         local Dialog = {
+            Destroyed = false,
             Elements = {},
             Container = DialogContainer,
         }
@@ -10319,7 +10333,24 @@ function Library:CreateWindow(WindowInfo)
         end
 
         function Dialog:Dismiss()
-            Library.ActiveDialog = nil
+            if Dialog.Destroyed then
+                return
+            end
+
+            Dialog.Destroyed = true
+
+            if Library.ActiveDialog == Dialog then
+                Library.ActiveDialog = nil
+            end
+
+            for Index = #Dialog.Elements, 1, -1 do
+                local Element = Dialog.Elements[Index]
+                if Element and Element.Destroy then
+                    Element:Destroy()
+                end
+            end
+            table.clear(Dialog.Elements)
+
             local CloseTween = TweenService:Create(DialogScale, Library.TweenInfo, { Scale = 0.95 })
             TweenService:Create(DialogOverlay, Library.TweenInfo, { BackgroundTransparency = 1 }):Play()
             CloseTween:Play()
