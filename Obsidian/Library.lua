@@ -1736,11 +1736,6 @@ function Library:AddBlank(Frame: GuiObject, Size: UDim2)
     })
 end
 
---// Tab Wipe/Fade Transition \\--
--- Wraps a TabContainer in a non-destructive CanvasGroup "sleeve" so it can be
--- uniformly wiped/faded in and out when switching tabs, without altering, moving,
--- or destroying any of the original elements (sliders, buttons, dropdowns, etc.)
--- parented inside the TabContainer.
 local ActiveTabWipeTweens = setmetatable({}, { __mode = "k" })
 local SleeveBaseZIndex = setmetatable({}, { __mode = "k" })
 
@@ -1794,8 +1789,6 @@ function Library:PlayTabWipe(Sleeve: GuiObject, Showing: boolean, OnComplete: ((
     local Offset = Library.TabWipeOffset or 26
 
     if Showing then
-        -- Always render above whatever is currently fading out, so the incoming
-        -- tab's content is never hidden behind the outgoing tab's content mid-fade.
         Sleeve.ZIndex = BaseZIndex + 1
         Sleeve.GroupTransparency = 1
         Sleeve.Position = UDim2.fromOffset(Offset, 0)
@@ -1825,8 +1818,6 @@ function Library:PlayTabWipe(Sleeve: GuiObject, Showing: boolean, OnComplete: ((
             end
         end)
     else
-        -- Snap old content away instantly — no tween — so it can never bleed
-        -- through behind the incoming tab regardless of groupbox layout differences.
         Sleeve.GroupTransparency = 1
         Sleeve.Visible = false
         Sleeve.Position = UDim2.fromScale(0, 0)
