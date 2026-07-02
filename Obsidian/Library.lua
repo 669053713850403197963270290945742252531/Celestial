@@ -199,12 +199,15 @@ local Library = {
 
     Animations = {
         ToggleWindow = false,
-        TabAnimations = false,
+        TabSwitch = false,
+        Dropdown = false,
     },
     WindowAnimationInfo = TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 
     TabTransitionInfo = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
     TabWipeOffset = 26,
+
+    DropdownTransitionInfo = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 
     Toggled = false,
     Unloaded = false,
@@ -347,7 +350,7 @@ local Templates = {
 
         Animations = {
             ToggleWindow = false,
-            TabAnimations = false,
+            TabSwitch = false,
         },
         TabTransitionTime = 0.22,
         TabWipeOffset = 26,
@@ -1780,7 +1783,7 @@ function Library:PlayTabWipe(Sleeve: GuiObject, Showing: boolean, OnComplete: ((
 
     local BaseZIndex = SleeveBaseZIndex[Sleeve] or Sleeve.ZIndex
 
-    if not (Library.Animations and Library.Animations.TabAnimations) then
+    if not (Library.Animations and Library.Animations.TabSwitch) then
         Sleeve.Visible = Showing
         Sleeve.GroupTransparency = Showing and 0 or 1
         Sleeve.Position = UDim2.fromScale(0, 0)
@@ -2347,7 +2350,8 @@ function Library:AddContextMenu(
     List: number?,
     ActiveCallback: (Active: boolean) -> ()?,
     IgnoreCornerRadius: boolean?,
-    SpecificCornersOnly: ("top" | "bottom" | "no_left" | "no_top_left")? -- stupid way of doing this
+    SpecificCornersOnly: ("top" | "bottom" | "no_left" | "no_top_left")?, -- stupid way of doing this
+    Animated: boolean?
 )
     local Menu
     local ParentGui = Holder:FindFirstAncestorOfClass("ScreenGui")
@@ -2445,6 +2449,9 @@ function Library:AddContextMenu(
         Signal = nil,
 
         Size = Size,
+
+        Animated = Animated == true,
+        OpenCloseTween = nil,
     }
 
     if List then
@@ -2474,12 +2481,43 @@ function Library:AddContextMenu(
                 math.floor(Holder.AbsolutePosition.Y + Offset[2])
             )
         end
-        Menu.Size = typeof(Table.Size) == "function" and Table.Size() or Table.Size
+
+        local TargetSize = typeof(Table.Size) == "function" and Table.Size() or Table.Size
+
         if typeof(ActiveCallback) == "function" then
             Library:SafeCallback(ActiveCallback, true)
         end
 
-        Menu.Visible = true
+        if Table.OpenCloseTween then
+            Table.OpenCloseTween:Cancel()
+            Table.OpenCloseTween = nil
+        end
+
+        if Table.Animated and Library.Animations and Library.Animations.Dropdown then
+            Menu.Size = UDim2.new(TargetSize.X.Scale, TargetSize.X.Offset, 0, 0)
+            Menu.Visible = true
+
+            local Info = Library.DropdownTransitionInfo
+                or TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+            local Tween = TweenService:Create(Menu, Info, { Size = TargetSize })
+            Table.OpenCloseTween = Tween
+
+            local Connection
+            Connection = Tween.Completed:Connect(function()
+                if Connection then
+                    Connection:Disconnect()
+                end
+                if Table.OpenCloseTween == Tween then
+                    Table.OpenCloseTween = nil
+                end
+            end)
+
+            Tween:Play()
+        else
+            Menu.Size = TargetSize
+            Menu.Visible = true
+        end
 
         Table.Signal = Holder:GetPropertyChangedSignal("AbsolutePosition"):Connect(function()
             if typeof(Offset) == "function" then
@@ -2504,7 +2542,6 @@ function Library:AddContextMenu(
         if CurrentMenu ~= Table then
             return
         end
-        Menu.Visible = false
 
         if Table.Signal then
             Table.Signal:Disconnect()
@@ -2514,6 +2551,37 @@ function Library:AddContextMenu(
         CurrentMenu = nil
         if typeof(ActiveCallback) == "function" then
             Library:SafeCallback(ActiveCallback, false)
+        end
+
+        if Table.OpenCloseTween then
+            Table.OpenCloseTween:Cancel()
+            Table.OpenCloseTween = nil
+        end
+
+        if Table.Animated and Library.Animations and Library.Animations.Dropdown then
+            local CurrentSize = Menu.Size
+            local CollapsedSize = UDim2.new(CurrentSize.X.Scale, CurrentSize.X.Offset, 0, 0)
+
+            local Info = Library.DropdownTransitionInfo
+                or TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+            local Tween = TweenService:Create(Menu, Info, { Size = CollapsedSize })
+            Table.OpenCloseTween = Tween
+
+            local Connection
+            Connection = Tween.Completed:Connect(function(PlaybackState)
+                if Connection then
+                    Connection:Disconnect()
+                end
+                if Table.OpenCloseTween == Tween then
+                    Table.OpenCloseTween = nil
+                end
+                Menu.Visible = false
+            end)
+
+            Tween:Play()
+        else
+            Menu.Visible = false
         end
     end
 
@@ -2541,6 +2609,11 @@ function Library:AddContextMenu(
 
         if CurrentMenu == Table then
             Table:Close()
+        end
+
+        if Table.OpenCloseTween then
+            Table.OpenCloseTween:Cancel()
+            Table.OpenCloseTween = nil
         end
 
         if Menu then
@@ -6219,7 +6292,8 @@ do
                 DropdownCorner.BottomLeftRadius = Active and UDim.new(0, 0) or UDim.new(0, Library.CornerRadius / 2)
             end,
             false,
-            "bottom"
+            "bottom",
+            true
         )
         Dropdown.Menu = MenuTable
 
@@ -8114,14 +8188,14 @@ function Library:CreateWindow(WindowInfo)
             local ToggleWindow = WindowInfo.Animations
             WindowInfo.Animations = {
                 ToggleWindow = ToggleWindow,
-                TabAnimations = ToggleWindow,
+                TabSwitch = ToggleWindow,
             }
         end
-        if typeof(WindowInfo.TabAnimations) == "boolean" and typeof(WindowInfo.Animations) ~= "table" then
+        if typeof(WindowInfo.TabSwitch) == "boolean" and typeof(WindowInfo.Animations) ~= "table" then
             WindowInfo.Animations = {}
         end
-        if typeof(WindowInfo.TabAnimations) == "boolean" and typeof(WindowInfo.Animations) == "table" and WindowInfo.Animations.TabAnimations == nil then
-            WindowInfo.Animations.TabAnimations = WindowInfo.TabAnimations
+        if typeof(WindowInfo.TabSwitch) == "boolean" and typeof(WindowInfo.Animations) == "table" and WindowInfo.Animations.TabSwitch == nil then
+            WindowInfo.Animations.TabSwitch = WindowInfo.TabSwitch
         end
     end
 
@@ -8566,10 +8640,6 @@ function Library:CreateWindow(WindowInfo)
 
     local function SetUICorner(UICorner, Corner, HalfCurrent, HalfValue, Value)
         local Current = UICorner[Corner]
-        if Current.Offset == 0 and Current.Scale == 0 then
-            return
-        end
-
         UICorner[Corner] = Current.Offset == HalfCurrent and HalfValue or Value
     end
 
