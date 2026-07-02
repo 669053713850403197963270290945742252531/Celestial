@@ -1,5 +1,4 @@
-local ESPLibrary =
-	loadstring(game:HttpGet("github.com/669053713850403197963270290945742252531/MSESP-fixed/blob/main/source.luau"))()
+local ESPLibrary = loadstring(game:HttpGet("https://raw.githubusercontent.com/mstudio45/MSESP/refs/heads/main/source.luau"))()
 local killersFolder = workspace:WaitForChild("Killers")
 
 local tracked = {}

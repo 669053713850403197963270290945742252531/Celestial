@@ -31,7 +31,7 @@ local functionsToTest = {
 }
 
 local manualChecks = {
-    "getcustomasset", "HttpGet", "loadstring", "setclipboard", "identifyexecutor", "getgenv"
+    "getcustomasset", "HttpGet", "loadstring", "setclipboard", "identifyexecutor", "getgenv", "mouse1click"
 }
 
 local function showErrorAndWait(message)

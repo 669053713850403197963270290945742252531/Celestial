@@ -1,1 +1,0 @@
-print("saktkia51 lobby script loaded")
