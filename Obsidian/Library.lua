@@ -161,71 +161,92 @@ end
 
 local Library = {
     LocalPlayer = LocalPlayer,
-    DevicePlatform = nil,
-    IsMobile = false,
     IsRobloxFocused = true,
 
+    --// Device \\--
+    DevicePlatform = nil,
+    IsMobile = false,
+
+    --// Obsidian Windows \\--
     ScreenGui = nil,
     Window = nil,
     WindowContainer = nil,
 
+    --// Search \\--
     SearchText = "",
     Searching = false,
     GlobalSearch = false,
     LastSearchTab = nil,
 
+    --// Tabs \\--
     ActiveTab = nil,
     Tabs = {},
     TabButtons = {},
+
+    --// Dependency Boxes \\--
     DependencyBoxes = {},
 
+    --// Keybinds Frame \\--
     KeybindFrame = nil,
     KeybindContainer = nil,
     KeybindToggles = {},
 
+    --// Notifications \\--
     Notifications = {},
     NotificationQueue = {},
     MaxNotifications = 10,
+    NotifySide = "Right",
+    NotifyTweenInfo = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+
+    --// Dialogues \\--
     Dialogues = {},
-    ActiveLoading = nil,
     ActiveDialog = nil,
 
+    --// Loading Window \\--
+    ActiveLoading = nil,
+
+    --// Corners \\--
     Corners = {},
     SpecificCorners = {},
 
-    ToggleKeybind = Enum.KeyCode.RightControl,
+    --// Animations \\--
     TweenInfo = TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-    NotifyTweenInfo = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+
+    TabTransitionInfo = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+    TabSwipeOffset = 26,
+    TabSwipeFrom = "bottom",
+
+    WindowAnimationInfo = TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+    DropdownTransitionInfo = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 
     Animations = {
         ToggleWindow = false,
         TabSwitch = false,
-        Dropdown = false,
+        Dropdown = false
     },
-    WindowAnimationInfo = TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 
-    TabTransitionInfo = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-    TabWipeOffset = 26,
-
-    DropdownTransitionInfo = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-
+    --// States \\--
     Toggled = false,
     Unloaded = false,
 
+    --// Elements \\--
     Labels = Labels,
     Buttons = Buttons,
     Toggles = Toggles,
     Options = Options,
 
-    NotifySide = "Right",
+    --// Options \\--
+    ToggleKeybind = Enum.KeyCode.RightControl,
+    ShowToggleFrameInKeybinds = true,
+
+    NotifyOnError = false,
     ShowCustomCursor = true,
     ForceCheckbox = false,
-    ShowToggleFrameInKeybinds = true,
-    NotifyOnError = false,
 
     CantDragForced = false,
     DraggableElements = {},
 
+    --// Signals \\--
     Signals = {},
     UnloadSignals = {},
 
@@ -234,6 +255,7 @@ local Library = {
     DPIScale = 1,
     CornerRadius = 4,
 
+    --// Scheme \\--
     IsLightTheme = false,
     Scheme = {
         BackgroundColor = Color3.fromRGB(15, 15, 15),
@@ -251,14 +273,16 @@ local Library = {
         BackgroundImage = ""
     },
 
+    --// Registry \\--
     Registry = {},
 	Scales = {},
 	ScalesOffset = {},
 
+    --// Misc \\--
     ImageManager = CustomImageManager,
     ShowCursorBinding = string.sub(tostring({}), 10),
 
-    Notify = nil -- we love luau lsp
+    Notify = nil, Toggle = nil -- we love luau lsp
 }
 
 if RunService:IsStudio() then
@@ -279,7 +303,7 @@ else
 end
 
 local Templates = {
-    --// UI \\-
+    --// UI \\--
     Frame = {
         BorderSizePixel = 0,
     },
@@ -348,13 +372,6 @@ local Templates = {
         Font = Enum.Font.Code,
         ToggleKeybind = Enum.KeyCode.RightControl,
 
-        Animations = {
-            ToggleWindow = false,
-            TabSwitch = false,
-        },
-        TabTransitionTime = 0.22,
-        TabWipeOffset = 26,
-
         ShowMobileButtons = true,
         MobileButtonsSide = "Left",
 
@@ -375,7 +392,18 @@ local Templates = {
         CompactWidthActivation = 128,
 
         --// Background \\--
-        BackgroundImage = ""
+        BackgroundImage = "",
+
+        --// Animations \\--
+        Animations = {
+            ToggleWindow = false,
+            TabSwitch = false,
+            Dropdown = false
+        },
+
+        TabTransitionTime = 0.22,
+        TabSwipeOffset = 26,
+        TabSwipeFrom = "bottom"
     },
     Dialog = {
         Title = "Dialog",
@@ -1745,92 +1773,92 @@ function Library:AddBlank(Frame: GuiObject, Size: UDim2)
     })
 end
 
-local ActiveTabWipeTweens = setmetatable({}, { __mode = "k" })
-local SleeveBaseZIndex = setmetatable({}, { __mode = "k" })
+--// Animations \\--
+local TransparencyCache = {}
+local ActiveTabTweens = setmetatable({}, { __mode = "k" })
 
-function Library:WrapTabSleeve(TabContainer: GuiObject, Parent: GuiObject)
-    local Sleeve = New("CanvasGroup", {
-        BackgroundTransparency = 1,
-        ClipsDescendants = true,
-        GroupTransparency = 0,
-        Size = UDim2.fromScale(1, 1),
-        Visible = false,
-        Parent = Parent,
-    })
-
-    TabContainer.Parent = Sleeve
-    TabContainer.Position = UDim2.fromScale(0, 0)
-    TabContainer.Size = UDim2.fromScale(1, 1)
-
-    SleeveBaseZIndex[Sleeve] = Sleeve.ZIndex
-
-    return Sleeve
-end
-
-function Library:PlayTabWipe(Sleeve: GuiObject, Showing: boolean, OnComplete: (() -> ())?)
-    if not Sleeve then
+function Library:PlayTabAnimation(TabCanvas: CanvasGroup, Showing: boolean, OnComplete: (() -> ())?)
+    if not TabCanvas then
         if OnComplete then
             OnComplete()
         end
+
         return
     end
 
-    local Existing = ActiveTabWipeTweens[Sleeve]
+    local Existing = ActiveTabTweens[TabCanvas]
     if Existing then
         Existing:Cancel()
-        ActiveTabWipeTweens[Sleeve] = nil
+        ActiveTabTweens[TabCanvas] = nil
     end
 
-    local BaseZIndex = SleeveBaseZIndex[Sleeve] or Sleeve.ZIndex
-
+    local BaseZIndex = TabCanvas.ZIndex
     if not (Library.Animations and Library.Animations.TabSwitch) then
-        Sleeve.Visible = Showing
-        Sleeve.GroupTransparency = Showing and 0 or 1
-        Sleeve.Position = UDim2.fromScale(0, 0)
-        Sleeve.ZIndex = BaseZIndex
+        TabCanvas.Visible = Showing
+        TabCanvas.GroupTransparency = Showing and 0 or 1
+        TabCanvas.Position = UDim2.fromScale(0, 0)
+        TabCanvas.ZIndex = BaseZIndex
+
         if OnComplete then
             OnComplete()
         end
+
         return
     end
 
-    local Info = Library.TabTransitionInfo or TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-    local Offset = Library.TabWipeOffset or 26
-
     if Showing then
-        Sleeve.ZIndex = BaseZIndex + 1
-        Sleeve.GroupTransparency = 1
-        Sleeve.Position = UDim2.fromOffset(Offset, 0)
-        Sleeve.Visible = true
+        local TweenInfo = Library.TabTransitionInfo or TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        local Offset = Library.TabSwipeOffset or 26
+        local SwipeFrom = string.lower(Library.TabSwipeFrom or "bottom")
+        local StartPosition
 
-        local Tween = TweenService:Create(Sleeve, Info, {
+        if SwipeFrom == "left" then
+            StartPosition = UDim2.fromOffset(-Offset, 0)
+        elseif SwipeFrom == "top" then
+            StartPosition = UDim2.fromOffset(0, -Offset)
+        elseif SwipeFrom == "right" then
+            StartPosition = UDim2.fromOffset(Offset, 0)
+        else -- bottom (Default)
+            StartPosition = UDim2.fromOffset(0, Offset)
+        end
+
+        TabCanvas.ZIndex = BaseZIndex + 1
+        TabCanvas.GroupTransparency = 1
+        TabCanvas.Position = StartPosition
+        TabCanvas.Visible = true
+
+        local Tween = TweenService:Create(TabCanvas, TweenInfo, {
             GroupTransparency = 0,
-            Position = UDim2.fromScale(0, 0),
+            Position = UDim2.fromScale(0, 0)
         })
-        ActiveTabWipeTweens[Sleeve] = Tween
+
+        ActiveTabTweens[TabCanvas] = Tween
         Tween:Play()
 
-        local Connection
-        Connection = Tween.Completed:Connect(function(PlaybackState)
+        local Connection; Connection = Tween.Completed:Connect(function(PlaybackState)
             if Connection then
                 Connection:Disconnect()
             end
-            if ActiveTabWipeTweens[Sleeve] == Tween then
-                ActiveTabWipeTweens[Sleeve] = nil
+
+            if ActiveTabTweens[TabCanvas] == Tween then
+                ActiveTabTweens[TabCanvas] = nil
             end
+
             if PlaybackState == Enum.PlaybackState.Cancelled then
                 return
             end
-            Sleeve.ZIndex = BaseZIndex
+
+            TabCanvas.ZIndex = BaseZIndex
             if OnComplete then
                 OnComplete()
             end
         end)
     else
-        Sleeve.GroupTransparency = 1
-        Sleeve.Visible = false
-        Sleeve.Position = UDim2.fromScale(0, 0)
-        Sleeve.ZIndex = BaseZIndex
+        TabCanvas.GroupTransparency = 1
+        TabCanvas.Visible = false
+        TabCanvas.Position = UDim2.fromScale(0, 0)
+        TabCanvas.ZIndex = BaseZIndex
+
         if OnComplete then
             OnComplete()
         end
@@ -2351,7 +2379,7 @@ function Library:AddContextMenu(
     ActiveCallback: (Active: boolean) -> ()?,
     IgnoreCornerRadius: boolean?,
     SpecificCornersOnly: ("top" | "bottom" | "no_left" | "no_top_left")?, -- stupid way of doing this
-    Animated: boolean?
+    AnimationType: ("Dropdown" | "none")?
 )
     local Menu
     local ParentGui = Holder:FindFirstAncestorOfClass("ScreenGui")
@@ -2450,8 +2478,18 @@ function Library:AddContextMenu(
 
         Size = Size,
 
-        Animated = Animated == true,
         OpenCloseTween = nil,
+        Animated = function()
+            if not AnimationType or AnimationType == "none" then
+                return false
+            end
+
+            if not (Library.Animations and Library.Animations[AnimationType] == true) then
+                return false
+            end
+            
+            return true, Library[string.format("%sTransitionInfo", AnimationType)] or TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        end
     }
 
     if List then
@@ -2493,28 +2531,32 @@ function Library:AddContextMenu(
             Table.OpenCloseTween = nil
         end
 
-        if Table.Animated and Library.Animations and Library.Animations.Dropdown then
-            Menu.Size = UDim2.new(TargetSize.X.Scale, TargetSize.X.Offset, 0, 0)
-            Menu.Visible = true
+        local IsAnimated, TweenInfo = Table.Animated()
+        if IsAnimated == true then
+            if AnimationType == "Dropdown" then
+                Menu.Size = UDim2.new(TargetSize.X.Scale, TargetSize.X.Offset, 0, 0)
+                Menu.Visible = true
 
-            local Info = Library.DropdownTransitionInfo
-                or TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+                local Tween = TweenService:Create(Menu, TweenInfo, { Size = TargetSize })
+                Table.OpenCloseTween = Tween
 
-            local Tween = TweenService:Create(Menu, Info, { Size = TargetSize })
-            Table.OpenCloseTween = Tween
+                local Connection; Connection = Library:GiveSignal(Tween.Completed:Once(function()
+                    if Connection then
+                        Connection:Disconnect()
+                    end
 
-            local Connection
-            Connection = Tween.Completed:Connect(function()
-                if Connection then
-                    Connection:Disconnect()
-                end
-                if Table.OpenCloseTween == Tween then
-                    Table.OpenCloseTween = nil
-                end
-            end)
+                    if Table.OpenCloseTween == Tween then
+                        Table.OpenCloseTween = nil
+                    end
+                end))
 
-            Tween:Play()
-        else
+                Tween:Play()
+            else
+                IsAnimated = false
+            end
+        end
+
+        if IsAnimated == false then
             Menu.Size = TargetSize
             Menu.Visible = true
         end
@@ -2547,8 +2589,10 @@ function Library:AddContextMenu(
             Table.Signal:Disconnect()
             Table.Signal = nil
         end
+
         Table.Active = false
         CurrentMenu = nil
+
         if typeof(ActiveCallback) == "function" then
             Library:SafeCallback(ActiveCallback, false)
         end
@@ -2558,29 +2602,34 @@ function Library:AddContextMenu(
             Table.OpenCloseTween = nil
         end
 
-        if Table.Animated and Library.Animations and Library.Animations.Dropdown then
-            local CurrentSize = Menu.Size
-            local CollapsedSize = UDim2.new(CurrentSize.X.Scale, CurrentSize.X.Offset, 0, 0)
+        local IsAnimated, TweenInfo = Table.Animated()
+        if IsAnimated == true then
+            if AnimationType == "Dropdown" then
+                local CurrentSize = Menu.Size
+                local CollapsedSize = UDim2.new(CurrentSize.X.Scale, CurrentSize.X.Offset, 0, 0)
 
-            local Info = Library.DropdownTransitionInfo
-                or TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+                local Tween = TweenService:Create(Menu, TweenInfo, { Size = CollapsedSize })
+                Table.OpenCloseTween = Tween
 
-            local Tween = TweenService:Create(Menu, Info, { Size = CollapsedSize })
-            Table.OpenCloseTween = Tween
+                local Connection; Connection = Library:GiveSignal(Tween.Completed:Once(function(PlaybackState)
+                    if Connection then
+                        Connection:Disconnect()
+                    end
 
-            local Connection
-            Connection = Tween.Completed:Connect(function(PlaybackState)
-                if Connection then
-                    Connection:Disconnect()
-                end
-                if Table.OpenCloseTween == Tween then
-                    Table.OpenCloseTween = nil
-                end
-                Menu.Visible = false
-            end)
+                    if Table.OpenCloseTween == Tween then
+                        Table.OpenCloseTween = nil
+                    end
 
-            Tween:Play()
-        else
+                    Menu.Visible = false
+                end))
+
+                Tween:Play()
+            else
+                IsAnimated = false
+            end
+        end
+
+        if IsAnimated == false then
             Menu.Visible = false
         end
     end
@@ -3394,7 +3443,7 @@ do
                     return false
                 end
 
-                if Library.IsPicking then
+                if Picking then
                     return false
                 end
 
@@ -3422,6 +3471,10 @@ do
         end
 
         function KeyPicker:DoClick()
+            if Picking then
+                return
+            end
+
             if KeyPicker.Mode == "Press" then
                 if KeyPicker.Toggled and Info.WaitForCallback == true then
                     return
@@ -3435,6 +3488,10 @@ do
 
             if IsForButton then
                 Library:SafeCallback(ParentObj.Func, KeyPicker.Toggled)
+            end
+
+            if Library.ToggleKeybind == KeyPicker and Library.Toggle then
+                Library:Toggle()
             end
 
             if KeyPicker.Mode == "Press" then
@@ -3492,6 +3549,10 @@ do
             Picking = State
             Library.IsPicking = State
 
+            if ParentObj then
+                ParentObj.AnyKeyPickerPicking = Picking
+            end
+
             if IsForButton then
                 ToggleLabel.Visible = not Picking
                 RunService.RenderStepped:Wait()
@@ -3514,139 +3575,141 @@ do
                 Picker.Size = IsForButton and UDim2.new(0, 29, 1, 0) or UDim2.fromOffset(29, 18)
             end
 
-            -- Wait for an non modifier key --
-            local Input
+            -- Wait for any input --
             local ActiveModifiers = {}
+            local CurrentInput = nil
 
-            local GetInput = nil; GetInput = function()
-                Input = UserInputService.InputBegan:Wait()
-                if UserInputService:GetFocusedTextBox() ~= nil then
+            local IsValidInput = function(InputObj)
+                if InputObj.KeyCode == Enum.KeyCode.Escape then
                     return true
                 end
 
-                if Input.KeyCode == Enum.KeyCode.Escape then
-                    return false
-                end
-
-                local IsMod = IsModifierInput(Input)
+                local IsMod = IsModifierInput(InputObj)
                 local KeyName
-                if SpecialKeysInput[Input.UserInputType] ~= nil then
-                    KeyName = SpecialKeysInput[Input.UserInputType]
-                elseif Input.UserInputType == Enum.UserInputType.Keyboard then
+                if SpecialKeysInput[InputObj.UserInputType] ~= nil then
+                    KeyName = SpecialKeysInput[InputObj.UserInputType]
+                elseif InputObj.UserInputType == Enum.UserInputType.Keyboard then
                     if IsMod then
-                        KeyName = ModifiersInput[Input.KeyCode]
+                        KeyName = ModifiersInput[InputObj.KeyCode]
                     else
-                        KeyName = Input.KeyCode.Name
+                        KeyName = InputObj.KeyCode.Name
                     end
                 end
 
                 if KeyName then
                     if IsMod then
                         if KeyPicker.WhitelistedModifiers and #KeyPicker.WhitelistedModifiers > 0 and not table.find(KeyPicker.WhitelistedModifiers, KeyName) then
-                            return GetInput()
+                            return false
                         end
 
                         if KeyPicker.BlacklistedModifiers and table.find(KeyPicker.BlacklistedModifiers, KeyName) then
-                            return GetInput()
+                            return false
                         end
                     else
                         if KeyPicker.Whitelisted and #KeyPicker.Whitelisted > 0 and not table.find(KeyPicker.Whitelisted, KeyName) then
-                            return GetInput()
+                            return false
                         end
 
                         if KeyPicker.Blacklisted and table.find(KeyPicker.Blacklisted, KeyName) then
-                            return GetInput()
+                            return false
                         end
                     end
                 end
 
-                return false
+                return true
             end
 
-            repeat
-                task.wait()
-
-                -- Wait for any input --
-                if IsForButton and SlideOverflow then
-                    KeyPicker:Display("...")
-                else
-                    Picker.Text = "..."
-                    Picker.Size = IsForButton and UDim2.new(0, 29, 1, 0) or UDim2.fromOffset(29, 18)
-                end
-
-                if GetInput() then
+            -- Wait for the first valid InputBegan --
+            while true do
+                local InputObj = UserInputService.InputBegan:Wait()
+                if UserInputService:GetFocusedTextBox() ~= nil then
                     SetPickingState(false)
                     return
                 end
 
-                -- Escape --
-                if Input.KeyCode == Enum.KeyCode.Escape then
+                if IsValidInput(InputObj) then
+                    CurrentInput = InputObj
+                    break
+                end
+            end
+
+            -- If it's a modifier key, we wait for either its release or another input --
+            while IsModifierInput(CurrentInput) do
+                if CurrentInput.KeyCode == Enum.KeyCode.Escape then
                     break
                 end
 
-                -- Handle modifier keys --
-                if IsModifierInput(Input) then
-                    local StopLoop = false
-
-                    repeat
-                        task.wait()
-                        if UserInputService:IsKeyDown(Input.KeyCode) then
-                            task.wait(0.075)
-
-                            if UserInputService:IsKeyDown(Input.KeyCode) then
-                                -- Add modifier to the key list --
-                                if not table.find(ActiveModifiers, ModifiersInput[Input.KeyCode]) then
-                                    ActiveModifiers[#ActiveModifiers + 1] = ModifiersInput[Input.KeyCode]
-                                    KeyPicker:Display(table.concat(ActiveModifiers, " + ") .. " + ...")
-                                end
-
-                                -- Wait for another input --
-                                if GetInput() then
-                                    StopLoop = true
-                                    break -- Invalid Input
-                                end
-
-                                -- Escape --
-                                if Input.KeyCode == Enum.KeyCode.Escape then
-                                    break
-                                end
-
-                                -- Stop loop if its a normal key --
-                                if not IsModifierInput(Input) then
-                                    break
-                                end
-                            else
-                                if not table.find(ActiveModifiers, ModifiersInput[Input.KeyCode]) then
-                                    break -- Modifier is meant to be used as a normal key --
-                                end
-                            end
-                        end
-                    until false
-
-                    if StopLoop then
-                        SetPickingState(false)
-                        return
-                    end
+                -- Display the current state including the current modifier key --
+                local ModName = ModifiersInput[CurrentInput.KeyCode]
+                if ModName then
+                    local text = if #ActiveModifiers > 0 then table.concat(ActiveModifiers, " + ") .. " + " .. ModName .. " + ..." else ModName .. " + ..."
+                    KeyPicker:Display(text)
                 end
 
-                break -- Input found, end loop
-            until false
+                local NextInput = nil
+                local Released = false
 
-            local Key = "Unknown"
-            if SpecialKeysInput[Input.UserInputType] ~= nil then
-                Key = SpecialKeysInput[Input.UserInputType]
-            elseif Input.UserInputType == Enum.UserInputType.Keyboard then
-                Key = Input.KeyCode == Enum.KeyCode.Escape and "None" or Input.KeyCode.Name
+                local BeganConn
+                local EndedConn
+
+                BeganConn = UserInputService.InputBegan:Connect(function(InputObj)
+                    if UserInputService:GetFocusedTextBox() ~= nil then
+                        return
+                    end
+                    if IsValidInput(InputObj) then
+                        NextInput = InputObj
+                    end
+                end)
+
+                EndedConn = UserInputService.InputEnded:Connect(function(InputObj)
+                    if InputObj.KeyCode == CurrentInput.KeyCode then
+                        Released = true
+                    end
+                end)
+
+                repeat
+                    task.wait()
+                until Released or NextInput or UserInputService:GetFocusedTextBox() ~= nil or Library.Unloaded
+
+                if BeganConn then BeganConn:Disconnect() end
+                if EndedConn then EndedConn:Disconnect() end
+
+                if UserInputService:GetFocusedTextBox() ~= nil or Library.Unloaded then
+                    SetPickingState(false)
+                    return
+                end
+
+                if Released then
+                    break -- Use modifier key as bind
+                elseif NextInput then
+                    -- Add another modifier or continue to normal key
+                    local OldModName = ModifiersInput[CurrentInput.KeyCode]
+                    if OldModName and not table.find(ActiveModifiers, OldModName) then
+                        ActiveModifiers[#ActiveModifiers + 1] = OldModName
+                    end
+
+                    CurrentInput = NextInput
+                    if CurrentInput.KeyCode == Enum.KeyCode.Escape then
+                        break
+                    end
+                end
             end
 
-            ActiveModifiers = if Input.KeyCode == Enum.KeyCode.Escape or Key == "Unknown" then {} else ActiveModifiers
+            local Key = "Unknown"
+            if SpecialKeysInput[CurrentInput.UserInputType] ~= nil then
+                Key = SpecialKeysInput[CurrentInput.UserInputType]
+            elseif CurrentInput.UserInputType == Enum.UserInputType.Keyboard then
+                Key = CurrentInput.KeyCode == Enum.KeyCode.Escape and "None" or CurrentInput.KeyCode.Name
+            end
 
-            KeyPicker.Toggled = false
+            ActiveModifiers = if CurrentInput.KeyCode == Enum.KeyCode.Escape or Key == "Unknown" then {} else ActiveModifiers
+
+            KeyPicker.Toggled = if ParentObj.Type == "Toggle" then ParentObj.Value else false
             KeyPicker:SetValue({ Key, KeyPicker.Mode, ActiveModifiers })
 
             repeat
                 task.wait()
-            until not IsInputDown(Input) or UserInputService:GetFocusedTextBox()
+            until not IsInputDown(CurrentInput) or UserInputService:GetFocusedTextBox()
 
             SetPickingState(false)
         end)
@@ -4975,7 +5038,9 @@ do
             Risky = Info.Risky,
             Disabled = Info.Disabled,
             Visible = Info.Visible,
+
             Addons = {},
+            AnyKeyPickerPicking = false,
 
             Variant = "Checkbox",
             Type = "Toggle",
@@ -5090,8 +5155,11 @@ do
             end
 
             Library:UpdateDependencyBoxes()
-            Library:SafeCallback(Toggle.Callback, Toggle.Value)
-            Library:SafeCallback(Toggle.Changed, Toggle.Value)
+
+            if not Toggle.AnyKeyPickerPicking then
+                Library:SafeCallback(Toggle.Callback, Toggle.Value)
+                Library:SafeCallback(Toggle.Changed, Toggle.Value)
+            end
         end
 
         function Toggle:SetDisabled(Disabled: boolean)
@@ -5222,7 +5290,9 @@ do
             Risky = Info.Risky,
             Disabled = Info.Disabled,
             Visible = Info.Visible,
+
             Addons = {},
+            AnyKeyPickerPicking = false,
 
             Variant = "Switch",
             Type = "Toggle",
@@ -5353,8 +5423,11 @@ do
             end
 
             Library:UpdateDependencyBoxes()
-            Library:SafeCallback(Toggle.Callback, Toggle.Value)
-            Library:SafeCallback(Toggle.Changed, Toggle.Value)
+
+            if not Toggle.AnyKeyPickerPicking then
+                Library:SafeCallback(Toggle.Callback, Toggle.Value)
+                Library:SafeCallback(Toggle.Changed, Toggle.Value)
+            end
         end
 
         function Toggle:SetDisabled(Disabled: boolean)
@@ -6293,7 +6366,7 @@ do
             end,
             false,
             "bottom",
-            true
+            "Dropdown"
         )
         Dropdown.Menu = MenuTable
 
@@ -6504,7 +6577,6 @@ do
                 if not IsDisabled then
                     Button.MouseButton1Click:Connect(function()
                         if DragSelecting then return end
-
                         local Try = not Selected
 
                         if not (Dropdown:GetActiveValues(true) == 1 and not Try and not Info.AllowNull) then
@@ -6530,7 +6602,9 @@ do
 
                     if Info.Multi then
                         Button.InputBegan:Connect(function(Input)
-                            if Input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+                            local IsValidDragStart = Input.UserInputType == Enum.UserInputType.MouseButton1
+                                or Input.UserInputType == Enum.UserInputType.Touch
+                            if not IsValidDragStart then return end
 
                             DragSelectState = not Selected
                             DragSelecting = true
@@ -6550,7 +6624,9 @@ do
                                 DragInputEndedConn:Disconnect()
                             end
                             DragInputEndedConn = UserInputService.InputEnded:Connect(function(EndInput)
-                                if EndInput.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+                                local IsValidDragEnd = EndInput.UserInputType == Enum.UserInputType.MouseButton1
+                                    or EndInput.UserInputType == Enum.UserInputType.Touch
+                                if not IsValidDragEnd then return end
                                 Library:UpdateDependencyBoxes()
                                 Library:SafeCallback(Dropdown.Callback, Dropdown.Value)
                                 Library:SafeCallback(Dropdown.Changed, Dropdown.Value)
@@ -8091,11 +8167,6 @@ function Library:Notify(...)
 
         task.delay(Library.NotifyTweenInfo.Time, function()
             Library.Notifications[FakeBackground] = nil
-
-            local Idx = table.find(Library.NotificationQueue, FakeBackground)
-            if Idx then
-                table.remove(Library.NotificationQueue, Idx)
-            end
             FakeBackground:Destroy()
         end)
     end
@@ -8140,17 +8211,6 @@ function Library:Notify(...)
     end
 
     Library.Notifications[FakeBackground] = Data
-    table.insert(Library.NotificationQueue, FakeBackground)
-
-    if Library.MaxNotifications > 0 then
-        while #Library.NotificationQueue > Library.MaxNotifications do
-            local Oldest = table.remove(Library.NotificationQueue, 1)
-            local OldestData = Library.Notifications[Oldest]
-            if OldestData and not OldestData.Persist and not OldestData.Destroyed then
-                OldestData:Destroy()
-            end
-        end
-    end
 
     FakeBackground.Visible = true
     TweenService:Create(Holder, Library.NotifyTweenInfo, {
@@ -8182,23 +8242,6 @@ function Library:Notify(...)
 end
 
 function Library:CreateWindow(WindowInfo)
-    --// Old Naming (pre-Validate) \\--
-    if typeof(WindowInfo) == "table" then
-        if typeof(WindowInfo.Animations) == "boolean" then
-            local ToggleWindow = WindowInfo.Animations
-            WindowInfo.Animations = {
-                ToggleWindow = ToggleWindow,
-                TabSwitch = ToggleWindow,
-            }
-        end
-        if typeof(WindowInfo.TabSwitch) == "boolean" and typeof(WindowInfo.Animations) ~= "table" then
-            WindowInfo.Animations = {}
-        end
-        if typeof(WindowInfo.TabSwitch) == "boolean" and typeof(WindowInfo.Animations) == "table" and WindowInfo.Animations.TabSwitch == nil then
-            WindowInfo.Animations.TabSwitch = WindowInfo.TabSwitch
-        end
-    end
-
     WindowInfo = Library:Validate(WindowInfo, Templates.Window)
     local ViewportSize: Vector2 = workspace.CurrentCamera.ViewportSize
     if RunService:IsStudio() and ViewportSize.X <= 5 and ViewportSize.Y <= 5 then
@@ -8239,18 +8282,18 @@ function Library:CreateWindow(WindowInfo)
     Library.CornerRadius = WindowInfo.CornerRadius
     Library:SetNotifySide(WindowInfo.NotifySide)
     Library.ShowCustomCursor = WindowInfo.ShowCustomCursor
-    Library.MaxNotifications = WindowInfo.MaxNotifications
     Library.Scheme.Font = WindowInfo.Font
     Library.ToggleKeybind = WindowInfo.ToggleKeybind
     Library.GlobalSearch = WindowInfo.GlobalSearch
+    
     Library.Animations = WindowInfo.Animations
-
     Library.TabTransitionInfo = TweenInfo.new(
         math.max(0, WindowInfo.TabTransitionTime or 0.22),
         Enum.EasingStyle.Quad,
         Enum.EasingDirection.Out
     )
-    Library.TabWipeOffset = WindowInfo.TabWipeOffset or 26
+    Library.TabSwipeOffset = math.max(1, WindowInfo.TabSwipeOffset or 26)
+    Library.TabSwipeFrom = WindowInfo.TabSwipeFrom or "right"
 
     local IsDefaultSearchbarSize = WindowInfo.SearchbarSize == UDim2.fromScale(1, 1)
     local MainFrame
@@ -8269,6 +8312,7 @@ function Library:CreateWindow(WindowInfo)
     local BackgroundImage
     local BottomBackground
     local FooterLabel
+    local TopBar
 
     local InitialLeftWidth = math.ceil(WindowInfo.Size.X.Offset * 0.3)
     local IsCompact = WindowInfo.SidebarCompacted
@@ -8315,6 +8359,7 @@ function Library:CreateWindow(WindowInfo)
             Position = UDim2.fromOffset(InitialLeftWidth, 0),
             Size = UDim2.new(0, 1, 1, -21),
             Parent = MainFrame,
+            ZIndex = 2
         })
 
         local BackgroundIcon = Library:GetCustomIcon(WindowInfo.BackgroundImage)
@@ -8345,7 +8390,7 @@ function Library:CreateWindow(WindowInfo)
         end
 
         --// Top Bar \\-
-        local TopBar = New("Frame", {
+        TopBar = New("Frame", {
             BackgroundTransparency = 1,
             Size = UDim2.new(1, 0, 0, 48),
             Parent = MainFrame,
@@ -8636,7 +8681,6 @@ function Library:CreateWindow(WindowInfo)
     --// Window Table \\--
     local Window = {}
     local Fading = false
-    local TransparencyCache = {}
 
     local function SetUICorner(UICorner, Corner, HalfCurrent, HalfValue, Value)
         local Current = UICorner[Corner]
@@ -8711,6 +8755,38 @@ function Library:CreateWindow(WindowInfo)
             for _, Tabbox in Tab.Tabboxes do
                 Tabbox:UpdateCorners()
             end
+        end
+    end
+
+    function Window:SetAnimations(Animations: { [string]: boolean }?, TabTransitionTime: number?, TabSwipeOffset: number?, TabSwipeFrom: ("left" | "right" | "top" | "bottom" | string)?)
+        if typeof(Animations) == "table" then
+            WindowInfo.Animations = Animations
+            Library.Animations = Animations
+        end
+
+        if typeof(TabTransitionTime) == "number" then
+            local TweenInfo = TweenInfo.new(
+                math.max(0, TabTransitionTime or 0.22),
+                Enum.EasingStyle.Quad,
+                Enum.EasingDirection.Out
+            )
+
+            WindowInfo.TabTransitionInfo = TweenInfo
+            Library.TabTransitionInfo = TweenInfo
+        end
+
+        if typeof(TabSwipeOffset) == "number" then
+            TabSwipeOffset = math.max(1, TabSwipeOffset)
+
+            WindowInfo.TabSwipeOffset = TabSwipeOffset
+            Library.TabSwipeOffset = TabSwipeOffset
+        end
+
+        if typeof(TabSwipeFrom) == "string" then
+            TabSwipeFrom = string.lower(TabSwipeFrom)
+
+            WindowInfo.TabSwipeFrom = TabSwipeFrom
+            Library.TabSwipeFrom = TabSwipeFrom
         end
     end
 
@@ -8807,7 +8883,7 @@ function Library:CreateWindow(WindowInfo)
         local TabIcon
 
         local TabContainer
-        local TabSleeve
+        local TabCanvas
         local TabLeft
         local TabRight
 
@@ -8860,12 +8936,23 @@ function Library:CreateWindow(WindowInfo)
                 Icon = TabIcon,
             })
 
+            --// Tab Canvas \\--
+            TabCanvas = New("CanvasGroup", {
+                BackgroundTransparency = 1,
+                ClipsDescendants = true,
+                GroupTransparency = 0,
+                Size = UDim2.fromScale(1, 1),
+                Visible = false,
+                Parent = Container,
+            })
+
             --// Tab Container \\--
             TabContainer = New("Frame", {
                 BackgroundTransparency = 1,
+                Position = UDim2.fromScale(0, 0),
                 Size = UDim2.fromScale(1, 1),
                 Visible = true,
-                Parent = Container,
+                Parent = TabCanvas,
             })
 
             TabLeft = New("ScrollingFrame", {
@@ -8936,8 +9023,6 @@ function Library:CreateWindow(WindowInfo)
                 })
             end
         end
-
-        TabSleeve = Library:WrapTabSleeve(TabContainer, Container)
 
         --// Warning Box \\--
         local WarningBoxHolder = New("Frame", {
@@ -9028,14 +9113,13 @@ function Library:CreateWindow(WindowInfo)
 
         --// Tab Table \\--
         local Tab = {
+            Description = Description,
+
             Connections = {},
             Destroyed = false,
 
             Window = Window,
-            Groupboxes = {},
-            Tabboxes = {},
-            DependencyGroupboxes = {},
-            Description = Description,
+            Canvas = TabCanvas,
             Sides = {
                 TabLeft,
                 TabRight,
@@ -9047,6 +9131,10 @@ function Library:CreateWindow(WindowInfo)
                 Title = "WARNING",
                 Text = "",
             },
+
+            Groupboxes = {},
+            Tabboxes = {},
+            DependencyGroupboxes = {},
         }
 
         function Tab:UpdateWarningBox(Info)
@@ -9693,12 +9781,12 @@ function Library:CreateWindow(WindowInfo)
             return Groupbox
         end
 
-        function Tab:AddLeftGroupbox(Name, IconName, Visible, Collapsed)
-            return Tab:AddGroupbox({ Side = 1, Name = Name, IconName = IconName, Visible = Visible, Collapsed = Collapsed })
+        function Tab:AddLeftGroupbox(Name, IconName, Visible, Collapsed, DisableCollapsing)
+            return Tab:AddGroupbox({ Side = 1, Name = Name, IconName = IconName, Visible = Visible, Collapsed = Collapsed, DisableCollapsing = DisableCollapsing })
         end
 
-        function Tab:AddRightGroupbox(Name, IconName, Visible, Collapsed)
-            return Tab:AddGroupbox({ Side = 2, Name = Name, IconName = IconName, Visible = Visible, Collapsed = Collapsed })
+        function Tab:AddRightGroupbox(Name, IconName, Visible, Collapsed, DisableCollapsing)
+            return Tab:AddGroupbox({ Side = 2, Name = Name, IconName = IconName, Visible = Visible, Collapsed = Collapsed, DisableCollapsing = DisableCollapsing })
         end
 
         function Tab:Hover(Hovering)
@@ -9741,7 +9829,7 @@ function Library:CreateWindow(WindowInfo)
                 Window:ShowTabInfo(Name, Description)
             end
 
-            Library:PlayTabWipe(TabSleeve, true)
+            Library:PlayTabAnimation(TabCanvas, true)
             Tab:RefreshSides()
 
             Library.ActiveTab = Tab
@@ -9755,16 +9843,18 @@ function Library:CreateWindow(WindowInfo)
             TweenService:Create(TabButton, Library.TweenInfo, {
                 BackgroundTransparency = 1,
             }):Play()
+
             TweenService:Create(TabLabel, Library.TweenInfo, {
                 TextTransparency = 0.5,
             }):Play()
+
             if TabIcon then
                 TweenService:Create(TabIcon, Library.TweenInfo, {
                     ImageTransparency = 0.5,
                 }):Play()
             end
-            Library:PlayTabWipe(TabSleeve, false)
 
+            Library:PlayTabAnimation(TabCanvas, false)
             Window:HideTabInfo()
 
             Library.ActiveTab = nil
@@ -9807,8 +9897,8 @@ function Library:CreateWindow(WindowInfo)
                 end
             end
 
-            if TabSleeve then
-                TabSleeve:Destroy()
+            if TabCanvas then
+                TabCanvas:Destroy()
             elseif TabContainer then
                 TabContainer:Destroy()
             end
@@ -9867,8 +9957,8 @@ function Library:CreateWindow(WindowInfo)
         local TabLabel
         local TabIcon
 
+        local TabCanvas
         local TabContainer
-        local TabSleeve
 
         Icon = if Icon == "key" then KeyIcon else Library:GetCustomIcon(Icon)
         do
@@ -9918,15 +10008,26 @@ function Library:CreateWindow(WindowInfo)
                 Icon = TabIcon,
             })
 
+            --// Tab Canvas \\--
+            TabCanvas = New("CanvasGroup", {
+                BackgroundTransparency = 1,
+                ClipsDescendants = true,
+                GroupTransparency = 0,
+                Size = UDim2.fromScale(1, 1),
+                Visible = false,
+                Parent = Container,
+            })
+
             --// Tab Container \\--
             TabContainer = New("ScrollingFrame", {
                 AutomaticCanvasSize = Enum.AutomaticSize.Y,
                 BackgroundTransparency = 1,
                 CanvasSize = UDim2.fromScale(0, 0),
                 ScrollBarThickness = 0,
+                Position = UDim2.fromScale(0, 0),
                 Size = UDim2.fromScale(1, 1),
-                Visible = false,
-                Parent = Container,
+                Visible = true,
+                Parent = TabCanvas,
             })
             New("UIListLayout", {
                 HorizontalAlignment = Enum.HorizontalAlignment.Center,
@@ -9941,14 +10042,15 @@ function Library:CreateWindow(WindowInfo)
             })
         end
 
-        TabSleeve = Library:WrapTabSleeve(TabContainer, Container)
-
         --// Tab Table \\--
         local Tab = {
-            Elements = {},
             Description = Description,
             IsKeyTab = true,
+
+            Elements = {},
+
             Window = Window,
+            Canvas = TabCanvas
         }
 
         function Tab:AddKeyBox(Callback)
@@ -10020,8 +10122,8 @@ function Library:CreateWindow(WindowInfo)
         end
         
         function Tab:Destroy()
-            if TabSleeve then
-                TabSleeve:Destroy()
+            if TabCanvas then
+                TabCanvas:Destroy()
             elseif TabContainer then
                 TabContainer:Destroy()
             end
@@ -10071,15 +10173,18 @@ function Library:CreateWindow(WindowInfo)
             TweenService:Create(TabButton, Library.TweenInfo, {
                 BackgroundTransparency = 0,
             }):Play()
+
             TweenService:Create(TabLabel, Library.TweenInfo, {
                 TextTransparency = 0,
             }):Play()
+
             if TabIcon then
                 TweenService:Create(TabIcon, Library.TweenInfo, {
                     ImageTransparency = 0,
                 }):Play()
             end
-            Library:PlayTabWipe(TabSleeve, true)
+
+            Library:PlayTabAnimation(TabCanvas, true)
 
             if Description then
                 Window:ShowTabInfo(Name, Description)
@@ -10098,16 +10203,18 @@ function Library:CreateWindow(WindowInfo)
             TweenService:Create(TabButton, Library.TweenInfo, {
                 BackgroundTransparency = 1,
             }):Play()
+
             TweenService:Create(TabLabel, Library.TweenInfo, {
                 TextTransparency = 0.5,
             }):Play()
+
             if TabIcon then
                 TweenService:Create(TabIcon, Library.TweenInfo, {
                     ImageTransparency = 0.5,
                 }):Play()
             end
-            Library:PlayTabWipe(TabSleeve, false)
 
+            Library:PlayTabAnimation(TabCanvas, false)
             Window:HideTabInfo()
 
             Library.ActiveTab = nil
@@ -10627,6 +10734,31 @@ function Library:CreateWindow(WindowInfo)
         return Dialog
     end
 
+    local GuiProperties = { "BackgroundTransparency" }
+    local ImageProperties = { "BackgroundTransparency", "ImageTransparency" }
+    local TextProperties = { "BackgroundTransparency", "TextTransparency" }
+    local StrokeProperties = { "Transparency" }
+
+    local function FadeInstance(Desc, Properties)
+        local Cache = TransparencyCache[Desc]
+        if not Cache then
+            Cache = {}
+            TransparencyCache[Desc] = Cache
+        end
+
+        for _, Prop in Properties do
+            if not Library.Toggled then
+                Cache[Prop] = Desc[Prop]
+            end
+
+            if Cache[Prop] ~= nil and Cache[Prop] ~= 1 then
+                TweenService:Create(Desc, Library.WindowAnimationInfo, {
+                    [Prop] = Library.Toggled and Cache[Prop] or 1,
+                }):Play()
+            end
+        end
+    end
+
     function Window:Toggle(Value: boolean?)
         if Fading then
             return
@@ -10648,7 +10780,7 @@ function Library:CreateWindow(WindowInfo)
             Library.Toggled = not Library.Toggled
         end
 
-        if Library.Animations and Library.Animations.ToggleWindow then
+        if Library.Animations and Library.Animations.ToggleWindow == true then
             local FadeTime = Library.WindowAnimationInfo.Time
             Fading = true
 
@@ -10656,44 +10788,30 @@ function Library:CreateWindow(WindowInfo)
                 MainFrame.Visible = true
             end
 
-            local function FadeInstance(Desc, Properties)
-                local Cache = TransparencyCache[Desc]
-                if not Cache then
-                    Cache = {}
-                    TransparencyCache[Desc] = Cache
+            if Library.Toggled then 
+				FadeInstance(MainFrame, { "BackgroundTransparency" })
+				task.wait(FadeTime / 2)
+			else
+				task.delay(FadeTime / 2, FadeInstance, MainFrame, { "BackgroundTransparency" })
+			end
+
+            for _, Instance in MainFrame:GetDescendants() do
+                if Instance == TopBar then
+                    continue
                 end
 
-                for _, Prop in Properties do
-                    if not Library.Toggled then
-                        Cache[Prop] = Desc[Prop]
+                if Instance:IsA("GuiObject") then
+                    local ClassName = Instance.ClassName
+                    if ClassName == "ImageLabel" or ClassName == "ImageButton" then
+                        FadeInstance(Instance, ImageProperties)
+                    elseif ClassName == "TextLabel" or ClassName == "TextBox" or ClassName == "TextButton" then
+                        FadeInstance(Instance, TextProperties)
+                    else
+                        FadeInstance(Instance, GuiProperties)
                     end
-
-                    if Cache[Prop] ~= nil and Cache[Prop] ~= 1 then
-                        TweenService:Create(Desc, Library.WindowAnimationInfo, {
-                            [Prop] = Library.Toggled and Cache[Prop] or 1,
-                        }):Play()
-                    end
+                elseif Instance.ClassName == "UIStroke" then
+                    FadeInstance(Instance, StrokeProperties)
                 end
-            end
-
-            FadeInstance(MainFrame, { "BackgroundTransparency" })
-
-            for _, Desc in MainFrame:GetDescendants() do
-                local Properties = {}
-
-                if Desc:IsA("GuiObject") then
-                    table.insert(Properties, "BackgroundTransparency")
-                end
-
-                if Desc:IsA("ImageLabel") or Desc:IsA("ImageButton") then
-                    table.insert(Properties, "ImageTransparency")
-                elseif Desc:IsA("TextLabel") or Desc:IsA("TextBox") or Desc:IsA("TextButton") then
-                    table.insert(Properties, "TextTransparency")
-                elseif Desc:IsA("UIStroke") then
-                    table.insert(Properties, "Transparency")
-                end
-
-                FadeInstance(Desc, Properties)
             end
 
             task.delay(FadeTime, function()
@@ -10867,28 +10985,8 @@ function Library:CreateWindow(WindowInfo)
     end
 
     --// Execution \\--
-    SearchBox:GetPropertyChangedSignal("Text"):Connect(function()
+    Library:GiveSignal(SearchBox:GetPropertyChangedSignal("Text"):Connect(function()
         Library:UpdateSearch(SearchBox.Text)
-    end)
-
-    Library:GiveSignal(UserInputService.InputBegan:Connect(function(Input: InputObject)
-        if Library.Unloaded then
-            return
-        end
-
-        if UserInputService:GetFocusedTextBox() then
-            return
-        end
-
-        if
-            (
-                typeof(Library.ToggleKeybind) == "table"
-                and Library.ToggleKeybind.Type == "KeyPicker"
-                and Input.KeyCode.Name == Library.ToggleKeybind.Value
-            ) or Input.KeyCode == Library.ToggleKeybind
-        then
-            Library.Toggle()
-        end
     end))
 
     Library:GiveSignal(UserInputService.WindowFocused:Connect(function()
@@ -11678,11 +11776,13 @@ function Library:Unload()
     table.clear(Library.SpecificCorners)
 
     table.clear(Library.Notifications)
-    table.clear(Library.NotificationQueue)
     table.clear(Library.Dialogues)
     table.clear(Library.DraggableElements)
     table.clear(Library.KeybindToggles)
     table.clear(Library.DependencyBoxes)
+
+    table.clear(TransparencyCache)
+    table.clear(ActiveTabTweens)
     
     Library.Toggle = function(...) end
     Library.ScreenGui = nil
