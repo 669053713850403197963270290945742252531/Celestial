@@ -1107,6 +1107,7 @@ function Library:SetDPIScale(DPIScale: number)
     for _, Notification in Library.Notifications do
         Notification:Resize()
     end
+    Library:UpdateNotificationPositions(true)
 end
 
 function Library:GiveSignal(Connection: RBXScriptConnection | RBXScriptSignal)
@@ -1361,7 +1362,6 @@ end
 
 --// Notification
 local NotificationArea
-local NotificationList
 do
     NotificationArea = New("Frame", {
         AnchorPoint = Vector2.new(1, 0),
@@ -1376,12 +1376,33 @@ do
             Parent = NotificationArea,
         })
     )
+end
 
-    NotificationList = New("UIListLayout", {
-        HorizontalAlignment = Enum.HorizontalAlignment.Right,
-        Padding = UDim.new(0, 8),
-        Parent = NotificationArea,
-    })
+--// Notification Stack
+Library.NotifyOrder = {}
+
+function Library:UpdateNotificationPositions(Snap)
+    local Left = Library.NotifySide:lower() == "left"
+    local XScale = Left and 0 or 1
+    local RunningY = 0
+
+    for _, FakeBg in Library.NotifyOrder do
+        local Data = Library.Notifications[FakeBg]
+        if Data and FakeBg.Parent then
+            local Target = UDim2.new(XScale, 0, 0, RunningY)
+
+            if Snap or not Data.PositionInitialized then
+                FakeBg.Position = Target
+                Data.PositionInitialized = true
+            elseif FakeBg.Position ~= Target then
+                TweenService:Create(FakeBg, Library.NotifyTweenInfo, {
+                    Position = Target,
+                }):Play()
+            end
+
+            RunningY += FakeBg.AbsoluteSize.Y + 8
+        end
+    end
 end
 
 --// Lib Functions \\--
@@ -7926,15 +7947,19 @@ end
 function Library:SetNotifySide(Side: string)
     Library.NotifySide = Side
 
-    if Side:lower() == "left" then
+    local Left = Side:lower() == "left"
+    if Left then
         NotificationArea.AnchorPoint = Vector2.new(0, 0)
         NotificationArea.Position = UDim2.fromOffset(6, 6)
-        NotificationList.HorizontalAlignment = Enum.HorizontalAlignment.Left
     else
         NotificationArea.AnchorPoint = Vector2.new(1, 0)
         NotificationArea.Position = UDim2.new(1, -6, 0, 6)
-        NotificationList.HorizontalAlignment = Enum.HorizontalAlignment.Right
     end
+
+    for FakeBg in Library.Notifications do
+        FakeBg.AnchorPoint = Left and Vector2.new(0, 0) or Vector2.new(1, 0)
+    end
+    Library:UpdateNotificationPositions(true)
 end
 
 function Library:Notify(...)
@@ -7978,6 +8003,7 @@ function Library:Notify(...)
     end
 
     local FakeBackground = New("Frame", {
+        AnchorPoint = Library.NotifySide:lower() == "left" and Vector2.new(0, 0) or Vector2.new(1, 0),
         AutomaticSize = Enum.AutomaticSize.Y,
         BackgroundTransparency = 1,
         Size = UDim2.fromScale(1, 0),
@@ -8141,6 +8167,10 @@ function Library:Notify(...)
         end
 
         FakeBackground.Size = UDim2.fromOffset(math.max(TitleX, DescX) + 24 + ExtraWidth, 0)
+
+        if Library.Notifications[FakeBackground] then
+            Library:UpdateNotificationPositions()
+        end
     end
 
     function Data:ChangeTitle(Text)
@@ -8177,6 +8207,14 @@ function Library:Notify(...)
             DeleteConnection:Disconnect()
         end
 
+        for Index, FakeBg in Library.NotifyOrder do
+            if FakeBg == FakeBackground then
+                table.remove(Library.NotifyOrder, Index)
+                break
+            end
+        end
+        Library:UpdateNotificationPositions()
+
         TweenService
             :Create(Holder, Library.NotifyTweenInfo, {
                 Position = Library.NotifySide:lower() == "left" and UDim2.new(-1, -8, 0, -2) or UDim2.new(1, 8, 0, -2),
@@ -8185,6 +8223,11 @@ function Library:Notify(...)
 
         task.delay(Library.NotifyTweenInfo.Time, function()
             Library.Notifications[FakeBackground] = nil
+
+            local Idx = table.find(Library.NotificationQueue, FakeBackground)
+            if Idx then
+                table.remove(Library.NotificationQueue, Idx)
+            end
             FakeBackground:Destroy()
         end)
     end
@@ -8228,7 +8271,23 @@ function Library:Notify(...)
         }):Destroy()
     end
 
+    Data.Holder = Holder
+
     Library.Notifications[FakeBackground] = Data
+    
+    table.insert(Library.NotificationQueue, FakeBackground)
+
+    if Library.MaxNotifications > 0 then
+        while #Library.NotificationQueue > Library.MaxNotifications do
+            local Oldest = table.remove(Library.NotificationQueue, 1)
+            local OldestData = Library.Notifications[Oldest]
+            if OldestData and not OldestData.Persist and not OldestData.Destroyed then
+                OldestData:Destroy()
+            end
+        end
+    end
+    table.insert(Library.NotifyOrder, FakeBackground)
+    Library:UpdateNotificationPositions()
 
     FakeBackground.Visible = true
     TweenService:Create(Holder, Library.NotifyTweenInfo, {
@@ -8300,6 +8359,7 @@ function Library:CreateWindow(WindowInfo)
     Library.CornerRadius = WindowInfo.CornerRadius
     Library:SetNotifySide(WindowInfo.NotifySide)
     Library.ShowCustomCursor = WindowInfo.ShowCustomCursor
+    Library.MaxNotifications = WindowInfo.MaxNotifications
     Library.Scheme.Font = WindowInfo.Font
     Library.ToggleKeybind = WindowInfo.ToggleKeybind
     Library.GlobalSearch = WindowInfo.GlobalSearch
@@ -11862,6 +11922,8 @@ function Library:Unload()
     table.clear(Library.SpecificCorners)
 
     table.clear(Library.Notifications)
+    table.clear(Library.NotificationQueue)
+    table.clear(Library.NotifyOrder)
     table.clear(Library.Dialogues)
     table.clear(Library.DraggableElements)
     table.clear(Library.KeybindToggles)
