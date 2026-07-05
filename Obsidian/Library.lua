@@ -218,11 +218,16 @@ local Library = {
 
     WindowAnimationInfo = TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
     DropdownTransitionInfo = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+    GroupboxTweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+    RotatingChevronTweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+    KeyPickerMenuTransitionInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 
     Animations = {
         ToggleWindow = false,
         TabSwitch = false,
-        Dropdown = false
+        Dropdown = false,
+        Groupbox = false,
+        KeyPickerMenu = false,
     },
 
     --// States \\--
@@ -398,7 +403,9 @@ local Templates = {
         Animations = {
             ToggleWindow = false,
             TabSwitch = false,
-            Dropdown = false
+            Dropdown = false,
+            Groupbox = false,
+            KeyPickerMenu = false,
         },
 
         TabTransitionTime = 0.22,
@@ -2379,7 +2386,7 @@ function Library:AddContextMenu(
     ActiveCallback: (Active: boolean) -> ()?,
     IgnoreCornerRadius: boolean?,
     SpecificCornersOnly: ("top" | "bottom" | "no_left" | "no_top_left")?, -- stupid way of doing this
-    AnimationType: ("Dropdown" | "none")?
+    AnimationType: ("Dropdown" | "Groupbox" | "KeyPickerMenu" | "none")?
 )
     local Menu
     local ParentGui = Holder:FindFirstAncestorOfClass("ScreenGui")
@@ -2479,6 +2486,7 @@ function Library:AddContextMenu(
         Size = Size,
 
         OpenCloseTween = nil,
+        AutoSizeY = List == 1,
         Animated = function()
             if not AnimationType or AnimationType == "none" then
                 return false
@@ -2533,27 +2541,34 @@ function Library:AddContextMenu(
 
         local IsAnimated, TweenInfo = Table.Animated()
         if IsAnimated == true then
-            if AnimationType == "Dropdown" then
-                Menu.Size = UDim2.new(TargetSize.X.Scale, TargetSize.X.Offset, 0, 0)
-                Menu.Visible = true
-
-                local Tween = TweenService:Create(Menu, TweenInfo, { Size = TargetSize })
-                Table.OpenCloseTween = Tween
-
-                local Connection; Connection = Library:GiveSignal(Tween.Completed:Once(function()
-                    if Connection then
-                        Connection:Disconnect()
-                    end
-
-                    if Table.OpenCloseTween == Tween then
-                        Table.OpenCloseTween = nil
-                    end
-                end))
-
-                Tween:Play()
-            else
-                IsAnimated = false
+            local OpenSize = TargetSize
+            if Table.AutoSizeY then
+                local FullHeight = Menu.AbsoluteSize.Y
+                Menu.AutomaticSize = Enum.AutomaticSize.None
+                OpenSize = UDim2.new(TargetSize.X.Scale, TargetSize.X.Offset, 0, FullHeight)
             end
+
+            Menu.Size = UDim2.new(OpenSize.X.Scale, OpenSize.X.Offset, 0, 0)
+            Menu.Visible = true
+
+            local Tween = TweenService:Create(Menu, TweenInfo, { Size = OpenSize })
+            Table.OpenCloseTween = Tween
+
+            local Connection; Connection = Library:GiveSignal(Tween.Completed:Once(function()
+                if Connection then
+                    Connection:Disconnect()
+                end
+
+                if Table.OpenCloseTween == Tween then
+                    Table.OpenCloseTween = nil
+
+                    if Table.AutoSizeY then
+                        Menu.AutomaticSize = Enum.AutomaticSize.Y
+                    end
+                end
+            end))
+
+            Tween:Play()
         end
 
         if IsAnimated == false then
@@ -2604,29 +2619,32 @@ function Library:AddContextMenu(
 
         local IsAnimated, TweenInfo = Table.Animated()
         if IsAnimated == true then
-            if AnimationType == "Dropdown" then
-                local CurrentSize = Menu.Size
-                local CollapsedSize = UDim2.new(CurrentSize.X.Scale, CurrentSize.X.Offset, 0, 0)
-
-                local Tween = TweenService:Create(Menu, TweenInfo, { Size = CollapsedSize })
-                Table.OpenCloseTween = Tween
-
-                local Connection; Connection = Library:GiveSignal(Tween.Completed:Once(function(PlaybackState)
-                    if Connection then
-                        Connection:Disconnect()
-                    end
-
-                    if Table.OpenCloseTween == Tween then
-                        Table.OpenCloseTween = nil
-                    end
-
-                    Menu.Visible = false
-                end))
-
-                Tween:Play()
-            else
-                IsAnimated = false
+            if Table.AutoSizeY then
+                Menu.AutomaticSize = Enum.AutomaticSize.None
             end
+
+            local CurrentSize = Menu.Size
+            local CollapsedSize = UDim2.new(CurrentSize.X.Scale, CurrentSize.X.Offset, 0, 0)
+
+            local Tween = TweenService:Create(Menu, TweenInfo, { Size = CollapsedSize })
+            Table.OpenCloseTween = Tween
+
+            local Connection; Connection = Library:GiveSignal(Tween.Completed:Once(function(PlaybackState)
+                if Connection then
+                    Connection:Disconnect()
+                end
+
+                if Table.OpenCloseTween == Tween then
+                    Table.OpenCloseTween = nil
+                    Menu.Visible = false
+
+                    if Table.AutoSizeY then
+                        Menu.AutomaticSize = Enum.AutomaticSize.Y
+                    end
+                end
+            end))
+
+            Tween:Play()
         end
 
         if IsAnimated == false then
@@ -3241,7 +3259,7 @@ do
         end, 1, function(Active: boolean)
             PickerCorner.TopRightRadius = Active and UDim.new(0, 0) or UDim.new(0, Library.CornerRadius / 2)
             PickerCorner.BottomRightRadius = Active and UDim.new(0, 0) or UDim.new(0, Library.CornerRadius / 2)
-        end, false, if TotalModeButtons == 1 then "no_left" else "no_top_left")
+        end, false, if TotalModeButtons == 1 then "no_left" else "no_top_left", "KeyPickerMenu")
         KeyPicker.Menu = MenuTable
 
         for Index, Mode in Info.Modes do
@@ -9687,12 +9705,41 @@ function Library:CreateWindow(WindowInfo)
 
                 Tab = Tab,
                 DependencyBoxes = {},
-                Elements = {}
+                Elements = {},
+                ResizeTween = nil,
+                ChevronTween = nil
             }
 
             function Groupbox:Resize()
-                GroupboxHolder.Size = UDim2.new(1, 0, 0, if Groupbox.Collapsed then 34 else (GroupboxList.AbsoluteContentSize.Y / Library.DPIScale) + 49)
+                local TargetSize = UDim2.new(1, 0, 0, if Groupbox.Collapsed then 34 else (GroupboxList.AbsoluteContentSize.Y / Library.DPIScale) + 49)
                 GroupboxLine.Visible = not Groupbox.Collapsed
+
+                if Groupbox.ResizeTween then
+                    Groupbox.ResizeTween:Cancel()
+                    Groupbox.ResizeTween = nil
+                end
+
+                if Library.Animations and Library.Animations.Groupbox then
+                    local Info = Library.GroupboxTweenInfo
+                        or TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+                    local Tween = TweenService:Create(GroupboxHolder, Info, { Size = TargetSize })
+                    Groupbox.ResizeTween = Tween
+
+                    local Connection
+                    Connection = Tween.Completed:Connect(function()
+                        if Connection then
+                            Connection:Disconnect()
+                        end
+                        if Groupbox.ResizeTween == Tween then
+                            Groupbox.ResizeTween = nil
+                        end
+                    end)
+
+                    Tween:Play()
+                else
+                    GroupboxHolder.Size = TargetSize
+                end
             end
 
             function Groupbox:SetCollapsed(Collapsed: boolean)
@@ -9700,7 +9747,36 @@ function Library:CreateWindow(WindowInfo)
                 Groupbox.Collapsed = Collapsed
 
                 GroupboxContainer.Visible = not Collapsed
-                GroupboxCollapseArrow.Rotation = if Collapsed then 0 else 180
+
+                local TargetRotation = if Collapsed then 0 else 180
+
+                if Groupbox.ChevronTween then
+                    Groupbox.ChevronTween:Cancel()
+                    Groupbox.ChevronTween = nil
+                end
+
+                if Library.Animations and Library.Animations.Groupbox then
+                    local ChevronInfo = Library.GroupboxTweenInfo
+                        or TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+
+                    local Tween = TweenService:Create(GroupboxCollapseArrow, ChevronInfo, { Rotation = TargetRotation })
+                    Groupbox.ChevronTween = Tween
+
+                    local Connection
+                    Connection = Tween.Completed:Connect(function()
+                        if Connection then
+                            Connection:Disconnect()
+                        end
+                        if Groupbox.ChevronTween == Tween then
+                            Groupbox.ChevronTween = nil
+                        end
+                    end)
+
+                    Tween:Play()
+                else
+                    GroupboxCollapseArrow.Rotation = TargetRotation
+                end
+
                 Groupbox:Resize()
             end
 
@@ -9711,6 +9787,16 @@ function Library:CreateWindow(WindowInfo)
 
             function Groupbox:Destroy()
                 Groupbox.Destroyed = true
+
+                if Groupbox.ResizeTween then
+                    Groupbox.ResizeTween:Cancel()
+                    Groupbox.ResizeTween = nil
+                end
+
+                if Groupbox.ChevronTween then
+                    Groupbox.ChevronTween:Cancel()
+                    Groupbox.ChevronTween = nil
+                end
 
                 if Groupbox.Connections then
                     for _, Connection in Groupbox.Connections do
