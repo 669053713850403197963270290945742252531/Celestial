@@ -493,6 +493,7 @@ local Templates = {
         ValueImages = {},
 
         Multi = false,
+        DragSelect = false,
         MaxVisibleDropdownItems = 8,
 
         Callback = function() end,
@@ -6244,6 +6245,7 @@ do
             ValueImages = Info.ValueImages,
 
             Multi = Info.Multi,
+            DragSelect = Info.Multi and Info.DragSelect or false,
 
             SpecialType = Info.SpecialType,
             ExcludeLocalPlayer = Info.ExcludeLocalPlayer,
@@ -6641,9 +6643,8 @@ do
 
                     if Info.Multi then
                         Button.InputBegan:Connect(function(Input)
-                            local IsValidDragStart = Input.UserInputType == Enum.UserInputType.MouseButton1
-                                or Input.UserInputType == Enum.UserInputType.Touch
-                            if not IsValidDragStart then return end
+                            if not Dropdown.DragSelect then return end
+                            if not IsMouseInput(Input) then return end
 
                             DragSelectState = not Selected
                             DragSelecting = true
@@ -6663,9 +6664,7 @@ do
                                 DragInputEndedConn:Disconnect()
                             end
                             DragInputEndedConn = UserInputService.InputEnded:Connect(function(EndInput)
-                                local IsValidDragEnd = EndInput.UserInputType == Enum.UserInputType.MouseButton1
-                                    or EndInput.UserInputType == Enum.UserInputType.Touch
-                                if not IsValidDragEnd then return end
+                                if not IsMouseInput(EndInput) then return end
                                 Library:UpdateDependencyBoxes()
                                 Library:SafeCallback(Dropdown.Callback, Dropdown.Value)
                                 Library:SafeCallback(Dropdown.Changed, Dropdown.Value)
@@ -6817,6 +6816,14 @@ do
 
             Label.Text = Text and Text or ""
             Label.Visible = not not Text
+        end
+
+        function Dropdown:SetDragSelect(Value: boolean)
+            Dropdown.DragSelect = Info.Multi and Value or false
+
+            if not Dropdown.DragSelect then
+                StopDragSelect()
+            end
         end
 
         local ToggleDropdown = function()
