@@ -8762,6 +8762,10 @@ function Library:CreateWindow(WindowInfo)
 
     local function SetUICorner(UICorner, Corner, HalfCurrent, HalfValue, Value)
         local Current = UICorner[Corner]
+        if Current.Offset == 0 and Current.Scale == 0 then
+            return
+        end
+
         UICorner[Corner] = Current.Offset == HalfCurrent and HalfValue or Value
     end
 
