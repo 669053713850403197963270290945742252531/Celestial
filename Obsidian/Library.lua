@@ -8868,6 +8868,26 @@ function Library:CreateWindow(WindowInfo)
         end
     end
 
+    function Window:SetMaxNotifications(Amount: number)
+        assert(typeof(Amount) == "number", "Expected number for Amount got: " .. typeof(Amount))
+
+        Amount = math.floor(Amount)
+
+        WindowInfo.MaxNotifications = Amount
+        Library.MaxNotifications = Amount
+
+        -- // Trim any notifications that already exceed the new limit \\ --
+        if Amount > 0 then
+            while #Library.NotificationQueue > Amount do
+                local Oldest = table.remove(Library.NotificationQueue, 1)
+                local OldestData = Library.Notifications[Oldest]
+                if OldestData and not OldestData.Persist and not OldestData.Destroyed then
+                    OldestData:Destroy()
+                end
+            end
+        end
+    end
+
     local function ApplyCompact()
         IsCompact = Window:GetSidebarWidth() == WindowInfo.SidebarCompactWidth
         if WindowInfo.DisableCompactingSnap then
