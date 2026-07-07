@@ -560,6 +560,8 @@ local Templates = {
     ColorPicker = {
         Default = Color3.new(1, 1, 1),
 
+        Resizable = true,
+
         Callback = function() end,
         Changed = function() end,
     },
@@ -4075,6 +4077,133 @@ do
             })
         end
 
+        --// Resizing \\--
+        local ResizeGrabber
+        if Info.Resizable then
+            local BaseSquareSize = 200
+            local BaseBarWidth = 16
+            local BasePadding = 6
+            local MinSquareSize = 140
+            local MaxSquareSize = 320
+
+            ColorPicker.SquareSize = BaseSquareSize
+
+            local function GetBarWidth(SquareSize)
+                return math.clamp(math.floor((SquareSize / BaseSquareSize) * BaseBarWidth + 0.5), 12, 24)
+            end
+
+            local function GetContentWidth(SquareSize)
+                local BarWidth = GetBarWidth(SquareSize)
+                local Width = SquareSize + BarWidth + BasePadding
+                if Info.Transparency then
+                    Width += (BarWidth + BasePadding)
+                end
+
+                return Width + 12
+            end
+
+            local FixedVerticalOverhead = 90
+
+            local function ClampToViewport(NewSquareSize)
+                local Camera = workspace.CurrentCamera
+                if not Camera then
+                    return NewSquareSize
+                end
+
+                local ViewportSize = Camera.ViewportSize
+                local ScreenMargin = 12
+
+                local MaxWidth = ViewportSize.X - ColorMenu.Menu.AbsolutePosition.X - ScreenMargin
+                local MaxHeight = ViewportSize.Y - ColorMenu.Menu.AbsolutePosition.Y - ScreenMargin - FixedVerticalOverhead
+
+                while NewSquareSize > MinSquareSize
+                    and (GetContentWidth(NewSquareSize) > MaxWidth or NewSquareSize > MaxHeight) do
+                    NewSquareSize -= 4
+                end
+
+                return NewSquareSize
+            end
+
+            local function UpdateColorMenuSize(NewSquareSize)
+                NewSquareSize = math.clamp(math.floor(NewSquareSize + 0.5), MinSquareSize, MaxSquareSize)
+                NewSquareSize = ClampToViewport(NewSquareSize)
+
+                if NewSquareSize == ColorPicker.SquareSize then
+                    return
+                end
+
+                local BarWidth = GetBarWidth(NewSquareSize)
+                local CursorSize = math.clamp(math.floor((NewSquareSize / BaseSquareSize) * 6 + 0.5), 4, 10)
+
+                ColorHolder.Size = UDim2.new(1, 0, 0, NewSquareSize)
+                SatVipMap.Size = UDim2.fromOffset(NewSquareSize, NewSquareSize)
+                SatVibCursor.Size = UDim2.fromOffset(CursorSize, CursorSize)
+                HueSelector.Size = UDim2.new(0, BarWidth, 0, NewSquareSize)
+
+                if TransparencySelector then
+                    TransparencySelector.Size = UDim2.new(0, BarWidth, 0, NewSquareSize)
+                end
+
+                ColorPicker.SquareSize = NewSquareSize
+                ColorMenu:SetSize(UDim2.new(0, GetContentWidth(NewSquareSize), 0, 0))
+            end
+
+            local IconSize = 12
+            local GrabberSize = Library.IsMobile and 28 or 16
+            local GrabberInset = 2
+
+            ResizeGrabber = New("TextButton", {
+                AnchorPoint = Vector2.new(1, 1),
+                BackgroundTransparency = 1,
+                Size = UDim2.fromOffset(GrabberSize, GrabberSize),
+                Text = "",
+                Visible = false,
+                ZIndex = ColorMenu.Menu.ZIndex + 1,
+                Parent = ColorMenu.Menu.Parent,
+            })
+            New("ImageLabel", {
+                AnchorPoint = Vector2.new(1, 1),
+                BackgroundTransparency = 1,
+                Image = ResizeIcon and ResizeIcon.Url or "",
+                ImageColor3 = "FontColor",
+                ImageRectOffset = ResizeIcon and ResizeIcon.ImageRectOffset or Vector2.zero,
+                ImageRectSize = ResizeIcon and ResizeIcon.ImageRectSize or Vector2.zero,
+                ImageTransparency = 0.35,
+                Position = UDim2.fromScale(1, 1),
+                Size = UDim2.fromOffset(IconSize, IconSize),
+                Parent = ResizeGrabber,
+            })
+
+            local function UpdateGrabberPosition()
+                ResizeGrabber.Position = UDim2.fromOffset(
+                    ColorMenu.Menu.AbsolutePosition.X + ColorMenu.Menu.AbsoluteSize.X - GrabberInset,
+                    ColorMenu.Menu.AbsolutePosition.Y + ColorMenu.Menu.AbsoluteSize.Y - GrabberInset
+                )
+                ResizeGrabber.Visible = ColorMenu.Menu.Visible
+            end
+
+            table.insert(ColorPicker.Connections, ColorMenu.Menu:GetPropertyChangedSignal("AbsolutePosition"):Connect(UpdateGrabberPosition))
+            table.insert(ColorPicker.Connections, ColorMenu.Menu:GetPropertyChangedSignal("AbsoluteSize"):Connect(UpdateGrabberPosition))
+            table.insert(ColorPicker.Connections, ColorMenu.Menu:GetPropertyChangedSignal("Visible"):Connect(UpdateGrabberPosition))
+
+            table.insert(ColorPicker.Connections, ResizeGrabber.InputBegan:Connect(function(Input: InputObject)
+                Library.CantDragForced = true
+                local StartMouse = Vector2.new(Mouse.X, Mouse.Y)
+                local StartSquareSize = ColorPicker.SquareSize
+
+                while IsDragInput(Input) and not ColorPicker.Destroyed do
+                    local Delta = Vector2.new(Mouse.X, Mouse.Y) - StartMouse
+                    UpdateColorMenuSize(StartSquareSize + math.max(Delta.X, Delta.Y))
+
+                    RunService.RenderStepped:Wait()
+                end
+
+                Library.CantDragForced = false
+            end))
+
+            UpdateGrabberPosition()
+        end
+
         local InfoHolder = New("Frame", {
             BackgroundTransparency = 1,
             Size = UDim2.new(1, 0, 0, 20),
@@ -4162,6 +4291,10 @@ do
 
             ColorPicker.SetValueRGB = function(...) end --// make luau lsp shut up
             CreateButton("Paste color", function()
+                if not Library.CopiedColor then
+                    return
+                end
+
                 ColorPicker:SetValueRGB(Library.CopiedColor[1], Library.CopiedColor[2])
             end)
 
@@ -4179,6 +4312,69 @@ do
                 end)
             end
         end
+
+        --// Copy/Paste Buttons \\--
+        local ActionHolder = New("Frame", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 20),
+            Parent = ColorMenu.Menu,
+        })
+        New("UIListLayout", {
+            FillDirection = Enum.FillDirection.Horizontal,
+            HorizontalFlex = Enum.UIFlexAlignment.Fill,
+            Padding = UDim.new(0, 8),
+            Parent = ActionHolder,
+        })
+
+        local CopyColorButton = New("TextButton", {
+            BackgroundColor3 = "MainColor",
+            Size = UDim2.fromScale(1, 1),
+            Text = "Copy color",
+            TextSize = 14,
+            Parent = ActionHolder,
+        })
+        New("UIStroke", {
+            Color = "OutlineColor",
+            Parent = CopyColorButton,
+        })
+        table.insert(
+            Library.Corners,
+            New("UICorner", {
+                CornerRadius = UDim.new(0, Library.CornerRadius / 2),
+                Parent = CopyColorButton,
+            })
+        )
+
+        local PasteColorButton = New("TextButton", {
+            BackgroundColor3 = "MainColor",
+            Size = UDim2.fromScale(1, 1),
+            Text = "Paste color",
+            TextSize = 14,
+            Parent = ActionHolder,
+        })
+        New("UIStroke", {
+            Color = "OutlineColor",
+            Parent = PasteColorButton,
+        })
+        table.insert(
+            Library.Corners,
+            New("UICorner", {
+                CornerRadius = UDim.new(0, Library.CornerRadius / 2),
+                Parent = PasteColorButton,
+            })
+        )
+
+        table.insert(ColorPicker.Connections, CopyColorButton.MouseButton1Click:Connect(function()
+            Library.CopiedColor = { ColorPicker.Value, ColorPicker.Transparency }
+        end))
+
+        table.insert(ColorPicker.Connections, PasteColorButton.MouseButton1Click:Connect(function()
+            if not Library.CopiedColor then
+                return
+            end
+
+            ColorPicker:SetValueRGB(Library.CopiedColor[1], Library.CopiedColor[2])
+        end))
 
         --// End \\--
         function ColorPicker:SetHSVFromRGB(Color)
@@ -4351,6 +4547,10 @@ do
 
             if ColorMenu then 
                 ColorMenu:Destroy() 
+            end
+
+            if ResizeGrabber then
+                ResizeGrabber:Destroy()
             end
 
             if ContextMenu then 
