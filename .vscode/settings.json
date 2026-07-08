@@ -1,4 +1,23 @@
 {
     "luau-lsp.sourcemap.rojoProjectFile": "",
-    "stylua.targetReleaseVersion": "latest"
+    "stylua.targetReleaseVersion": "latest",
+    "conventionalCommits.scopes": [
+        "window",
+        "groupbox",
+        "tabbox",
+        "label",
+        "button",
+        "toggle",
+        "checkbox",
+        "input",
+        "slider",
+        "dropdown",
+        "keypicker",
+        "colorpicker",
+        "notifications",
+        "dialog",
+        "search",
+        "thememanager",
+        "savemanager"
+    ]
 }
