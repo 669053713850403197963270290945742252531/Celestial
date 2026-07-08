@@ -193,8 +193,6 @@ local Library = {
 
     --// Notifications \\--
     Notifications = {},
-    NotificationQueue = {},
-    MaxNotifications = 10,
     NotifySide = "Right",
     NotifyTweenInfo = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 
@@ -218,16 +216,17 @@ local Library = {
 
     WindowAnimationInfo = TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
     DropdownTransitionInfo = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+    KeyPickerTransitionInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+
     GroupboxTweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
     RotatingChevronTweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-    KeyPickerTransitionInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 
     Animations = {
         ToggleWindow = false,
         TabSwitch = false,
-        Dropdown = false,
         Groupbox = false,
-        KeyPicker = false,
+        Dropdown = false,
+        KeyPicker = false
     },
 
     --// States \\--
@@ -372,7 +371,6 @@ local Templates = {
         CornerRadius = 4,
         NotifySide = "Right",
         ShowCustomCursor = true,
-        MaxNotifications = 10,
 
         Font = Enum.Font.Code,
         ToggleKeybind = Enum.KeyCode.RightControl,
@@ -403,9 +401,9 @@ local Templates = {
         Animations = {
             ToggleWindow = false,
             TabSwitch = false,
-            Dropdown = false,
             Groupbox = false,
-            KeyPicker = false,
+            Dropdown = false,
+            KeyPicker = false
         },
 
         TabTransitionTime = 0.22,
@@ -560,8 +558,6 @@ local Templates = {
     ColorPicker = {
         Default = Color3.new(1, 1, 1),
 
-        Resizable = true,
-
         Callback = function() end,
         Changed = function() end,
     },
@@ -656,6 +652,10 @@ local function IsMouseClickInput(Input: InputObject)
         Input.UserInputType == Enum.UserInputType.MouseButton2 or 
         Input.UserInputType == Enum.UserInputType.MouseButton3
 end
+local function IsMovementInput(Input: InputObject)
+    return (Input.UserInputType == Enum.UserInputType.MouseMovement or Input.UserInputType == Enum.UserInputType.Touch)
+        and Library.IsRobloxFocused
+end
 
 local function GetTableSize(Table: { [any]: any })
     local Size = 0
@@ -666,12 +666,18 @@ local function GetTableSize(Table: { [any]: any })
 
     return Size
 end
-local function StopTween(Tween: TweenBase)
-    if not (Tween and Tween.PlaybackState == Enum.PlaybackState.Playing) then
+local function StopTween(Tween: TweenBase, Destroy: boolean?)
+    if not Tween then
         return
     end
 
-    Tween:Cancel()
+    if Tween.PlaybackState == Enum.PlaybackState.Playing then
+        Tween:Cancel()
+    end
+
+    if Destroy == true then
+        pcall(Tween.Destroy, Tween)
+    end
 end
 local function Trim(Text: string)
     return Text:match("^%s*(.-)%s*$")
@@ -1110,6 +1116,7 @@ function Library:SetDPIScale(DPIScale: number)
     for _, Notification in Library.Notifications do
         Notification:Resize()
     end
+
     Library:UpdateNotificationPositions(true)
 end
 
@@ -1287,12 +1294,6 @@ local function ParentUI(UI: Instance, SkipHiddenUI: boolean?)
     SafeParentUI(UI, gethui)
 end
 
-for _, prevUI in gethui():GetChildren() do
-    if prevUI:IsA("ScreenGui") and prevUI.Name == "Obsidian" then
-        prevUI:Destroy()
-    end
-end
-
 local ScreenGui = New("ScreenGui", {
     Name = "Obsidian",
     DisplayOrder = 998,
@@ -1363,8 +1364,9 @@ do
     })
 end
 
---// Notification
+--// Notification \\--
 local NotificationArea
+local NotifyOrder = {}
 do
     NotificationArea = New("Frame", {
         AnchorPoint = Vector2.new(1, 0),
@@ -1379,33 +1381,6 @@ do
             Parent = NotificationArea,
         })
     )
-end
-
---// Notification Stack
-Library.NotifyOrder = {}
-
-function Library:UpdateNotificationPositions(Snap)
-    local Left = Library.NotifySide:lower() == "left"
-    local XScale = Left and 0 or 1
-    local RunningY = 0
-
-    for _, FakeBg in Library.NotifyOrder do
-        local Data = Library.Notifications[FakeBg]
-        if Data and FakeBg.Parent then
-            local Target = UDim2.new(XScale, 0, 0, RunningY)
-
-            if Snap or not Data.PositionInitialized then
-                FakeBg.Position = Target
-                Data.PositionInitialized = true
-            elseif FakeBg.Position ~= Target then
-                TweenService:Create(FakeBg, Library.NotifyTweenInfo, {
-                    Position = Target,
-                }):Play()
-            end
-
-            RunningY += FakeBg.AbsoluteSize.Y + 8
-        end
-    end
 end
 
 --// Lib Functions \\--
@@ -1819,7 +1794,7 @@ function Library:PlayTabAnimation(TabCanvas: CanvasGroup, Showing: boolean, OnCo
 
     local Existing = ActiveTabTweens[TabCanvas]
     if Existing then
-        Existing:Cancel()
+        StopTween(Existing, true)
         ActiveTabTweens[TabCanvas] = nil
     end
 
@@ -2410,7 +2385,7 @@ function Library:AddContextMenu(
     ActiveCallback: (Active: boolean) -> ()?,
     IgnoreCornerRadius: boolean?,
     SpecificCornersOnly: ("top" | "bottom" | "no_left" | "no_top_left")?, -- stupid way of doing this
-    AnimationType: ("Dropdown" | "Groupbox" | "KeyPicker" | "none")?
+    AnimationType: ("Dropdown" | "KeyPicker" | "none")?
 )
     local Menu
     local ParentGui = Holder:FindFirstAncestorOfClass("ScreenGui")
@@ -2509,8 +2484,8 @@ function Library:AddContextMenu(
 
         Size = Size,
 
-        OpenCloseTween = nil,
         AutoSizeY = List == 1,
+        OpenCloseTween = nil,
         Animated = function()
             if not AnimationType or AnimationType == "none" then
                 return false
@@ -2559,7 +2534,7 @@ function Library:AddContextMenu(
         end
 
         if Table.OpenCloseTween then
-            Table.OpenCloseTween:Cancel()
+            StopTween(Table.OpenCloseTween, true)
             Table.OpenCloseTween = nil
         end
 
@@ -2568,6 +2543,7 @@ function Library:AddContextMenu(
             local OpenSize = TargetSize
             if Table.AutoSizeY then
                 local FullHeight = Menu.AbsoluteSize.Y
+
                 Menu.AutomaticSize = Enum.AutomaticSize.None
                 OpenSize = UDim2.new(TargetSize.X.Scale, TargetSize.X.Offset, 0, FullHeight)
             end
@@ -2584,6 +2560,7 @@ function Library:AddContextMenu(
                 end
 
                 if Table.OpenCloseTween == Tween then
+                    StopTween(Table.OpenCloseTween, true)
                     Table.OpenCloseTween = nil
 
                     if Table.AutoSizeY then
@@ -2593,9 +2570,7 @@ function Library:AddContextMenu(
             end))
 
             Tween:Play()
-        end
-
-        if IsAnimated == false then
+        else
             Menu.Size = TargetSize
             Menu.Visible = true
         end
@@ -2637,7 +2612,7 @@ function Library:AddContextMenu(
         end
 
         if Table.OpenCloseTween then
-            Table.OpenCloseTween:Cancel()
+            StopTween(Table.OpenCloseTween, true)
             Table.OpenCloseTween = nil
         end
 
@@ -2659,9 +2634,10 @@ function Library:AddContextMenu(
                 end
 
                 if Table.OpenCloseTween == Tween then
+                    StopTween(Table.OpenCloseTween, true)
                     Table.OpenCloseTween = nil
-                    Menu.Visible = false
 
+                    Menu.Visible = false
                     if Table.AutoSizeY then
                         Menu.AutomaticSize = Enum.AutomaticSize.Y
                     end
@@ -2669,9 +2645,7 @@ function Library:AddContextMenu(
             end))
 
             Tween:Play()
-        end
-
-        if IsAnimated == false then
+        else
             Menu.Visible = false
         end
     end
@@ -2703,7 +2677,7 @@ function Library:AddContextMenu(
         end
 
         if Table.OpenCloseTween then
-            Table.OpenCloseTween:Cancel()
+            StopTween(Table.OpenCloseTween, true)
             Table.OpenCloseTween = nil
         end
 
@@ -3115,14 +3089,12 @@ do
 
         local CancelSlidingTweens = function()
             if SlideForwardTween then
-                SlideForwardTween:Cancel()
-                SlideForwardTween:Destroy()
+                StopTween(SlideForwardTween, true)
                 SlideForwardTween = nil
             end
 
             if SlideBackTween then
-                SlideBackTween:Cancel()
-                SlideBackTween:Destroy()
+                SlideForwardTween(SlideBackTween, true)
                 SlideBackTween = nil
             end
         end
@@ -3522,7 +3494,7 @@ do
                     return
                 end
 
-                KeyPicker.Toggled = true
+				KeyPicker.Toggled = true
             end
 
             Library:SafeCallback(KeyPicker.Callback, KeyPicker.Toggled)
@@ -3530,13 +3502,13 @@ do
 
             if IsForButton then
                 Library:SafeCallback(ParentObj.Func, KeyPicker.Toggled)
-            end
-
-            if Library.ToggleKeybind == KeyPicker and Library.Toggle then
+			end
+			
+			if Library.ToggleKeybind == KeyPicker and Library.Toggle then
                 Library:Toggle()
             end
 
-            if KeyPicker.Mode == "Press" then
+			if KeyPicker.Mode == "Press" then
                 KeyPicker.Toggled = false
             end
         end
@@ -4077,133 +4049,6 @@ do
             })
         end
 
-        --// Resizing \\--
-        local ResizeGrabber
-        if Info.Resizable then
-            local BaseSquareSize = 200
-            local BaseBarWidth = 16
-            local BasePadding = 6
-            local MinSquareSize = 140
-            local MaxSquareSize = 320
-
-            ColorPicker.SquareSize = BaseSquareSize
-
-            local function GetBarWidth(SquareSize)
-                return math.clamp(math.floor((SquareSize / BaseSquareSize) * BaseBarWidth + 0.5), 12, 24)
-            end
-
-            local function GetContentWidth(SquareSize)
-                local BarWidth = GetBarWidth(SquareSize)
-                local Width = SquareSize + BarWidth + BasePadding
-                if Info.Transparency then
-                    Width += (BarWidth + BasePadding)
-                end
-
-                return Width + 12
-            end
-
-            local FixedVerticalOverhead = 90
-
-            local function ClampToViewport(NewSquareSize)
-                local Camera = workspace.CurrentCamera
-                if not Camera then
-                    return NewSquareSize
-                end
-
-                local ViewportSize = Camera.ViewportSize
-                local ScreenMargin = 12
-
-                local MaxWidth = ViewportSize.X - ColorMenu.Menu.AbsolutePosition.X - ScreenMargin
-                local MaxHeight = ViewportSize.Y - ColorMenu.Menu.AbsolutePosition.Y - ScreenMargin - FixedVerticalOverhead
-
-                while NewSquareSize > MinSquareSize
-                    and (GetContentWidth(NewSquareSize) > MaxWidth or NewSquareSize > MaxHeight) do
-                    NewSquareSize -= 4
-                end
-
-                return NewSquareSize
-            end
-
-            local function UpdateColorMenuSize(NewSquareSize)
-                NewSquareSize = math.clamp(math.floor(NewSquareSize + 0.5), MinSquareSize, MaxSquareSize)
-                NewSquareSize = ClampToViewport(NewSquareSize)
-
-                if NewSquareSize == ColorPicker.SquareSize then
-                    return
-                end
-
-                local BarWidth = GetBarWidth(NewSquareSize)
-                local CursorSize = math.clamp(math.floor((NewSquareSize / BaseSquareSize) * 6 + 0.5), 4, 10)
-
-                ColorHolder.Size = UDim2.new(1, 0, 0, NewSquareSize)
-                SatVipMap.Size = UDim2.fromOffset(NewSquareSize, NewSquareSize)
-                SatVibCursor.Size = UDim2.fromOffset(CursorSize, CursorSize)
-                HueSelector.Size = UDim2.new(0, BarWidth, 0, NewSquareSize)
-
-                if TransparencySelector then
-                    TransparencySelector.Size = UDim2.new(0, BarWidth, 0, NewSquareSize)
-                end
-
-                ColorPicker.SquareSize = NewSquareSize
-                ColorMenu:SetSize(UDim2.new(0, GetContentWidth(NewSquareSize), 0, 0))
-            end
-
-            local IconSize = 12
-            local GrabberSize = Library.IsMobile and 28 or 16
-            local GrabberInset = 2
-
-            ResizeGrabber = New("TextButton", {
-                AnchorPoint = Vector2.new(1, 1),
-                BackgroundTransparency = 1,
-                Size = UDim2.fromOffset(GrabberSize, GrabberSize),
-                Text = "",
-                Visible = false,
-                ZIndex = ColorMenu.Menu.ZIndex + 1,
-                Parent = ColorMenu.Menu.Parent,
-            })
-            New("ImageLabel", {
-                AnchorPoint = Vector2.new(1, 1),
-                BackgroundTransparency = 1,
-                Image = ResizeIcon and ResizeIcon.Url or "",
-                ImageColor3 = "FontColor",
-                ImageRectOffset = ResizeIcon and ResizeIcon.ImageRectOffset or Vector2.zero,
-                ImageRectSize = ResizeIcon and ResizeIcon.ImageRectSize or Vector2.zero,
-                ImageTransparency = 0.35,
-                Position = UDim2.fromScale(1, 1),
-                Size = UDim2.fromOffset(IconSize, IconSize),
-                Parent = ResizeGrabber,
-            })
-
-            local function UpdateGrabberPosition()
-                ResizeGrabber.Position = UDim2.fromOffset(
-                    ColorMenu.Menu.AbsolutePosition.X + ColorMenu.Menu.AbsoluteSize.X - GrabberInset,
-                    ColorMenu.Menu.AbsolutePosition.Y + ColorMenu.Menu.AbsoluteSize.Y - GrabberInset
-                )
-                ResizeGrabber.Visible = ColorMenu.Menu.Visible
-            end
-
-            table.insert(ColorPicker.Connections, ColorMenu.Menu:GetPropertyChangedSignal("AbsolutePosition"):Connect(UpdateGrabberPosition))
-            table.insert(ColorPicker.Connections, ColorMenu.Menu:GetPropertyChangedSignal("AbsoluteSize"):Connect(UpdateGrabberPosition))
-            table.insert(ColorPicker.Connections, ColorMenu.Menu:GetPropertyChangedSignal("Visible"):Connect(UpdateGrabberPosition))
-
-            table.insert(ColorPicker.Connections, ResizeGrabber.InputBegan:Connect(function(Input: InputObject)
-                Library.CantDragForced = true
-                local StartMouse = Vector2.new(Mouse.X, Mouse.Y)
-                local StartSquareSize = ColorPicker.SquareSize
-
-                while IsDragInput(Input) and not ColorPicker.Destroyed do
-                    local Delta = Vector2.new(Mouse.X, Mouse.Y) - StartMouse
-                    UpdateColorMenuSize(StartSquareSize + math.max(Delta.X, Delta.Y))
-
-                    RunService.RenderStepped:Wait()
-                end
-
-                Library.CantDragForced = false
-            end))
-
-            UpdateGrabberPosition()
-        end
-
         local InfoHolder = New("Frame", {
             BackgroundTransparency = 1,
             Size = UDim2.new(1, 0, 0, 20),
@@ -4291,10 +4136,6 @@ do
 
             ColorPicker.SetValueRGB = function(...) end --// make luau lsp shut up
             CreateButton("Paste color", function()
-                if not Library.CopiedColor then
-                    return
-                end
-
                 ColorPicker:SetValueRGB(Library.CopiedColor[1], Library.CopiedColor[2])
             end)
 
@@ -4312,69 +4153,6 @@ do
                 end)
             end
         end
-
-        --// Copy/Paste Buttons \\--
-        local ActionHolder = New("Frame", {
-            BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 0, 20),
-            Parent = ColorMenu.Menu,
-        })
-        New("UIListLayout", {
-            FillDirection = Enum.FillDirection.Horizontal,
-            HorizontalFlex = Enum.UIFlexAlignment.Fill,
-            Padding = UDim.new(0, 8),
-            Parent = ActionHolder,
-        })
-
-        local CopyColorButton = New("TextButton", {
-            BackgroundColor3 = "MainColor",
-            Size = UDim2.fromScale(1, 1),
-            Text = "Copy color",
-            TextSize = 14,
-            Parent = ActionHolder,
-        })
-        New("UIStroke", {
-            Color = "OutlineColor",
-            Parent = CopyColorButton,
-        })
-        table.insert(
-            Library.Corners,
-            New("UICorner", {
-                CornerRadius = UDim.new(0, Library.CornerRadius / 2),
-                Parent = CopyColorButton,
-            })
-        )
-
-        local PasteColorButton = New("TextButton", {
-            BackgroundColor3 = "MainColor",
-            Size = UDim2.fromScale(1, 1),
-            Text = "Paste color",
-            TextSize = 14,
-            Parent = ActionHolder,
-        })
-        New("UIStroke", {
-            Color = "OutlineColor",
-            Parent = PasteColorButton,
-        })
-        table.insert(
-            Library.Corners,
-            New("UICorner", {
-                CornerRadius = UDim.new(0, Library.CornerRadius / 2),
-                Parent = PasteColorButton,
-            })
-        )
-
-        table.insert(ColorPicker.Connections, CopyColorButton.MouseButton1Click:Connect(function()
-            Library.CopiedColor = { ColorPicker.Value, ColorPicker.Transparency }
-        end))
-
-        table.insert(ColorPicker.Connections, PasteColorButton.MouseButton1Click:Connect(function()
-            if not Library.CopiedColor then
-                return
-            end
-
-            ColorPicker:SetValueRGB(Library.CopiedColor[1], Library.CopiedColor[2])
-        end))
 
         --// End \\--
         function ColorPicker:SetHSVFromRGB(Color)
@@ -4547,10 +4325,6 @@ do
 
             if ColorMenu then 
                 ColorMenu:Destroy() 
-            end
-
-            if ResizeGrabber then
-                ResizeGrabber:Destroy()
             end
 
             if ContextMenu then 
@@ -6445,7 +6219,7 @@ do
             ValueImages = Info.ValueImages,
 
             Multi = Info.Multi,
-            DragSelect = Info.Multi and Info.DragSelect or false,
+            DragSelect = Info.Multi and not Library.IsMobile and Info.DragSelect == true,
 
             SpecialType = Info.SpecialType,
             ExcludeLocalPlayer = Info.ExcludeLocalPlayer,
@@ -6701,20 +6475,50 @@ do
             return ReturnCount == true and GetTableSize(Table) or Table
         end
 
+        local Buttons = {}
         local DragSelecting = false
-        local DragSelectState = false
+        local DragStartIndex = nil
+        local DragInitialValues = {}
         local DragInputEndedConn = nil
+        local DragInputChangedConn = nil
 
         local function StopDragSelect()
             DragSelecting = false
-            DragSelectState = false
+            DragStartIndex = nil
+            table.clear(DragInitialValues)
+
             if DragInputEndedConn then
                 DragInputEndedConn:Disconnect()
                 DragInputEndedConn = nil
             end
+
+            if DragInputChangedConn then
+                DragInputChangedConn:Disconnect()
+                DragInputChangedConn = nil
+            end
         end
 
-        local Buttons = {}
+        local function UpdateDrag(CurrentIndex)
+            local Min = math.min(DragStartIndex, CurrentIndex)
+            local Max = math.max(DragStartIndex, CurrentIndex)
+
+            for OtherButton, OtherTable in Buttons do
+                local InRange = OtherTable.Index >= Min and OtherTable.Index <= Max
+                local Try = DragInitialValues[OtherTable.Value]
+                if InRange then
+                    Try = not Try
+                end
+
+                if not (Dropdown:GetActiveValues(true) == 1 and not Try and not Info.AllowNull) then
+                    Dropdown.Value[OtherTable.Value] = Try and true or nil
+                end
+
+                OtherTable:UpdateButton()
+            end
+
+            Dropdown:Display()
+        end
+
         function Dropdown:BuildDropdownList()
             local Values = Dropdown.Values
             local DisabledValues = Dropdown.DisabledValues
@@ -6729,7 +6533,7 @@ do
                 Button.Parent:Destroy()
             end
             table.clear(Buttons)
-            
+
             local Count = 0
             local ProcessedCount = 0
             local TotalLen = GetTableSize(Values) + GetTableSize(DisabledValues)
@@ -6815,11 +6619,14 @@ do
                     end
                 end
 
+                Table.Index = Count
+                Table.Value = Value
+
                 if not IsDisabled then
                     Button.MouseButton1Click:Connect(function()
                         if DragSelecting then return end
-                        local Try = not Selected
 
+                        local Try = not Selected
                         if not (Dropdown:GetActiveValues(true) == 1 and not Try and not Info.AllowNull) then
                             Selected = Try
                             if Info.Multi then
@@ -6841,51 +6648,51 @@ do
                         Library:SafeCallback(Dropdown.Changed, Dropdown.Value)
                     end)
 
-                    if Info.Multi then
-                        Button.InputBegan:Connect(function(Input)
-                            if not Dropdown.DragSelect then return end
-                            if not IsMouseInput(Input) then return end
+                    if Info.Multi and Dropdown.DragSelect and not Library.IsMobile then
+                        Button.InputBegan:Connect(function(StartInput)
+                            if not IsMouseInput(StartInput) then return end
 
-                            DragSelectState = not Selected
                             DragSelecting = true
+                            DragStartIndex = Table.Index
+                            table.clear(DragInitialValues)
 
-                            local Try = DragSelectState
-                            if not (Dropdown:GetActiveValues(true) == 1 and not Try and not Info.AllowNull) then
-                                Selected = Try
-                                Dropdown.Value[Value] = Selected and true or nil
-                                for _, OtherButton in Buttons do
-                                    OtherButton:UpdateButton()
+                            for OtherButton, OtherTable in Buttons do
+                                DragInitialValues[OtherTable.Value] = Dropdown.Value[OtherTable.Value]
+                            end
+
+                            UpdateDrag(Table.Index)
+
+                            if DragInputEndedConn then DragInputEndedConn:Disconnect() end
+                            if DragInputChangedConn then DragInputChangedConn:Disconnect() end
+
+                            DragInputChangedConn = Library:GiveSignal(UserInputService.InputChanged:Connect(function(ChangeInput)
+                                if not IsMovementInput(ChangeInput) and ChangeInput ~= StartInput then
+                                    return
                                 end
-                            end
-                            Table:UpdateButton()
-                            Dropdown:Display()
 
-                            if DragInputEndedConn then
-                                DragInputEndedConn:Disconnect()
-                            end
-                            DragInputEndedConn = UserInputService.InputEnded:Connect(function(EndInput)
-                                if not IsMouseInput(EndInput) then return end
+                                local Pos = ChangeInput.Position
+                                for OtherButton, OtherTable in Buttons do
+                                    if Library:MouseIsOverFrame(OtherButton, Pos) then
+                                        UpdateDrag(OtherTable.Index)
+                                        break
+                                    end
+                                end
+                            end))
+
+                            DragInputEndedConn = Library:GiveSignal(UserInputService.InputEnded:Connect(function(EndInput)
+                                if EndInput ~= StartInput and not (IsMouseInput(EndInput) and EndInput.UserInputType == StartInput.UserInputType) then
+                                    return
+                                end
+
                                 Library:UpdateDependencyBoxes()
                                 Library:SafeCallback(Dropdown.Callback, Dropdown.Value)
                                 Library:SafeCallback(Dropdown.Changed, Dropdown.Value)
+
                                 StopDragSelect()
-                            end)
+                            end))
+
                             table.insert(Dropdown.Connections, DragInputEndedConn)
-                        end)
-
-                        Button.MouseEnter:Connect(function()
-                            if not DragSelecting then return end
-
-                            local Try = DragSelectState
-                            if not (Dropdown:GetActiveValues(true) == 1 and not Try and not Info.AllowNull) then
-                                Selected = Try
-                                Dropdown.Value[Value] = Selected and true or nil
-                                for _, OtherButton in Buttons do
-                                    OtherButton:UpdateButton()
-                                end
-                            end
-                            Table:UpdateButton()
-                            Dropdown:Display()
+                            table.insert(Dropdown.Connections, DragInputChangedConn)
                         end)
                     end
                 end
@@ -7019,11 +6826,12 @@ do
         end
 
         function Dropdown:SetDragSelect(Value: boolean)
-            Dropdown.DragSelect = Info.Multi and Value or false
-
-            if not Dropdown.DragSelect then
-                StopDragSelect()
+            if not Info.Multi or Library.IsMobile then 
+                Value = false
             end
+
+            Dropdown.DragSelect = Value == true
+            Dropdown:BuildDropdownList()
         end
 
         local ToggleDropdown = function()
@@ -7093,6 +6901,8 @@ do
 
         function Dropdown:Destroy()
             Dropdown.Destroyed = true
+
+            StopDragSelect()
 
             if Dropdown.Connections then
                 for _, Connection in Dropdown.Connections do
@@ -7865,7 +7675,7 @@ do
             Container = DepboxContainer,
 
             Elements = {},
-            DependencyBoxes = {},
+            DependencyBoxes = {}
         }
 
         function Depbox:Resize()
@@ -8151,11 +7961,35 @@ function Library:SetBackgroundImage(Image: string | number)
     Library:UpdateColorsUsingRegistry()
 end
 
+function Library:UpdateNotificationPositions(Snap: boolean?)
+    local IsLeft = Library.NotifySide:lower() == "left"
+    local XScale = IsLeft and 0 or 1
+    local RunningY = 0
+
+    for _, FakeBackground in NotifyOrder do
+        local Data = Library.Notifications[FakeBackground]
+        if not (Data and FakeBackground.Parent) then continue end
+
+        local Target = UDim2.new(XScale, 0, 0, RunningY)
+        if Snap or not Data.PositionInitialized then
+            FakeBackground.Position = Target
+            Data.PositionInitialized = true
+
+        elseif FakeBackground.Position ~= Target then
+            TweenService:Create(FakeBackground, Library.NotifyTweenInfo, {
+                Position = Target,
+            }):Play()
+        end
+
+        RunningY = RunningY + FakeBackground.AbsoluteSize.Y + 8
+    end
+end
+
 function Library:SetNotifySide(Side: string)
     Library.NotifySide = Side
 
-    local Left = Side:lower() == "left"
-    if Left then
+    local IsLeft = Side:lower() == "left"
+    if IsLeft then
         NotificationArea.AnchorPoint = Vector2.new(0, 0)
         NotificationArea.Position = UDim2.fromOffset(6, 6)
     else
@@ -8163,9 +7997,11 @@ function Library:SetNotifySide(Side: string)
         NotificationArea.Position = UDim2.new(1, -6, 0, 6)
     end
 
-    for FakeBg in Library.Notifications do
-        FakeBg.AnchorPoint = Left and Vector2.new(0, 0) or Vector2.new(1, 0)
+    for FakeBackground in Library.Notifications do
+        if not (FakeBackground and FakeBackground.Parent) then continue end
+        FakeBackground.AnchorPoint = if IsLeft then Vector2.new(0, 0) else Vector2.new(1, 0)
     end
+
     Library:UpdateNotificationPositions(true)
 end
 
@@ -8414,12 +8250,13 @@ function Library:Notify(...)
             DeleteConnection:Disconnect()
         end
 
-        for Index, FakeBg in Library.NotifyOrder do
-            if FakeBg == FakeBackground then
-                table.remove(Library.NotifyOrder, Index)
-                break
+        if FakeBackground then
+            local Idx = table.find(NotifyOrder, FakeBackground)
+            if Idx then
+                table.remove(NotifyOrder, Idx)
             end
         end
+
         Library:UpdateNotificationPositions()
 
         TweenService
@@ -8430,11 +8267,6 @@ function Library:Notify(...)
 
         task.delay(Library.NotifyTweenInfo.Time, function()
             Library.Notifications[FakeBackground] = nil
-
-            local Idx = table.find(Library.NotificationQueue, FakeBackground)
-            if Idx then
-                table.remove(Library.NotificationQueue, Idx)
-            end
             FakeBackground:Destroy()
         end)
     end
@@ -8480,20 +8312,9 @@ function Library:Notify(...)
 
     Data.Holder = Holder
 
+    table.insert(NotifyOrder, FakeBackground)
     Library.Notifications[FakeBackground] = Data
-    
-    table.insert(Library.NotificationQueue, FakeBackground)
 
-    if Library.MaxNotifications > 0 then
-        while #Library.NotificationQueue > Library.MaxNotifications do
-            local Oldest = table.remove(Library.NotificationQueue, 1)
-            local OldestData = Library.Notifications[Oldest]
-            if OldestData and not OldestData.Persist and not OldestData.Destroyed then
-                OldestData:Destroy()
-            end
-        end
-    end
-    table.insert(Library.NotifyOrder, FakeBackground)
     Library:UpdateNotificationPositions()
 
     FakeBackground.Visible = true
@@ -8566,7 +8387,6 @@ function Library:CreateWindow(WindowInfo)
     Library.CornerRadius = WindowInfo.CornerRadius
     Library:SetNotifySide(WindowInfo.NotifySide)
     Library.ShowCustomCursor = WindowInfo.ShowCustomCursor
-    Library.MaxNotifications = WindowInfo.MaxNotifications
     Library.Scheme.Font = WindowInfo.Font
     Library.ToggleKeybind = WindowInfo.ToggleKeybind
     Library.GlobalSearch = WindowInfo.GlobalSearch
@@ -9076,26 +8896,6 @@ function Library:CreateWindow(WindowInfo)
 
             WindowInfo.TabSwipeFrom = TabSwipeFrom
             Library.TabSwipeFrom = TabSwipeFrom
-        end
-    end
-
-    function Window:SetMaxNotifications(Amount: number)
-        assert(typeof(Amount) == "number", "Expected number for Amount got: " .. typeof(Amount))
-
-        Amount = math.floor(Amount)
-
-        WindowInfo.MaxNotifications = Amount
-        Library.MaxNotifications = Amount
-
-        -- // Trim any notifications that already exceed the new limit \\ --
-        if Amount > 0 then
-            while #Library.NotificationQueue > Amount do
-                local Oldest = table.remove(Library.NotificationQueue, 1)
-                local OldestData = Library.Notifications[Oldest]
-                if OldestData and not OldestData.Persist and not OldestData.Destroyed then
-                    OldestData:Destroy()
-                end
-            end
         end
     end
 
@@ -9996,36 +9796,36 @@ function Library:CreateWindow(WindowInfo)
 
                 Tab = Tab,
                 DependencyBoxes = {},
-                Elements = {},
-                ResizeTween = nil,
-                ChevronTween = nil
+                Elements = {}
             }
 
-            function Groupbox:Resize()
-                local TargetSize = UDim2.new(1, 0, 0, if Groupbox.Collapsed then 34 else (GroupboxList.AbsoluteContentSize.Y / Library.DPIScale) + 49)
-                GroupboxLine.Visible = not Groupbox.Collapsed
+            local ResizeTween
+            local CollapseArrowTween
 
-                if Groupbox.ResizeTween then
-                    Groupbox.ResizeTween:Cancel()
-                    Groupbox.ResizeTween = nil
+            function Groupbox:Resize()
+                if ResizeTween then
+                    StopTween(ResizeTween, true)
+                    ResizeTween = nil
                 end
 
+                local TargetSize = UDim2.new(1, 0, 0, if Groupbox.Collapsed then 34 else (GroupboxList.AbsoluteContentSize.Y / Library.DPIScale) + 49)
+
+                GroupboxLine.Visible = not Groupbox.Collapsed
                 if Library.Animations and Library.Animations.Groupbox then
-                    local Info = Library.GroupboxTweenInfo
-                        or TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+                    local TweenInfo = Library.GroupboxTweenInfo or TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+                    local Tween = TweenService:Create(GroupboxHolder, TweenInfo, { Size = TargetSize })
+                    ResizeTween = Tween
 
-                    local Tween = TweenService:Create(GroupboxHolder, Info, { Size = TargetSize })
-                    Groupbox.ResizeTween = Tween
-
-                    local Connection
-                    Connection = Tween.Completed:Connect(function()
+                    local Connection; Connection = Library:GiveSignal(Tween.Completed:Once(function()
                         if Connection then
                             Connection:Disconnect()
                         end
-                        if Groupbox.ResizeTween == Tween then
-                            Groupbox.ResizeTween = nil
+
+                        if ResizeTween == Tween then
+                            StopTween(ResizeTween, true)
+                            ResizeTween = nil
                         end
-                    end)
+                    end))
 
                     Tween:Play()
                 else
@@ -10037,31 +9837,29 @@ function Library:CreateWindow(WindowInfo)
                 if Info.DisableCollapsing == true then return end
                 Groupbox.Collapsed = Collapsed
 
-                GroupboxContainer.Visible = not Collapsed
+                if CollapseArrowTween then
+                    StopTween(CollapseArrowTween, true)
+                    CollapseArrowTween = nil
+                end
 
                 local TargetRotation = if Collapsed then 0 else 180
 
-                if Groupbox.ChevronTween then
-                    Groupbox.ChevronTween:Cancel()
-                    Groupbox.ChevronTween = nil
-                end
-
+                GroupboxContainer.Visible = not Collapsed
                 if Library.Animations and Library.Animations.Groupbox then
-                    local ChevronInfo = Library.GroupboxTweenInfo
-                        or TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+                    local TweenInfo = Library.GroupboxTweenInfo or TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+                    local Tween = TweenService:Create(GroupboxCollapseArrow, TweenInfo, { Rotation = TargetRotation })
+                    CollapseArrowTween = Tween
 
-                    local Tween = TweenService:Create(GroupboxCollapseArrow, ChevronInfo, { Rotation = TargetRotation })
-                    Groupbox.ChevronTween = Tween
-
-                    local Connection
-                    Connection = Tween.Completed:Connect(function()
+                    local Connection; Connection = Library:GiveSignal(Tween.Completed:Connect(function()
                         if Connection then
                             Connection:Disconnect()
                         end
-                        if Groupbox.ChevronTween == Tween then
-                            Groupbox.ChevronTween = nil
+
+                        if CollapseArrowTween == Tween then
+                            StopTween(CollapseArrowTween, true)
+                            CollapseArrowTween = nil
                         end
-                    end)
+                    end))
 
                     Tween:Play()
                 else
@@ -10079,14 +9877,14 @@ function Library:CreateWindow(WindowInfo)
             function Groupbox:Destroy()
                 Groupbox.Destroyed = true
 
-                if Groupbox.ResizeTween then
-                    Groupbox.ResizeTween:Cancel()
-                    Groupbox.ResizeTween = nil
+                if ResizeTween then
+                    StopTween(ResizeTween, true)
+                    ResizeTween = nil
                 end
 
-                if Groupbox.ChevronTween then
-                    Groupbox.ChevronTween:Cancel()
-                    Groupbox.ChevronTween = nil
+                if CollapseArrowTween then
+                    StopTween(CollapseArrowTween, true)
+                    CollapseArrowTween = nil
                 end
 
                 if Groupbox.Connections then
@@ -11366,6 +11164,20 @@ function Library:CreateWindow(WindowInfo)
         Library:UpdateSearch(SearchBox.Text)
     end))
 
+    Library:GiveSignal(UserInputService.InputBegan:Connect(function(Input: InputObject)
+        if Library.Unloaded then
+            return
+        end
+
+        if UserInputService:GetFocusedTextBox() then
+            return
+        end
+
+        if Input.KeyCode == Library.ToggleKeybind then
+            Library:Toggle()
+        end
+    end))
+
     Library:GiveSignal(UserInputService.WindowFocused:Connect(function()
         Library.IsRobloxFocused = true
     end))
@@ -11826,8 +11638,8 @@ function Library:CreateLoading(LoadingInfo)
 
     function Loading:SetLoadingIconTweenTime(TweenTime)
         if RotationTween then
-            RotationTween:Cancel()
-            RotationTween:Destroy()
+            StopTween(RotationTween, true)
+            RotationTween = nil
         end
 
         if TweenTime > 0 then
@@ -12032,7 +11844,8 @@ function Library:CreateLoading(LoadingInfo)
     --// Destroy/Continue \\--
     function Loading:Destroy()
         if RotationTween then
-            RotationTween:Cancel()
+            StopTween(RotationTween, true)
+            RotationTween = nil
         end
 
         ScreenGui:Destroy()
@@ -12101,8 +11914,8 @@ function Library:Unload()
     end
 
     --// Run Unload Callbacks
-    for Index = #Library.UnloadSignals, 1, -1 do
-        local Callback = table.remove(Library.UnloadSignals, Index)
+    for _ = 1, #Library.UnloadSignals do
+        local Callback = table.remove(Library.UnloadSignals, 1)
 
         if Callback then
             Library:SafeCallback(Callback)
@@ -12153,8 +11966,6 @@ function Library:Unload()
     table.clear(Library.SpecificCorners)
 
     table.clear(Library.Notifications)
-    table.clear(Library.NotificationQueue)
-    table.clear(Library.NotifyOrder)
     table.clear(Library.Dialogues)
     table.clear(Library.DraggableElements)
     table.clear(Library.KeybindToggles)
