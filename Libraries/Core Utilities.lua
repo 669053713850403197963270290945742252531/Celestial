@@ -430,7 +430,7 @@ end
 
 utils.sendMessage = function(message)
     local success, canChat = pcall(function()
-        return TextChatService:CanUserChatAsync(player.UserId)
+        return textChatService:CanUserChatAsync(player.UserId)
     end)
 
     if success and canChat then

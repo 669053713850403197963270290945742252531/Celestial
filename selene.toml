@@ -1,1 +1,5 @@
 std="Roblox"
+
+[lint]
+lint.UnknownGlobal = "disable"
+lint.UnknownField = "disable"
