@@ -206,6 +206,7 @@
         "setstackhidden",
         "setthreadidentity",
         "syn",
+        "WebSocket",
         "WebSocket.connect",
         "writefile"
     ]
