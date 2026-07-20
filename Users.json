@@ -64,13 +64,14 @@
     },
     {
         "Identifier": "Corrade",
-        "HWID": "9889d79d316fd5b5e0dbe1858af98629a45091c337c7ef2c6c1c91be98a34d28",
+        "HWID": "cff6443abb4db340a1771460b5ce2179ed40863087d844a506f346a0fa2cdb5b",
         "DiscordId": "999776749070078004",
         "Rank": "Owner",
         "JoinDate": "7/19/2026, 12:02:48 AM",
         "Key": "Qrt2tWntLoxpEcY57BxqK2oN3hiDswjVxwb",
         "Notes": "ts notes",
-        "LastHwidReset": "7/20/2026, 4:52:56 AM"
+        "LastHwidReset": "7/20/2026, 4:52:56 AM",
+        "NextHWIDReset": "7/27/2026, 4:56:59 AM"
     },
     {
         "Identifier": "FlameFrags",
