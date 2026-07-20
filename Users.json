@@ -9,5 +9,16 @@
         "Notes": "ts notes",
         "LastHwidReset": null,
         "totalHwidResets": 0
+    },
+    {
+        "Identifier": "zayed guy",
+        "HWID": "644b0cd43750d857207d03ba078dbb7b3929243cd1daf9ea44edde1e05bcdb7b",
+        "DiscordId": "1393720838590693386",
+        "Rank": "User",
+        "JoinDate": "7/20/2026, 7:15:55 PM",
+        "Key": "fF5VPDYyWcyyTMUMIHTn1RlFKQtni8cehaM",
+        "Notes": null,
+        "LastHwidReset": null,
+        "totalHwidResets": 0
     }
 ]
