@@ -1,13 +1,13 @@
 [
     {
         "Identifier": "mystic_0148",
-        "HWID": "cbd3cfb9b9f51bbbfbf08759e243f5b3519cbf6ecc219ee95fe7c667e32c0a8d",
+        "HWID": "cff6443abb4db340a1771460b5ce2179ed40863087d844a506f346a0fa2cdb5b",
         "DiscordId": "1058495565899505763",
         "Rank": "Temp",
         "JoinDate": "7/20/2026, 10:11:51 PM",
         "Key": "N1y3ggmMDYA6TEASyBaJjxbFygn3B",
         "Notes": "Expires on 7/20/2026, 10:16:51 PM",
-        "LastHwidReset": null,
-        "totalHwidResets": 0
+        "LastHwidReset": "7/20/2026, 10:12:53 PM",
+        "totalHwidResets": 1
     }
 ]
