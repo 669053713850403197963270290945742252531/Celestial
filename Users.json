@@ -1,13 +1,13 @@
 [
     {
         "Identifier": "Corrade",
-        "HWID": "cbd3cfb9b9f51bbbfbf08759e243f5b3519cbf6ecc219ee95fe7c667e32c0a8d",
+        "HWID": "45d25abffe8c792d74d30346429b5bc244b815eeb378a9c38395f7a466cf6894",
         "DiscordId": "999776749070078004",
         "Rank": "Owner",
         "JoinDate": "7/20/2026, 6:49:16 AM",
         "Key": "G1ayP36h05ZuR0wHrSXGFoLUhrjV",
         "Notes": "ts notes",
-        "LastHwidReset": null,
-        "totalHwidResets": 1
+        "LastHwidReset": "7/20/2026, 8:13:45 PM",
+        "totalHwidResets": 2
     }
 ]
