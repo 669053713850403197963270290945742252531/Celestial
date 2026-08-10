@@ -63,16 +63,5 @@
         "Notes": null,
         "LastHwidReset": null,
         "totalHwidResets": 0
-    },
-    {
-        "Identifier": "Knit",
-        "HWID": "76958b38b94f9c0bcf4556140624b71831857159ca53a339b3d3d256aafe9b42",
-        "DiscordId": "1058495565899505763",
-        "Rank": "User",
-        "JoinDate": "8/9/2026, 9:38:46 PM",
-        "Key": "Y2LatVwVpMtOIkLHVyqdrtdP7UVUIhhUc",
-        "Notes": null,
-        "LastHwidReset": null,
-        "totalHwidResets": 0
     }
 ]
