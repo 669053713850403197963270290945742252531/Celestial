@@ -52,16 +52,5 @@
         "JoinDate": "7/19/2026, 12:04:30 AM",
         "Key": "DmQ9jmctXG2OQhUMMoTjxCsQqu71",
         "Notes": "Special"
-    },
-    {
-        "Identifier": "Devon",
-        "HWID": "cbd3cfb9b9f51bbbfbf08759e243f5b3519cbf6ecc219ee95fe7c667e32c0a8d",
-        "DiscordId": "1027811163653816360",
-        "Rank": "User",
-        "JoinDate": "8/9/2026, 9:37:13 PM",
-        "Key": "uqF6NK1Dru3A4ZR5NKgmGyEkIE1aw7",
-        "Notes": null,
-        "LastHwidReset": null,
-        "totalHwidResets": 0
     }
 ]
