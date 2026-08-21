@@ -6,38 +6,30 @@ local clonefunction = (clonefunction or copyfunction or function(func)
 end)
 
 local HttpService: HttpService = cloneref(game:GetService("HttpService"))
+
+--// Fix is_____ functions for shitsploits, those functions should never error, only return a boolean. (why is this still a problem in the big 2026)
 local isfolder, isfile, listfiles = isfolder, isfile, listfiles
+local isfolder_copy, isfile_copy, listfiles_copy = clonefunction(isfolder), clonefunction(isfile), clonefunction(listfiles)
+local isfolder_success, isfolder_error = pcall(function() return isfolder_copy("test" .. tostring(math.random(1000000, 9999999))) end)
 
-if typeof(clonefunction) == "function" then
-    -- Fix is_____ functions for shitsploits, those functions should never error, only return a boolean.
+if isfolder_success == false or typeof(isfolder_error) ~= "boolean" then
+    isfolder = function(folder)
+        local success, data = pcall(isfolder_copy, folder)
+        return (if success then data else false)
+    end
 
-    local
-        isfolder_copy,
-        isfile_copy,
-        listfiles_copy = clonefunction(isfolder), clonefunction(isfile), clonefunction(listfiles)
+    isfile = function(file)
+        local success, data = pcall(isfile_copy, file)
+        return (if success then data else false)
+    end
 
-    local isfolder_success, isfolder_error = pcall(function()
-        return isfolder_copy("test" .. tostring(math.random(1000000, 9999999)))
-    end)
-
-    if isfolder_success == false or typeof(isfolder_error) ~= "boolean" then
-        isfolder = function(folder)
-            local success, data = pcall(isfolder_copy, folder)
-            return (if success then data else false)
-        end
-
-        isfile = function(file)
-            local success, data = pcall(isfile_copy, file)
-            return (if success then data else false)
-        end
-
-        listfiles = function(folder)
-            local success, data = pcall(listfiles_copy, folder)
-            return (if success then data else {})
-        end
+    listfiles = function(folder)
+        local success, data = pcall(listfiles_copy, folder)
+        return (if success then data else {})
     end
 end
 
+--// Theme Manager
 local SchemeIndexes = { "FontColor", "MainColor", "AccentColor", "BackgroundColor", "OutlineColor" }
 local ThemeManager = {
     Library = nil,
@@ -402,7 +394,7 @@ function ThemeManager:SetDefaultTheme(Theme: any)
         FinalTheme.FontFace = FontFace.Name
 
     elseif FontFaceType == "string" then
-        LibraryScheme.Font = Font.fromEnum(Enum.Font[FontFace])
+        LibraryScheme.Font = Font.fromEnum(Enum.Font[FontFace] :: Enum.Font)
         FinalTheme.FontFace = FontFace
     
     else
@@ -606,9 +598,7 @@ function ThemeManager:CreateThemeManager(Themesbox: any)
         CustomThemeList:SetValues(ThemeManager:ReloadCustomThemes())
         CustomThemeList:SetValue(nil)
 
-        local PreviousValue = ThemeList.Value
         ThemeList:SetValues(BuiltInThemesNames)
-        ThemeList:SetValue(PreviousValue)
     end
 
     local function RefreshDefaultThemeLabel()
@@ -649,6 +639,7 @@ function ThemeManager:CreateThemeManager(Themesbox: any)
         Text = "Background Image",
 
         Default = "",
+        Finished = true,
         ClearTextOnFocus = false,
         ClearTextOnBlur = false
     })
@@ -891,7 +882,11 @@ function ThemeManager:CreateThemeManager(Themesbox: any)
 end
 
 function ThemeManager:CreateGroupBox(Tab: any, IconName: string)
-    return Tab:AddLeftGroupbox("Themes", IconName or "paintbrush")
+    return Tab:AddGroupbox({
+        Side = "Left",
+        Name = "Themes",
+        IconName = IconName or "paintbrush",
+    })
 end
 
 function ThemeManager:ApplyToTab(Tab: any, IconName: string)
