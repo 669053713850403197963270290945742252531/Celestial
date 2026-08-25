@@ -9,6 +9,15 @@
         "Notes": null
     },
     {
+        "Identifier": "Wemmbu",
+        "HWID": "569c7f0b41ce9649602a0218cd02ed0b0a3d93130329451cc782b7dfda79ce71",
+        "DiscordId": "1161658957513895946",
+        "Rank": "Special",
+        "JoinDate": "7/18/2026, 4:52:38 AM",
+        "Key": "BhVa9Q7BMXZbvFYklLqRlmLTdGTZHTcnHsZiwA4",
+        "Notes": null
+    },
+    {
         "Identifier": "William",
         "HWID": "45d25abffe8c792d74d30346429b5bc244b815eeb378a9c38395f7a466cf6894",
         "DiscordId": "339870406737395712",
@@ -16,6 +25,24 @@
         "JoinDate": "7/18/2026, 4:55:24 AM",
         "Key": "hRrAXTYDDkYQo1FIf6OLKMFdUMrw8Q0yO34",
         "Notes": "Schedule I guy"
+    },
+    {
+        "Identifier": "Knit",
+        "HWID": "cbd3cfb9b9f51bbbfbf08759e243f5b3519cbf6ecc219ee95fe7c667e32c0a8d",
+        "DiscordId": "1058495565899505763",
+        "Rank": "User",
+        "JoinDate": "7/18/2026, 4:56:51 AM",
+        "Key": "3BRlH9Xzz0Z9zPFYEP8oQm3tQ2MS3",
+        "Notes": "test account"
+    },
+    {
+        "Identifier": "Roblox Update Tracker",
+        "HWID": "28860dfe48341b3e74f13cbc2843ad94b2d7df74214b63be9c0c1c9b149eea42",
+        "DiscordId": "1218229252692906089",
+        "Rank": "Temp",
+        "JoinDate": "7/18/2026, 5:27:16 PM",
+        "Key": "Lu3yDtq8FcaNzhOzwxENspwpVYg",
+        "Notes": "Expires on 7/18/2026, 5:32:16 PM"
     },
     {
         "Identifier": "Parrot",
@@ -34,6 +61,15 @@
         "JoinDate": "7/18/2026, 7:59:59 PM",
         "Key": "lUTS9McbPGs6shzrzoMYnxPSW9U6",
         "Notes": "Special"
+    },
+    {
+        "Identifier": "Corrade",
+        "HWID": "cff6443abb4db340a1771460b5ce2179ed40863087d844a506f346a0fa2cdb5b",
+        "DiscordId": "999776749070078004",
+        "Rank": "Owner",
+        "JoinDate": "7/19/2026, 12:02:48 AM",
+        "Key": "Qrt2tWntLoxpEcY57BxqK2oN3hiDswjVxwb",
+        "Notes": "ts notes"
     },
     {
         "Identifier": "FlameFrags",
