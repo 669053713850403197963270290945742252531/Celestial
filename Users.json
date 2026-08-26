@@ -27,6 +27,24 @@
         "Notes": "Schedule I guy"
     },
     {
+        "Identifier": "Knit",
+        "HWID": "cbd3cfb9b9f51bbbfbf08759e243f5b3519cbf6ecc219ee95fe7c667e32c0a8d",
+        "DiscordId": "1058495565899505763",
+        "Rank": "User",
+        "JoinDate": "7/18/2026, 4:56:51 AM",
+        "Key": "3BRlH9Xzz0Z9zPFYEP8oQm3tQ2MS3",
+        "Notes": "test account"
+    },
+    {
+        "Identifier": "Roblox Update Tracker",
+        "HWID": "28860dfe48341b3e74f13cbc2843ad94b2d7df74214b63be9c0c1c9b149eea42",
+        "DiscordId": "1218229252692906089",
+        "Rank": "Temp",
+        "JoinDate": "7/18/2026, 5:27:16 PM",
+        "Key": "Lu3yDtq8FcaNzhOzwxENspwpVYg",
+        "Notes": "Expires on 7/18/2026, 5:32:16 PM"
+    },
+    {
         "Identifier": "Parrot",
         "HWID": "a12f7f488a9e89dabe6c5640636fc3935e593ef720056f2d5cd37ff15b401cc8",
         "DiscordId": "400097639917420548",
