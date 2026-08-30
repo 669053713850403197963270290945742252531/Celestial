@@ -1,5 +1,5 @@
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/deividcomsono/Obsidian/refs/heads/main/Library.lua"))()
-local Quartz = loadstring(game:HttpGetAsync("https://github.com/notpoiu/Quartz/releases/latest/download/Quartz.luau"))()
+local Quartz = loadstring(game:HttpGetAsync("https://gitlab.com/upio/quartz/-/releases/permalink/latest/downloads/Quartz.luau"))()
 local assetLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/corradedied/Public-Scripts/refs/heads/main/Libraries/Asset%20Library.lua"))()
 local localplayer = game:GetService("Players").LocalPlayer
 local MarketplaceService = game:GetService("MarketplaceService")
