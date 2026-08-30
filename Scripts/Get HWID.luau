@@ -22,7 +22,7 @@ local ICONS = {
 -- ── Fetch HWID ───────────────────────────────
 getgenv()._celestial_noauth = true
 local ok, auth = pcall(function()
-    return loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Authentication.lua"))()
+    return loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Authentication.luau"))()
 end)
 
 local HWID

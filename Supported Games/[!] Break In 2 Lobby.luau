@@ -13,7 +13,7 @@ end
 
 local startTime = tick()
 
-local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Core%20Utilities.lua"))()
+local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Core%20Utilities.luau"))()
 local entityLib = loadstring(readfile("Celestial/Libraries/Entity Library.lua"))()
 
 local fastLoad = false
@@ -34,7 +34,7 @@ if not fastLoad then
         return
     end
 
-    executionLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Execution%20Library.lua"))()
+    executionLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Execution%20Library.luau"))()
 end
 
 local function isLibEnabled(library)

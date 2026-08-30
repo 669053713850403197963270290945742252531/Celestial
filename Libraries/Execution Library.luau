@@ -1,6 +1,6 @@
 local executionLib = {}
 
-local assetLib = loadstring(game:HttpGet("https://gitlab.com/scripts1463602/Celestial/-/raw/main/Libraries/Asset%20Library.lua?ref_type=heads"))()
+local assetLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Asset%20Library.luau"))()
 
 local file = "Celestial ScriptHub/Executions.txt"
 

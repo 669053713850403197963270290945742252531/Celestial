@@ -647,7 +647,7 @@ utils.fetchOwnership = function(mode, id)
 end
 
 utils.hash = function(text, algorithm)
-    local hashLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Hash%20Library%20(%40Egor).lua"))()
+    local hashLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Hash%20Library%20(%40Egor).luau"))()
     
     -- Valid algorithms
 
