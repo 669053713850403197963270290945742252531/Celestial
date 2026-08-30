@@ -2,19 +2,19 @@ while not game:IsLoaded() do
 	task.wait()
 end
 
-local utils = loadstring(readfile("Celestial/Libraries/Core Utilities.lua"))()
-local entityLib = loadstring(readfile("Celestial/Libraries/Entity Library.lua"))()
-local camLib = loadstring(readfile("Celestial/Libraries/Camera Library.lua"))()
-local assetLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Asset%20Library.luau"))()
+local utils = loadstring(readfile("Celestial/Libraries/Core Utilities.luau"))()
+local entityLib = loadstring(readfile("Celestial/Libraries/Entity Library.luau"))()
+local camLib = loadstring(readfile("Celestial/Libraries/Camera Library.luau"))()
+local assetLib = loadstring(readfile("Celestial/Libraries/Asset Library.luau"))()
 
 local executionLib
 if not getgenv().fastLoad then
-    executionLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Execution%20Library.luau"))()
+    executionLib = loadstring(readfile("Celestial/Libraries/Execution Library.luau"))()
 end
 
-local library = loadstring(readfile("Celestial/Obsidian/Library.lua"))()
-local themeManager = loadstring(readfile("Celestial/Obsidian/ThemeManager.lua"))()
-local saveManager = loadstring(readfile("Celestial/Obsidian/SaveManager.lua"))()
+local library = loadstring(game:HttpGet("https://raw.githubusercontent.com/corradedied/Obsidian/refs/heads/full/Library.lua"))()
+local themeManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/corradedied/Obsidian/refs/heads/full/addons/ThemeManager.lua"))()
+local saveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/corradedied/Obsidian/refs/heads/full/addons/SaveManager.lua"))()
 
 local options = library.Options
 local toggles = library.Toggles

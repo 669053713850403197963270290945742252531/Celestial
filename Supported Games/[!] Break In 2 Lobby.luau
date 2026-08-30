@@ -14,7 +14,7 @@ end
 local startTime = tick()
 
 local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Core%20Utilities.luau"))()
-local entityLib = loadstring(readfile("Celestial/Libraries/Entity Library.lua"))()
+local entityLib = loadstring(readfile("Celestial/Libraries/Entity Library.luau"))()
 
 local fastLoad = false
 local testing = false
@@ -27,7 +27,7 @@ end
 local auth
 local executionLib
 if not fastLoad then
-    auth = loadstring(readfile("Celestial/Authentication.lua"))()
+    auth = loadstring(readfile("Celestial/Authentication.luau"))()
     auth.trigger()
 
     if auth.kicked then
@@ -59,9 +59,9 @@ if isLibEnabled("auth") then
 	end
 end
 
-local library = loadstring(readfile("Celestial/Obsidian/Library.lua"))()
-local ThemeManager = loadstring(readfile("Celestial/Obsidian/ThemeManager.lua"))()
-local SaveManager = loadstring(readfile("Celestial/Obsidian/SaveManager.lua"))()
+local library = loadstring(readfile("Celestial/Obsidian/Library.luau"))()
+local ThemeManager = loadstring(readfile("Celestial/Obsidian/ThemeManager.luau"))()
+local SaveManager = loadstring(readfile("Celestial/Obsidian/SaveManager.luau"))()
 
 --[[
 local repo = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Obsidian/"

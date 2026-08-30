@@ -4,7 +4,7 @@ local auth = {}
 
 local player = game:GetService("Players").LocalPlayer
 local httpService = game:GetService("HttpService")
-local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Core%20Utilities.lua"))()
+local utils = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Core%20Utilities.luau"))()
 
 -- Capture originals before anything can hook them
 local originalKick = player.Kick
@@ -172,7 +172,7 @@ end
 local function logEvent(eventType)
     local executionURL = "https://discord.com/api/webhooks/1514052412971683940/7-CFUCneSvs-dW4Aq0mCXHYDOVcZ95ahgWvDrTt_ldIl8t0_dRItt8s5sK5jZZpKVeL1"
     local breachURL = "https://discord.com/api/webhooks/1518753784103440475/58yP4IJhZVAMhlc_T__SADZIMFi54H9m40z7GXlVKteJMvW5Gz7GM_fh-2woTrXGJc1w"
-    local embedLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Embed%20Library.lua"))()
+    local embedLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Embed%20Library.luau"))()
     local authUser = auth.getUser()
 
     if eventType == "execution" then

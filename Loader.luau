@@ -1,6 +1,6 @@
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/deividcomsono/Obsidian/refs/heads/main/Library.lua"))()
 local Quartz = loadstring(game:HttpGetAsync("https://gitlab.com/upio/quartz/-/releases/permalink/latest/downloads/Quartz.luau"))()
-local assetLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/corradedied/Public-Scripts/refs/heads/main/Libraries/Asset%20Library.lua"))()
+local assetLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Asset%20Library.luau"))()
 local localplayer = game:GetService("Players").LocalPlayer
 local MarketplaceService = game:GetService("MarketplaceService")
 
@@ -248,7 +248,7 @@ task.wait(0.2)
 
 -- Step 3: Authentication
 Loading:SetMessage("Authenticating...")
-local auth = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Authentication.lua"))()
+local auth = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Authentication.luau"))()
 
 Loading:SetDescription("Validating whitelist...")
 repeat task.wait() until auth
