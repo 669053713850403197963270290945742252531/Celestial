@@ -2,17 +2,31 @@ while not game:IsLoaded() do
 	task.wait()
 end
 
+-- Allowing the script to be loaded without a defined key
+
+local auth = getgenv()._celestial_auth
+if not getgenv()._celestial_auth then
+    getgenv()._celestial_noauth = true
+    auth = loadstring(readfile("Celestial/Authentication.luau"))()
+end
+
+if not auth.isUser() then auth.isKicked("Invalid access.") return end
+if auth.isKicked() then return end
+
+if not getgenv().script_key and auth.isUser() then
+    local user = auth.getUser()
+    getgenv().script_key = user.Key
+    getgenv()._celestial_auth = auth
+end
+
 local utils = loadstring(readfile("Celestial/Libraries/Core Utilities.luau"))()
 local entityLib = loadstring(readfile("Celestial/Libraries/Entity Library.luau"))()
 local camLib = loadstring(readfile("Celestial/Libraries/Camera Library.luau"))()
 local assetLib = loadstring(readfile("Celestial/Libraries/Asset Library.luau"))()
-
-local executionLib
-if not getgenv().fastLoad then
-    executionLib = loadstring(readfile("Celestial/Libraries/Execution Library.luau"))()
-end
+local executionLib = loadstring(readfile("Celestial/Libraries/Execution Library.luau"))()
 
 local library = loadstring(game:HttpGet("https://raw.githubusercontent.com/corradedied/Obsidian/refs/heads/full/Library.lua"))()
+--local library = loadstring(readfile("library.lua"))()
 local themeManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/corradedied/Obsidian/refs/heads/full/addons/ThemeManager.lua"))()
 local saveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/corradedied/Obsidian/refs/heads/full/addons/SaveManager.lua"))()
 
@@ -21,8 +35,13 @@ local toggles = library.Toggles
 
 library.ForceCheckbox = false
 library.ShowToggleFrameInKeybinds = true
+library.NotifyOnError = true
 
--- SERVICES
+--[[
+        ==========================
+=============== SERVICES & CONSTANTS ==================
+        ==========================
+]]
 local gameName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
 local players = game:GetService("Players")
 local localplayer = players.LocalPlayer
@@ -32,54 +51,6 @@ local uis = game:GetService("UserInputService")
 local killersFolder = game.Workspace:FindFirstChild("Killers")
 local area51 = game:GetService("Workspace").AREA51
 local camera = game:GetService("Workspace").CurrentCamera
-
-local cancelPAPQueue = false
-local wasTeleporterBusy = false
-
-local function getMode()
-    if game.PlaceId == 2092166489 then
-        return "Normal"
-    elseif game.PlaceId == 5740483929 then
-        return "Hard"
-    elseif game.PlaceId == 3182083477 then
-        return "Extreme"
-    end
-end
-
-local window = library:CreateWindow({
-    Title = "Celestial",
-    Footer = "Survive and Kill the Killers in Area 51: " .. gameName .. " - " .. getMode(),
-    Center = true,
-    AutoShow = true,
-    ToggleKeybind = Enum.KeyCode.RightControl,
-    NotifySide = "Right",
-    ShowCustomCursor = false,
-    Icon = assetLib.fetchAsset("Icons/Celestial.png"),
-    Resizable = true,
-    MobileButtonsSide = "Left"
-})
-
-window.autoResetRainbowColor = true
-window.rainbowSpeed = 0.1
-window.alertVolume = 1
-window.notifSoundEnabled = true
-window.keybindFrameEnabled = true
-
-library.KeybindFrame.Visible = window.keybindFrameEnabled
-
-local tabs = {
-    home = window:AddTab("Home", assetLib.fetchAsset("Icons/info.png")),
-	utils = window:AddTab("Utility", assetLib.fetchAsset("Icons/wrench.png")),
-    player = window:AddTab("Player", assetLib.fetchAsset("Icons/circle-user-round.png")),
-    exploits = window:AddTab("Exploits", assetLib.fetchAsset("Icons/bug.png")),
-    visuals = window:AddTab("Visuals", assetLib.fetchAsset("Icons/eye.png")),
-    world = window:AddTab("World", assetLib.fetchAsset("Icons/globe.png")),
-    weapons = window:AddTab("Weapons", assetLib.fetchAsset("Icons/swords.png")),
-	misc = window:AddTab("Miscellaneous", assetLib.fetchAsset("Icons/circle-ellipsis.png")),
-	uiSettings = window:AddTab("UI Settings", assetLib.fetchAsset("Icons/settings.png")),
-}
-
--- CONSTANTS & TABLES
 
 local restrictedWeapons = {
     Crossbow = true,
@@ -91,9 +62,6 @@ local defaults = {
 	killerESPColor_ColorPicker = Color3.fromRGB(255, 0, 0),
     killerNameTagColor_ColorPicker = Color3.fromRGB(255, 255, 255)
 }
-
-local rainbowConnections = {}
-local hues = {}
 
 local killerNames = {
     "Alien", "Ao Oni", "Captain Zombie",
@@ -133,43 +101,163 @@ local collectibles = {
     Wood = true
 }
 
+--[[
+        ==========================
+=============== VARIABLES ==================
+        ==========================
+]]
+
+local cancelPAPQueue = false
+local wasTeleporterBusy = false
+
+local rainbowConnections = {}
+local hues = {}
+
+--[[
+        ==========================
+=============== WINDOW ==================
+        ==========================
+]]
+
+local function getMode()
+    if game.PlaceId == 2092166489 then
+        return "Normal"
+    elseif game.PlaceId == 5740483929 then
+        return "Hard"
+    elseif game.PlaceId == 3182083477 then
+        return "Extreme"
+    end
+end
+
+local window = library:CreateWindow({
+    Title = "Celestial",
+    Footer = "Survive and Kill the Killers in Area 51: " .. gameName .. " - " .. getMode(),
+    Center = true,
+    AutoShow = true,
+    ToggleKeybind = Enum.KeyCode.RightControl,
+    NotifySide = "Right",
+    ShowCustomCursor = false,
+    Icon = assetLib.fetchAsset("Icons/Celestial.png"),
+    Resizable = true,
+    MobileButtonsSide = "Left",
+
+    Animations = {
+        ToggleWindow = true,
+        TabSwitch = true,
+        Groupbox = true,
+        Dropdown = true,
+        KeyPicker = true,
+        Slider = true,
+        ColorPicker = true,
+        Input = true,
+        Button = true
+    },
+
+    NotifyPriority = {
+        Urgent = 0,
+        Normal = 1,
+        Low = 2,
+    },
+})
+
+window.autoResetRainbowColor = true
+window.rainbowSpeed = 0.1
+window.alertVolume = 1
+window.notifSoundEnabled = true
+window.keybindFrameEnabled = true
+
+library.KeybindFrame.Visible = window.keybindFrameEnabled
+
+--[[
+        ==========================
+=============== TABS ==================
+        ==========================
+]]
+
+local tabs = {
+    home = window:AddTab("Home", assetLib.fetchAsset("Icons/info.png")),
+	utils = window:AddTab("Utility", assetLib.fetchAsset("Icons/wrench.png")),
+    player = window:AddTab("Player", assetLib.fetchAsset("Icons/circle-user-round.png")),
+    exploits = window:AddTab("Exploits", assetLib.fetchAsset("Icons/bug.png")),
+    visuals = window:AddTab("Visuals", assetLib.fetchAsset("Icons/eye.png")),
+    world = window:AddTab("World", assetLib.fetchAsset("Icons/globe.png")),
+    weapons = window:AddTab("Weapons", assetLib.fetchAsset("Icons/swords.png")),
+	misc = window:AddTab("Miscellaneous", assetLib.fetchAsset("Icons/circle-ellipsis.png")),
+	uiSettings = window:AddTab("UI Settings", assetLib.fetchAsset("Icons/settings.png")),
+}
+
 -- =================================================
 --                   FUNCTIONS                   --
 -- =================================================
 
-local function notify(title, desc, duration)
-	if typeof(title) ~= "string" then
-        library:Notify("Error notifying", "Argument #1 (title) expected a string value but got a " .. typeof(title) .. " value.", 20)
+--[[
+
+    NotifyPriority = {
+        Urgent = 0,
+        Normal = 1,
+        Low = 2,
+    },
+
+]]
+
+local function getAlertVolume()
+    return window.notifSoundEnabled and (tonumber(window.alertVolume) or 3) or 0
+end
+
+local function notify(type, title, desc, duration)
+    if typeof(title) ~= "string" then
+        library:Notify("Error notifying", "Argument #1 (title) expected a string value but got a " .. typeof(title) .. " value.", 4590662766)
         return
     end
 
     if typeof(desc) ~= "string" then
-        library:Notify("Error notifying", "Argument #1 (desc) expected a string value but got a " .. typeof(desc) .. " value.", 20)
+        library:Notify("Error notifying", "Argument #1 (desc) expected a string value but got a " .. typeof(desc) .. " value.", 4590662766)
         return
     end
 
     if duration ~= nil and typeof(duration) ~= "number" then
-        library:Notify("Error notifying", "Argument #2 (duration) expected a number value but got a " .. typeof(duration) .. " value.", 20)
+        library:Notify("Error notifying", "Argument #2 (duration) expected a number value but got a " .. typeof(duration) .. " value.", 4590662766)
         return
     end
 
-    if duration == nil then
-        duration = 5
+    duration = duration or 5
+
+    if type == "Success" then
+        library:Notify({
+            Title = title,
+            TitleColor = Color3.fromRGB(21, 140, 49),
+            Description = desc,
+            Time = duration,
+            Priority = 1,
+            SoundId = 4590662766,
+            Volume = getAlertVolume(),
+            BigIcon = assetLib.fetchAsset("Icons/circle-check.png"),
+            IconColor = Color3.fromRGB(21, 140, 49)
+        })
+    elseif type == "Error" then
+        library:Notify({
+            Title = title,
+            TitleColor = Color3.fromRGB(140, 21, 21),
+
+            Description = desc,
+            Time = duration,
+            Priority = 0,
+            SoundId = 4590662766,
+            Volume = getAlertVolume()
+        })
+    elseif type == "Info" then
+        library:Notify({
+            Title = title,
+            Description = desc,
+            Time = duration,
+            Priority = 2,
+            SoundId = 4590662766,
+            Volume = getAlertVolume(),
+            BigIcon = assetLib.fetchAsset("Icons/info.png")
+        })
     end
-
-    if window.notifSoundEnabled then
-		local sound = Instance.new("Sound", gethui())
-		sound.PlayOnRemove = true
-		sound.SoundId = "rbxassetid://4590662766"
-		sound.Volume = window.alertVolume
-		sound:Destroy()
-
-        library:Notify({ Title = title, Description = desc, Time = duration--[[, SoundId = "rbxassetid://117667749029346"]] })
-		return
-    end
-
-    library:Notify({ Title = title, Description = desc, Time = duration })
 end
+
 
 local function getHRP()
     return entityLib.getCharInstance("HumanoidRootPart") or nil
@@ -193,7 +281,7 @@ local function toggleRainbow(enabled, colorPickerName)
 				if not options[colorPickerName] or not defaults[colorPickerName] then
 					window.notifSoundPath = getLib("assetLib").fetchAsset("Assets/Sounds/Notification Main.mp3")
 
-					notify("Invalid colorpicker object and/or no valid default was found.", 99999)
+					notify("Error", "Invalid object", "Invalid colorpicker object and/or no valid default was found.", 99999)
 					return
 				else
 					options[colorPickerName]:SetValueRGB(Color3.fromHSV(hues[colorPickerName], 1, 1))
@@ -210,7 +298,7 @@ local function toggleRainbow(enabled, colorPickerName)
 			if not options[colorPickerName] or not defaults[colorPickerName] then
 				window.notifSoundPath = getLib("assetLib").fetchAsset("Assets/Sounds/Notification Main.mp3")
 
-				notify("Invalid colorpicker object and/or no valid default was found.", 99999)
+				notify("Error", "Invalid object", "Invalid colorpicker object and/or no valid default was found.", 99999)
 				return
 			else
 				options[colorPickerName]:SetValueRGB(defaults[colorPickerName])
@@ -267,12 +355,12 @@ end
 
 local function getSuffix(sliderObj, suffixString)
     if typeof(sliderObj) ~= "table" then
-        notify("Error", "Argument #1 (sliderObj) did not return a table instance.", 1000)
+        notify("Error", "Invalid instance", "Argument #1 (sliderObj) did not return a table instance.", 1000)
         return
     end
 
     if typeof(suffixString) ~= "string" then
-        notify("Error", "Argument #2 (suffixString) did not return a string value.", 1000)
+        notify("Error", "Invalid instance", "Argument #2 (suffixString) did not return a string value.", 1000)
         return
     end
 
@@ -304,9 +392,9 @@ local function teleport(destination, hrp)
 		local papMachineCFrame = game:GetService("Workspace").PACKAPUNCH.GUI.CFrame
 
 		if entityLib.checkCFrame(hrp, papMachineCFrame, 5) then
-			notify("Success", "Successfully teleported to " .. destination .. ".", 6)
+			notify("Success", "Successful teleport", "Successfully teleported to " .. destination .. ".", 6)
 		else
-			notify("Error", "Failed to teleport to " .. destination .. ".", 7)
+			notify("Error", "Teleport failed", "Failed to teleport to " .. destination .. ".", 7)
 		end
 
 		return
@@ -315,9 +403,9 @@ local function teleport(destination, hrp)
 	entityLib.teleport(cframeDestination)
 
 	if entityLib.checkCFrame(hrp, cframeDestination, 5) then
-		notify("Success", "Successfully teleported to " .. destination .. ".", 6)
+		notify("Success", "Successful teleport", "Successfully teleported to " .. destination .. ".", 6)
 	else
-		notify("Error", "Failed to teleport to " .. destination .. ".", 7)
+		notify("Error", "Teleport failed", "Failed to teleport to " .. destination .. ".", 7)
 	end
 end
 
@@ -407,7 +495,7 @@ local infoTabBox = tabs.home:AddLeftTabbox()
 
 local playerTab = infoTabBox:AddTab("Player")
 local gameTab = infoTabBox:AddTab("Game")
-if _celestial_auth and typeof(executionLib) == "table" then
+if getgenv()._celestial_auth then
     local whitelistTab = infoTabBox:AddTab("Whitelist")
 
     local auth = getgenv()._celestial_auth
@@ -422,17 +510,22 @@ end
 --      TAB BOX: PLAYER  --
 -------------------------------------
 
+playerTab:AddImage("UserThumbnail", {
+    Image = utils.fetchUserThumbnail("AvatarBust", "Size420x420"),
+    Height = 200,
+
+    BackgroundTransparency = 1,
+})
+
 local resolvedBeforeToggle = false
 
 utils.fetchResetButtonState(function(isActive)
-    print("yielding")
     resolvedBeforeToggle = true
     if toggles.respawnButton_Toggle then
         toggles.respawnButton_Toggle:SetValue(isActive)
     end
 end)
 
--- If resolved synchronously, callback already ran and set the flag
 local respawnButton_Toggle = playerTab:AddToggle("toggleRespawn_Toggle", {
     Text = "Respawn Button",
     Tooltip = false,
@@ -442,9 +535,7 @@ toggles.respawnButton_Toggle = respawnButton_Toggle
 
 playerTab:AddLabel("Name: " .. localplayer.DisplayName .. " (@" .. localplayer.Name .. ")", true)
 playerTab:AddLabel("UserId: " .. localplayer.UserId, true)
-playerTab:AddLabel("Mouse Lock Permitted: true", true)
-playerTab:AddLabel("Neutral: " .. tostring(localplayer.Neutral), true)
-playerTab:AddLabel("Team: " .. tostring(localplayer.Team), true)
+playerTab:AddLabel("Shift Lock Allowed: true", true)
 
 respawnButton_Toggle:OnChanged(function(enabled)
 	utils.setGuiEnabled("reset button", enabled)
@@ -453,6 +544,8 @@ end)
 -------------------------------------
 --      TAB BOX: GAME  --
 -------------------------------------
+
+gameTab:AddImage("GameIcon", { Image = utils.fetchGameImage("Icon"), Height = 200, BackgroundTransparency = 1 })
 
 gameTab:AddLabel("Game Name: " .. gameName, true)
 gameTab:AddLabel("Place ID: " .. game.PlaceId, true)
@@ -465,8 +558,64 @@ local serverJoinScript = [[game:GetService("TeleportService")]] .. ":TeleportToP
 gameTab:AddButton({ Text = "Copy Server Join Script", DoubleClick = false,
     Func = function()
         setclipboard(serverJoinScript)
+		notify("Success", "Copied", "The server join script has been copied to your clipboard.", 5)
+    end,
+})
 
-		notify("Success", "The server join script has been copied to your clipboard.", 5)
+gameTab:AddButton({
+    Text = "Serverhop",
+    Func = function()
+        local reload
+        window:AddDialog("reloadConfirmation_Dialog", {
+            Title = "Reload",
+            Description = "Would you like to reload the script when you join the new server?",
+            AutoDismiss = true,
+            OutsideClickDismiss = true,
+
+            FooterButtons = {
+                Cancel = {
+                    Title = "No",
+                    Variant = "Ghost",
+                    Order = 1,
+
+                    Callback = function(self)
+                        reload = false
+                    end
+                },
+
+                Confirm = {
+                    Title = "Yes",
+                    Variant = "Primary",
+                    Order = 2,
+
+                    Callback = function(self)
+                        reload = true
+                    end
+                }
+            }
+        })
+
+        -- Wait for the user to interact with the dialog
+        repeat task.wait() until typeof(reload) == "boolean"
+
+        print("reload =", reload)
+
+        game:GetService("ReplicatedStorage")["Remote Events"].TeleportToMenu:FireServer()
+        print("joining lobby...")
+
+        queue_on_teleport(string.format([[
+            repeat task.wait() until game:IsLoaded()
+
+            if %s then
+                print("loaded reload block")
+
+                queue_on_teleport([=[
+                    loadstring(readfile("Celestial/Supported Games/[!] SAKTKIA51 - Classic.luau"))()
+                ]=])
+            end
+
+            game:GetService("ReplicatedStorage").TeleportEvents.TeleportRequested:FireServer("Classic mode")
+        ]], tostring(reload), tostring(reload)))
     end,
 })
 
@@ -536,7 +685,7 @@ if getEnergyDrinkState() then -- Don't run the Energy Drink functions if the pla
         local remainingCharges = energyDrink.Ammo.Value
         
         if remainingCharges ~= 0 then
-            notify("Refill Failed", "You still have " .. remainingCharges .. " charges left.", 6, "Error")
+            notify("Error", "Refill failed", "You still have " .. remainingCharges .. " charges left.", 6)
             return
         end
         
@@ -570,7 +719,7 @@ healingGroup:AddButton({ Text = "Drink Energy Drink", Disabled = not getEnergyDr
 
         else
 
-            notify("Error", err, 7)
+            notify("Error", "Error", err, 7)
         end
     end,
 })
@@ -588,7 +737,7 @@ healingGroup:AddButton({ Text = "Drink All", Disabled = not getEnergyDrinkState(
 
         else
 
-            notify("Error", err, 7)
+            notify("Error", "Error", err, 7)
         end
     end,
 })
@@ -597,7 +746,7 @@ healingGroup:AddButton({ Text = "Refill", Disabled = not getEnergyDrinkState(), 
         local energyDrink, err = getEnergyDrink()
 
         if not energyDrink then
-            notify("Error", err, 7)
+            notify("Error", "Error", err, 7)
             return
         else
             refillEnergyDrink()
@@ -633,7 +782,7 @@ local function startAutoDrinkLoop()
                 local energyDrink, err = getEnergyDrink()
 
                 if err then
-                    notify("Error", err, 10)
+                    notify("Error", "Error", err, 10)
                     return
                 end
 
@@ -693,7 +842,7 @@ local function startAutoRefillLoop()
                 if not autoRefillToggle.Value then break end
 
                 if err ~= lastErrorMessage then
-                    notify("Error", err, 10)
+                    notify("Error", "Error", err, 10)
                     lastErrorMessage = err
                     lastErrorNotifyTime = tick()
                 end
@@ -1021,7 +1170,7 @@ toggles.toggleFly_Toggle:OnChanged(function(flyToggleEnabled)
             options.speedExploitMethod_Dropdown:SetValue("WalkSpeed")
             options.speedExploitAmount_Slider:SetValue(options.speedExploitAmount_Slider.Max)
 
-            notify("Fly is incompatible with Velocity", "Speed Exploit has been changed to WalkSpeed.", 10)
+            notify("Error", "Incompatible", "Fly is incompatible with Velocity. Speed Exploit has been updated to WalkSpeed.", 10)
         end
     end
 
@@ -1139,7 +1288,7 @@ options.speedExploitMethod_Dropdown:OnChanged(function()
 
     if method == "Velocity" and toggles.toggleFly_Toggle.Value then
         options.speedExploitMethod_Dropdown:SetValue("WalkSpeed")
-        notify("Velocity Speed is incompatible with Fly", "Speed Exploit has been changed to WalkSpeed.", 10)
+        notify("Error", "Incompatible", "Velocity Speed is incompatible with Fly. Speed Exploit has been updated to WalkSpeed.", 10)
     end
 
 	if method == "WalkSpeed" then
@@ -1180,6 +1329,7 @@ end
 
 -- WalkSpeed Enforcement -  Link the WalkSpeed assignment to every frame update
 runService.RenderStepped:Connect(function()
+    if not options.speedExploitMethod_Dropdown then return end
 	if humanoid and toggles.speedExploit_Toggle.Value and options.speedExploitMethod_Dropdown.Value == "WalkSpeed" then
 		local targetSpeed = options.speedExploitAmount_Slider.Value
 		if humanoid.WalkSpeed ~= targetSpeed then
@@ -1310,14 +1460,14 @@ local function singlePAP(weaponName)
     local busy = teleporterInUse()
 
     if busy then
-        notify("Error", "The teleporter is currently in use. Please try again in a minute.")
+        notify("Error", "Teleport currently unavilable", "The teleporter is currently in use. Please try again in a minute.", 8)
         return
     end
 
 	-- Weapon check
 
 	if not entityLib.getTool("Specific", weaponName) then
-		notify("Error", "You don't have " .. weaponName .. " in your inventory.", 6)
+		notify("Error", "Invalid tool", "You don't have " .. weaponName .. " in your inventory.", 6)
 		return false
 	end
 
@@ -1329,7 +1479,7 @@ local function singlePAP(weaponName)
 
 	if requiredKills and kills < requiredKills then
 		local needed = requiredKills - kills
-		notify("Error", weaponName .. " requires " .. requiredKills .. " kills to pack a punch. You need " .. needed .. " more.", 7)
+		notify("Error", "Insufficient kills", weaponName .. " requires " .. requiredKills .. " kills to pack a punch. You need " .. needed .. " more.", 7)
 		return false
 	end
 
@@ -1345,13 +1495,13 @@ local function singlePAP(weaponName)
 	-- Fire teleport prompt
 
 	utils.fireProxPrompt(area51.TeleporterRoom.Teleporter["Control Panels"].Middle.Teleport)
-    notify("Working..", "Teleporting in progress...\nPack a punching the " .. weaponName .. "...", 11)
+    notify("Info", "Working..", "Teleporting in progress...\nPack a punching the " .. weaponName .. "...", 11)
 
 	-- Confirm teleport has started
 
 	local displayLabel = area51.TeleporterRoom.Teleporter["Control Panels"].Middle.Displayer.SurfaceGui.Frame.TextLabel
     repeat task.wait() until string.find(displayLabel.Text, "Teleporting" )
-    notify("Working..", "Correct teleport.\nPack a punching the " .. weaponName .. "...", 12)
+    notify("Info", "Working..", "Correct teleport.\nPack a punching the " .. weaponName .. "...", 12)
 
 	-- Teleport inside teleporter
 
@@ -1361,13 +1511,13 @@ local function singlePAP(weaponName)
 
 	local punchRoomCFrame = CFrame.new(109.300003, 335.499969, 62)
 	repeat task.wait() until entityLib.checkCFrame(hrp, punchRoomCFrame, 5)
-    notify("Working..", "Teleport finished.\nPack a punching the " .. weaponName .. "...", 9)
+    notify("Info", "Working..", "Teleport finished.\nPack a punching the " .. weaponName .. "...", 9)
 
 	-- PAP weapon
 
 	game:GetService("Workspace").PACKAPUNCH.PAPStarted:FireServer(weaponName)
 	game:GetService("Workspace").PACKAPUNCH.PAPFinished:FireServer()
-    notify("Success", weaponName .. " has been pack a punched!", 7)
+    notify("Success", "Success", weaponName .. " has been pack a punched!", 7)
 
     freeze(false)
 	return true
@@ -1675,11 +1825,6 @@ killersGroup:AddToggle("antiSlendermanJumpscare_Toggle", { Text = "Anti Slenderm
 killerGodmodeDepbox:SetupDependencies({ { toggles.killerGodmode_Toggle, true } })
 disableKillersDepbox:SetupDependencies({ { toggles.disableAllKillers_Toggle, true } })
 
-local function disableAuraDebug(title, message)
-    if not toggles.disableAuraDebugNotifs_Toggle.Value then return end
-    notify(title, message, 4)
-end
-
 local affectedKillers = {}
 local proximityRange = options.disableKillersDistance_Slider.Value
 
@@ -1692,7 +1837,7 @@ local function updateKiller(hum, model, method, inRange)
         entityLib.clearData(hum, "JumpPower")
         affectedKillers[hum] = nil
         if toggles.disableAuraDebugNotifs_Toggle.Value then
-            notify("Disable Aura", "Restored " .. model.Name .. "'s movement.", 3)
+            notify("Info", "Successful restore", "Restored " .. model.Name .. "'s movement.", 3)
         end
     end
 
@@ -1714,7 +1859,7 @@ local function updateKiller(hum, model, method, inRange)
     if method == "Kill" then
         hum.Health = 0
         if toggles.disableAuraDebugNotifs_Toggle.Value then
-            notify("Disable Aura", "Killed " .. model.Name, 3)
+            notify("Info", "Disable Aura", "Killed " .. model.Name, 3)
         end
     elseif method == "Disable Movement" then
         if not entityLib.isStored(hum, "WalkSpeed") then
@@ -1726,12 +1871,12 @@ local function updateKiller(hum, model, method, inRange)
         hum.WalkSpeed = 0
         hum.JumpPower = 0
         if toggles.disableAuraDebugNotifs_Toggle.Value then
-            notify("Disable Aura", "Disabled " .. model.Name .. "'s movement.", 3)
+            notify("Info", "Disable Aura", "Disabled " .. model.Name .. "'s movement.", 3)
         end
     elseif method == "Disable Humanoid" then
         hum:Destroy()
         if toggles.disableAuraDebugNotifs_Toggle.Value then
-            notify("Disable Aura", "Disabled " .. model.Name .. "'s humanoid.", 3)
+            notify("Info", "Disable Aura", "Disabled " .. model.Name .. "'s humanoid.", 3)
         end
     end
 
@@ -2317,7 +2462,7 @@ toggles.antiTailsPopup_Toggle:OnChanged(function(enabled)
     if popupGui then
         popupGui.Enabled = not enabled
     else
-        notify("Error", "Failed to find Tails Doll popup.", 100)
+        notify("Error", "Failed to locate", "Failed to find Tails Doll popup.", 100)
     end
 end)
 
@@ -2536,7 +2681,7 @@ unlockAlienGroup:AddButton({ Text = "Reveal Code",
         if method == "Announce" then
             utils.sendMessage("The alien code is " .. alienCode)
         else
-            notify("Alien code", "The alien code is " .. alienCode, options.silentModeNotifDuration_Slider.Value)
+            notify("Info", "Alien code", "The alien code is " .. alienCode, options.silentModeNotifDuration_Slider.Value, 10)
         end
     end,
 })
@@ -2639,7 +2784,7 @@ local function obtainSelectedWeapons()
 	for weaponName, isSelected in pairs(selected) do
 		if isSelected then
 			if restrictedWeapons[weaponName] then
-				notify("Error", weaponName .. " cannot be given and can only be pack a punched due to requirements/gamepasses.", 14)
+				notify("Error", "Unable to pack-a-punch", weaponName .. " cannot be given and can only be pack a punched due to requirements/gamepasses.", 14)
 			else
 				anySelected = true
 
@@ -2654,7 +2799,7 @@ local function obtainSelectedWeapons()
 					if weapon and weapon:FindFirstChild("Hitbox") then
 						table.insert(weaponsToGive, weapon)
 					else
-						notify("Error", weaponName .. " is missing or has no available hitbox.", 13)
+						notify("Error", "No available hitbox", weaponName .. " is missing or has no available hitbox.", 13)
 					end
 				end
 			end
@@ -2686,18 +2831,18 @@ local function obtainSelectedWeapons()
 	end
 
 	if #alreadyHave > 0 then
-		notify("Error", "You already have the following weapons: " .. table.concat(alreadyHave, ", "), 8)
+		notify("Error", "Cannot give weapons", "You already have the following weapons: " .. table.concat(alreadyHave, ", "), 8)
 	end
 
 	if #givenWeapons > 0 then
-		notify("Success", "You have been given the following weapons: " .. table.concat(givenWeapons, ", "), 5)
+		notify("Success", "Gave weapons", "You have been given the following weapons: " .. table.concat(givenWeapons, ", "), 5)
 		if toggles.clearOnAction_Toggle.Value then
 			options.weaponsList_Dropdown:SetValue({})
 		end
 	end
 
 	if not anySelected then
-		notify("Error", "No weapons selected.", 8)
+		notify("Error", "Invalid selection", "No weapons selected.", 8)
 	end
 end
 
@@ -2711,7 +2856,7 @@ local function pap(weaponName, selectedWeapons, currentIndex)
 	-- Weapon check
 
 	if not entityLib.getTool("Specific", weaponName) then
-		notify("Error", "You don't have " .. weaponName .. " in your inventory. Skipping...", 6)
+		notify("Error", "Unavailable tool", "You don't have " .. weaponName .. " in your inventory. Skipping...", 6)
 		return false
 	end
 
@@ -2723,7 +2868,7 @@ local function pap(weaponName, selectedWeapons, currentIndex)
 
 	if requiredKills and kills < requiredKills then
 		local needed = requiredKills - kills
-		notify("Error", weaponName .. " requires " .. requiredKills .. " kills to pack a punch. You need " .. needed .. " more.", 7)
+		notify("Error", "Insufficient kills", weaponName .. " requires " .. requiredKills .. " kills to pack a punch. You need " .. needed .. " more.", 7)
 		return false
 	end
 
@@ -2739,13 +2884,13 @@ local function pap(weaponName, selectedWeapons, currentIndex)
 	-- Fire teleport prompt
 
 	utils.fireProxPrompt(area51.TeleporterRoom.Teleporter["Control Panels"].Middle.Teleport)
-    notify("Working..", "Teleporting in progress...\nPack a punching the " .. weaponName .. "...", 11)
+    notify("Info", "Working..", "Teleporting in progress...\nPack a punching the " .. weaponName .. "...", 11)
 
 	-- Confirm teleport has started
 
 	local displayLabel = area51.TeleporterRoom.Teleporter["Control Panels"].Middle.Displayer.SurfaceGui.Frame.TextLabel
     repeat task.wait() until string.find(displayLabel.Text, "Teleporting" )
-    notify("Working..", "Correct teleport.\nPack a punching the " .. weaponName .. "...", 12)
+    notify("Info", "Working..", "Correct teleport.\nPack a punching the " .. weaponName .. "...", 12)
 
 	-- Teleport inside teleporter
 
@@ -2755,13 +2900,13 @@ local function pap(weaponName, selectedWeapons, currentIndex)
 
 	local punchRoomCFrame = CFrame.new(109.300003, 335.499969, 62)
 	repeat task.wait() until entityLib.checkCFrame(hrp, punchRoomCFrame, 5)
-    notify("Working..", "Teleport finished.\nPack a punching the " .. weaponName .. "...", 9)
+    notify("Info", "Working..", "Teleport finished.\nPack a punching the " .. weaponName .. "...", 9)
 
 	-- PAP weapon
 
 	game:GetService("Workspace").PACKAPUNCH.PAPStarted:FireServer(weaponName)
 	game:GetService("Workspace").PACKAPUNCH.PAPFinished:FireServer()
-    notify("Success", weaponName .. " has been pack a punched!", 7)
+    notify("Success", "Success", weaponName .. " has been pack a punched!", 7)
 
     -- Notify remaining queue
 
@@ -2772,7 +2917,7 @@ local function pap(weaponName, selectedWeapons, currentIndex)
         end
 
         if #remaining > 0 then
-            notify("Info", "Remaining in queue (" .. #remaining .. "): " .. table.concat(remaining, ", "), 26)
+            notify("Info", "Queue updated", "Remaining in queue (" .. #remaining .. "): " .. table.concat(remaining, ", "), 26)
         end
     end
 
@@ -2795,7 +2940,7 @@ papWeaponBtn = weaponsGroup:AddButton({ Text = "PAP Weapon",
         local died = false
         local deathConnection = humanoid.Died:Connect(function()
             died = true
-            notify("Error", "You died during Pack-a-Punch. Process stopped.", 7)
+            notify("Error", "Process interrupted", "You died during Pack-a-Punch. Process stopped.", 7)
             papWeaponBtn:SetDisabled(false)
             papHeldBtn:SetDisabled(false)
         end)
@@ -2809,9 +2954,9 @@ papWeaponBtn = weaponsGroup:AddButton({ Text = "PAP Weapon",
             for name, isSelected in pairs(selected) do
                 if isSelected then
                     if entityLib.getTool("Specific", "PAP" .. name) then
-                        notify("Info", "You already have PAP" .. name .. ". Skipping...", 5)
+                        notify("Info", "Cannot pack-a-punch", "You already have PAP" .. name .. ". Skipping...", 5)
                     elseif string.sub(name, 1, 3) == "PAP" then
-                        notify("Info", name .. " is already pack a punched. Skipping...", 5)
+                        notify("Info", "Cannot pack-a-punch", name .. " is already pack a punched. Skipping...", 5)
                     else
                         table.insert(selectedWeapons, name)
                     end
@@ -2827,11 +2972,11 @@ papWeaponBtn = weaponsGroup:AddButton({ Text = "PAP Weapon",
                 local hasPAP = entityLib.getTool("Specific", "PAP" .. weaponName)
 
                 if not (hasBase or hasPAP) then
-                    notify("Error", "You don't have " .. weaponName .. ". Cannot pack a punch.", 6)
+                    notify("Error", "Unavailable weapon", "You don't have " .. weaponName .. ". Cannot pack a punch.", 6)
                 else
                     local requiredKills = requirements[weaponName] or 0
                     if kills < requiredKills then
-                        notify("Error", "Not enough kills to pack a punch " .. weaponName .. ". Need " .. (requiredKills - kills) .. " more kills.", 6)
+                        notify("Error", "Insufficient kills", "Not enough kills to pack a punch " .. weaponName .. ". Need " .. (requiredKills - kills) .. " more kills.", 6)
                     else
                         repeat
                             if died or cancelPAPQueue then break end
@@ -2846,18 +2991,18 @@ papWeaponBtn = weaponsGroup:AddButton({ Text = "PAP Weapon",
                                     table.insert(pending, selectedWeapons[i])
                                 end
 
-                                notify("Waiting", "Teleporter in use. Waiting to pack a punch: " .. table.concat(pending, ", "), 4)
+                                notify("Info", "Waiting..", "Teleporter in use. Waiting to pack a punch: " .. table.concat(pending, ", "), 4)
 
                             elseif not busy and wasTeleporterBusy then
                                 wasTeleporterBusy = false
-                                notify("Info", "Teleporter is now available.", 3)
+                                notify("Info", "Teleporter available", "Teleporter is now available.", 3)
                             end
 
                             task.wait(0.2)
                         until not teleporterInUse() or died or cancelPAPQueue
 
                         if cancelPAPQueue then
-                            notify("Info", "Pack-a-Punch queue cancelled. Waiting to return...", 5)
+                            notify("Info", "Queue canceled", "Pack-a-Punch queue canceled. Waiting to return...", 5)
 
                             local returnCFrame = CFrame.new(219.199997, 323.500061, 845.900024)
 
@@ -2874,7 +3019,7 @@ papWeaponBtn = weaponsGroup:AddButton({ Text = "PAP Weapon",
                         if success then
                             anyPunched = true
                         else
-                            notify("Error", "Failed to pack a punch " .. weaponName, 5)
+                            notify("Error", "Failed", "Failed to pack a punch " .. weaponName, 5)
                             break
                         end
 
@@ -2906,12 +3051,12 @@ papWeaponBtn = weaponsGroup:AddButton({ Text = "PAP Weapon",
 
             if not died then
                 if anyPunched then
-                    notify("Success", "All selected weapons have been pack a punched!", 6)
+                    notify("Success", "Successful pack-a-punch", "All selected weapons have been pack a punched!", 6)
                     if toggles.clearOnAction_Toggle.Value then
                         options.weaponsList_Dropdown:SetValue({})
                     end
                 else
-                    notify("Info", "No weapons were pack a punched.", 6)
+                    notify("Info", "None pack-a-punched", "No weapons were pack a punched.", 6)
                 end
 
                 papWeaponBtn:SetDisabled(false)
@@ -2930,7 +3075,7 @@ papHeldBtn = papWeaponBtn:AddButton({ Text = "PAP Held Weapon",
         
         local heldTool = entityLib.getTool("Held")
         if not heldTool then
-            notify("Error", "You're not holding a weapon.", 5)
+            notify("Error", "No weapon", "You're not holding a weapon.", 5)
             return
         end
 
@@ -2946,7 +3091,7 @@ papHeldBtn = papWeaponBtn:AddButton({ Text = "PAP Held Weapon",
 		local died = false
 		local deathConnection = humanoid.Died:Connect(function()
 			died = true
-			notify("Error", "You died during Pack-a-Punch. Process stopped.", 7)
+			notify("Error", "Process canceled", "You died during the pack-a-punch process and it has been stopped.", 7)
 			papWeaponBtn:SetDisabled(false)
 			papHeldBtn:SetDisabled(false)
 		end)
@@ -2972,7 +3117,7 @@ papHeldBtn = papWeaponBtn:AddButton({ Text = "PAP Held Weapon",
                         --warn("Returned to original position (held weapon)")
                     end
 
-                    notify("Success", heldWeapon .. " has been pack a punched!", 6)
+                    notify("Success", "Success", heldWeapon .. " has been pack a punched!", 6)
 
                     if toggles.clearOnAction_Toggle.Value then
                         options.weaponsList_Dropdown:SetValue({})
@@ -3015,7 +3160,7 @@ weaponsGroup:AddButton({ Text = "Clear Queue", Tooltip = "Stops and clears the P
     Func = function()
         cancelPAPQueue = true
 
-        notify("Success", "Pack a Punch queue has been cleared and stopped.", 5)
+        notify("Success", "Cleared queue", "Pack a Punch queue has been cleared and canceled.", 5)
     end,
 })
 
@@ -3086,7 +3231,7 @@ toggles.zombieMorph_Toggle:OnChanged(function(enabled)
         -- Zombie morph check
 
         if chest and chest:FindFirstChild("Head") and chest.Head.Color == Color3.fromRGB(0, 255, 0) then
-            notify("Error", "You already have the zombie morph.", 10)
+            notify("Error", "Failed", "You already have the zombie morph.", 10)
             toggles.zombieMorph_Toggle:SetValue(false)
             return
         end
@@ -3099,7 +3244,7 @@ toggles.zombieMorph_Toggle:OnChanged(function(enabled)
         if hrp then
             utils.fireTouchEvent(hrp, area51.Outside.Hangar.Right["Zombie Morph"].TheButton)
         else
-            notify("Error", "Could not find HumanoidRootPart.", 10)
+            notify("Error", "Unavailable root", "Could not find HumanoidRootPart.", 10)
             toggles.zombieMorph_Toggle:SetValue(false)
         end
     end
@@ -3122,7 +3267,7 @@ toggles.obtainArmor_Toggle:OnChanged(function(enabled)
         local armor = char:FindFirstChild("VestArmor")
 
         if armor then
-            notify("Error", "You already have armor.", 10)
+            notify("Error", "Failed", "You already have armor.", 10)
             toggles.obtainArmor_Toggle:SetValue(false)
             return
         end
@@ -3148,7 +3293,7 @@ toggles.obtainHelmet_Toggle:OnChanged(function(enabled)
         end
 
         if hasHelmet then
-            notify("Error", "You already have the helmet.", 10)
+            notify("Error", "Failed", "You already have the helmet.", 10)
             toggles.obtainHelmet_Toggle:SetValue(false)
             return
         end
@@ -3310,7 +3455,7 @@ othersGroup2:AddToggle("weaponSpam_Toggle", { Text = "Weapon Spam", Tooltip = fa
 othersGroup2:AddButton({ Text = "Give Office Card",
     Func = function()
         if entityLib.getTool("Specific", "Card2") then
-            notify("Error", "You already have the office keycard.", 8)
+            notify("Error", "Failed", "You already have the office keycard.", 8)
             return
         end
 
@@ -3322,7 +3467,7 @@ othersGroup2:AddButton({ Text = "Give Office Card",
 othersGroup2:AddButton({ Text = "Vault Keycard",
     Func = function()
         if entityLib.getTool("Specific", "Card1") then
-            notify("Error", "You already have the vault keycard.", 8)
+            notify("Error", "Failed", "You already have the vault keycard.", 8)
             return
         end
 
@@ -3345,7 +3490,7 @@ toggles.weaponSpam_Toggle:OnChanged(function(enabled)
                 local backpackTools = localplayer.Backpack:GetChildren()
 
                 if totalTools < 3 then
-                    notify("Error", "You must have at least 3 weapons.", 8)
+                    notify("Error", "Insufficient weapons", "You must have at least 3 weapons.", 8)
                     toggles.weaponSpam_Toggle:SetValue(false)
                     return
                 end
@@ -3392,7 +3537,7 @@ localplayer.CharacterAdded:Connect(function(char)
                 local backpackTools = localplayer.Backpack:GetChildren()
 
                 if totalTools < 3 then
-                    notify("Error", "You must have at least 3 weapons.", 8)
+                    notify("Error", "Insufficient weapons", "You must have at least 3 weapons.", 8)
                     toggles.weaponSpam_Toggle:SetValue(false)
                     return
                 end

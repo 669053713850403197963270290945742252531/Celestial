@@ -128,6 +128,9 @@ local assets = {
     ["Icons/globe.png"]             = "https://i.e-z.host/nk3myn7k.png",
     ["Icons/circle-user-round.png"] = "https://i.e-z.host/mb3ax783.png",
     ["Icons/Celestial.png"]         = "https://i.e-z.host/h3pn12th.png",
+    ["Icons/circle-check.png"]      = "https://i.e-z.host/ayvx3hdx.png",
+    ["Icons/circle-x.png"]          = "https://i.e-z.host/7i4fgzcu.png",
+    
     ["Sounds/success.mp3"]          = "https://i.e-z.host/d0f9729n.mp3"
 }
 
@@ -254,6 +257,13 @@ Loading:SetDescription("Validating whitelist...")
 repeat task.wait() until auth
 Loading:SetDescription("Validating user...")
 
+task.spawn(function()
+    repeat task.wait() until auth.isKicked()
+    Loading:Destroy() -- when the user gets kicked, destroy the Loading menu
+end)
+
+if auth.isKicked() then return end -- Prevent loading the script if the user gets kicked via auth
+
 local user = auth.getUser()
 if not user then
     localplayer:Kick("Invalid user.")
@@ -275,8 +285,9 @@ end)
 
 local gameName = ok and info.Name or "Unknown Game"
 local games = {
-    [123974602339071] = "Celestial/test 1.lua",
-    [155382109] = "Celestial/test 2.lua"
+    [123974602339071] = "Celestial/test 1.luau",
+    [155382109] = "Celestial/test 2.luau",
+    [2092166489] = "Celestial/Supported Games/[!] SAKTKIA51 - Classic.luau"
 }
 
 local scriptPath = games[game.PlaceId]

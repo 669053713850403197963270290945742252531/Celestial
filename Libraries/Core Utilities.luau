@@ -510,9 +510,7 @@ utils.fireProxPrompt = function(promptPath)
     end
 end
 
-
 -- Function - fireClickEvent
-
 
 utils.fireClickEvent = function(target, delay)
     if typeof(target) ~= "Instance" then
@@ -646,6 +644,8 @@ utils.fetchOwnership = function(mode, id)
     end
 end
 
+-- Function - hash
+
 utils.hash = function(text, algorithm)
     local hashLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Libraries/Hash%20Library%20(%40Egor).luau"))()
     
@@ -677,6 +677,8 @@ utils.hash = function(text, algorithm)
     return hashFunction(text)
 end
 
+-- Function - randomstring
+
 utils.randomString = function()
     local array = {}
     for i = 1, math.random(10, 100) do
@@ -686,45 +688,15 @@ utils.randomString = function()
     return table.concat(array)
 end
 
+-- Function - round
+
 utils.round = function(number, decimalPlaces)
     local formatString = "%." .. decimalPlaces .. "f"
     local roundedNumber = string.format(formatString, number)
     return tonumber(roundedNumber)
 end
 
-utils.success = function(text)
-    local font = "ArialBold"
-    local color = Color3.fromRGB(0, 255, 0)
-    local size = 16
-
-    local colorHex = string.format("#%02X%02X%02X", color.R * 255, color.G * 255, color.B * 255)
-    local richText = string.format('<font color="%s" face="%s" size="%d">%s</font>', colorHex, font, size, text or "Unknown message.")
-    local channel = textChatService.TextChannels:FindFirstChild("RBXSystem")
-
-    if channel then
-        channel:DisplaySystemMessage(richText)
-    else
-        warn("utils.success: Cannot send message: TextChannel RBXSystem not found.")
-    end
-
-end
-
-utils.error = function(text)
-    local font = "ArialBold"
-    local color = Color3.fromRGB(255, 0, 0)
-    local size = 30
-
-    local colorHex = string.format("#%02X%02X%02X", color.R * 255, color.G * 255, color.B * 255)
-    local richText = string.format('<font color="%s" face="%s" size="%d">%s</font>', colorHex, font, size, text or "Unknown message.")
-    local channel = textChatService.TextChannels:FindFirstChild("RBXSystem")
-
-    if channel then
-        channel:DisplaySystemMessage(richText)
-    else
-        warn("utils.error: Cannot send message: TextChannel RBXSystem not found.")
-    end
-
-end
+-- Function - checkfunction
 
 utils.checkFunction = function(functionName)
     if typeof(functionName) == "function" then
@@ -734,6 +706,8 @@ utils.checkFunction = function(functionName)
         return false
     end
 end
+
+-- Function - fetchResetButtonState
 
 utils.fetchResetButtonState = function(callback)
     local function getButton()
@@ -778,12 +752,195 @@ utils.fetchResetButtonState = function(callback)
     end
 end
 
--- PlaceID > UniverseId
+-- Function - fetchUniverseID
+
 utils.fetchUniverseID = function(placeId)
     local response = game:HttpGet("https://apis.roblox.com/universes/v1/places/" .. placeId .. "/universe")
     local data = http:JSONDecode(response)
 
     return data.universeId
+end
+
+-- Function - fetchUserThumbnail
+
+utils.fetchUserThumbnail = function(thumbnailType, thumbnailSize)
+	local validTypes = {
+		HeadShot = Enum.ThumbnailType.HeadShot,
+		AvatarBust = Enum.ThumbnailType.AvatarBust,
+		AvatarThumbnail = Enum.ThumbnailType.AvatarThumbnail,
+	}
+
+	local validSizes = {
+		Size48x48 = Enum.ThumbnailSize.Size48x48,
+        Size60x60 = Enum.ThumbnailSize.Size60x60,
+		Size100x100 = Enum.ThumbnailSize.Size100x100,
+		Size150x150 = Enum.ThumbnailSize.Size150x150,
+		Size180x180 = Enum.ThumbnailSize.Size180x180,
+		Size352x352 = Enum.ThumbnailSize.Size352x352,
+		Size420x420 = Enum.ThumbnailSize.Size420x420,
+	}
+
+	thumbnailType = thumbnailType or "HeadShot"
+	thumbnailSize = thumbnailSize or "Size420x420"
+
+	local typeEnum = validTypes[thumbnailType]
+	local sizeEnum = validSizes[thumbnailSize]
+
+	if not typeEnum then
+		warn("utils.getThumbnail: Invalid thumbnail type: " .. tostring(thumbnailType))
+		return
+	end
+
+	if not sizeEnum then
+		warn("utils.getThumbnail: Invalid thumbnail size: " .. tostring(thumbnailSize))
+		return
+	end
+
+	local success, content, isReady = pcall(function()
+		return players:GetUserThumbnailAsync(
+			player.UserId,
+			typeEnum,
+			sizeEnum
+		)
+	end)
+
+	if not success then
+		warn("utils.getThumbnail: Failed to retrieve thumbnail.")
+		return
+	end
+
+	return content, isReady
+end
+
+-- Function - fetchGameImage
+
+utils.fetchGameImage = function(mode, size)
+	local validModes = {
+		Icon = {
+			Type = "GameIcon",
+			Sizes = {
+				["50x50"] = true,
+				["150x150"] = true,
+			},
+			DefaultSize = "150x150",
+		},
+
+		Thumbnail = {
+			Type = "GameThumbnail",
+			Sizes = {
+				["256x144"] = true,
+				["384x216"] = true,
+				["480x270"] = true,
+				["576x324"] = true,
+				["768x432"] = true,
+			},
+			DefaultSize = "768x432",
+		},
+	}
+
+	mode = mode or "Icon"
+
+	local modeData = validModes[mode]
+
+	if not modeData then
+		warn(
+			"utils.getGameImage: Invalid mode: "
+				.. tostring(mode)
+				.. ". Valid modes are Icon and Thumbnail."
+		)
+		return
+	end
+
+	size = size or modeData.DefaultSize
+
+	if not modeData.Sizes[size] then
+		warn(
+			"utils.getGameImage: Invalid size '"
+				.. tostring(size)
+				.. "' for mode '"
+				.. mode
+				.. "'."
+		)
+		return
+	end
+
+	local width, height = size:match("^(%d+)x(%d+)$")
+
+	-- Game icon
+	if mode == "Icon" then
+		local success, universeId = pcall(function()
+			return utils.fetchUniverseID(game.PlaceId)
+		end)
+
+		if not success or not universeId then
+			warn("utils.getGameImage: Failed to retrieve universe ID.")
+			return
+		end
+
+		return string.format(
+			"rbxthumb://type=GameIcon&id=%s&w=%s&h=%s",
+			universeId,
+			width,
+			height
+		)
+	end
+
+	-- Game thumbnail
+	if mode == "Thumbnail" then
+		local success, universeId = pcall(function()
+			return utils.fetchUniverseID(game.PlaceId)
+		end)
+
+		if not success or not universeId then
+			warn("utils.getGameImage: Failed to retrieve universe ID.")
+			return
+		end
+
+		local requestSuccess, response = pcall(function()
+			return game:HttpGet(
+				"https://thumbnails.roblox.com/v1/games/multiget/thumbnails"
+					.. "?universeIds=" .. universeId
+					.. "&size=" .. size
+					.. "&format=Png"
+					.. "&isCircular=false"
+			)
+		end)
+
+		if not requestSuccess then
+			warn("utils.getGameImage: Failed to retrieve game thumbnail data.")
+			return
+		end
+
+		local decodeSuccess, data = pcall(function()
+			return http:JSONDecode(response)
+		end)
+
+		if not decodeSuccess or not data or not data.data then
+			warn("utils.getGameImage: Failed to decode thumbnail data.")
+			return
+		end
+
+		local gameData = data.data[1]
+
+		if not gameData or not gameData.thumbnails then
+			warn("utils.getGameImage: No game thumbnail found.")
+			return
+		end
+
+		local thumbnailData = gameData.thumbnails[1]
+
+		if not thumbnailData or not thumbnailData.targetId then
+			warn("utils.getGameImage: No valid thumbnail ID found.")
+			return
+		end
+
+		return string.format(
+			"rbxthumb://type=GameThumbnail&id=%s&w=%s&h=%s",
+			thumbnailData.targetId,
+			width,
+			height
+		)
+	end
 end
 
 return utils

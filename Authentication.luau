@@ -95,6 +95,11 @@ auth.getUser = newcclosure(function()
     }
 end)
 
+auth.kick = newcclosure(function(reason)
+    player:Kick(reason)
+    kicked = true
+end)
+
 auth.isKicked = newcclosure(function()
     return kicked
 end)
