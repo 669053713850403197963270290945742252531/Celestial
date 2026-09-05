@@ -1,1 +1,17 @@
-[]
+[
+    {
+        "Identifier": "corradeknight",
+        "HWID": null,
+        "DiscordId": "999776749070078004",
+        "Rank": "User",
+        "Activated": null,
+        "Key": "zvE6f6zNGIZE41v9YfaYHtzK2gJ",
+        "Notes": null,
+        "Games": [
+            "*"
+        ],
+        "LastHwidReset": null,
+        "totalHwidResets": 0,
+        "Executions": 0
+    }
+]
