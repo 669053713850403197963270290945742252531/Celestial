@@ -63,7 +63,9 @@
         "Notes": "ts notes",
         "Games": [
             "*"
-        ]
+        ],
+        "Activated": "9/4/2026, 9:38:01 PM",
+        "Executions": 1
     },
     {
         "Identifier": "FlameFrags",
