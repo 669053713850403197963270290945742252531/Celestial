@@ -16,7 +16,7 @@ local function getTime(displaySeconds)
     -- Convert to 12 hour
 
     if hour == 0 then
-        hour = 12 -- me when midnight 😨
+        hour = 12
     elseif hour > 12 then
         hour = hour - 12
     end
