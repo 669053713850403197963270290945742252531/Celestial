@@ -292,8 +292,8 @@ local games = {
 
 local scriptPath = games[game.PlaceId]
 if scriptPath then
-    Loading:SetDescription("Starting " .. gameName .. " script...")
-    loadstring(readfile(scriptPath))()
+    Loading:SetDescription("Starting " .. gameName .. " script...");
+    (loadstring(readfile(scriptPath)) :: () -> any)()
 else
     warn("No Celestial script registered for this place (" .. game.PlaceId .. ")")
 end
