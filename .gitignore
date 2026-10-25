@@ -16,3 +16,4 @@ trace.json
 
 .vscode/
 .stylua.toml
+sourcemap.json
