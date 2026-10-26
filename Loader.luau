@@ -25,7 +25,7 @@ task.wait(0.2)
 Loading:SetCurrentStep(1)
 
 local functionsToTest = {
-    "loadfile", "makefolder", "getgc", "writefile", "queue_on_teleport", "fireproximityprompt",
+    "loadfile", "makefolder", "writefile", "queue_on_teleport", "fireproximityprompt",
     "delfile", "isfolder", "firetouchinterest", "isfunctionhooked", "readfile", "Drawing",
     "newcclosure", "gethui", "delfolder", "fireclickdetector", "isfile"
 }
