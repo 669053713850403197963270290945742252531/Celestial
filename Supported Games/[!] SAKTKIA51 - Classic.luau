@@ -1,3 +1,29 @@
+--[[
+    CELESTIAL SCRIPTHUB | SAKTKIA51 - CLASSIC MODE
+
+    TABLE OF CONTENTS
+    01. Bootstrap and external dependencies
+    02. Services, shared constants, and visual defaults
+    03. Shared runtime state
+    04. Window configuration
+    05. Tab registration
+    06. Shared helpers
+    07. Home: player, game, and whitelist panels
+    08. Utility: teleport, healing, sounds, and interactions
+    09. Player: movement, speed handling, freecam, and backtrack
+    10. Exploits: Pack-a-Punch, aim controls, collection, and killer controls
+    11. Visuals: ESP, FOV, fog, and anti-effect handlers
+    12. World: environmental settings and alien / kill-part controls
+    13. Weapons: inventory, Pack-a-Punch queue, defense, and gun options
+    14. Miscellaneous: utility actions and weapon spam
+    15. UI settings, teardown, and configuration persistence
+
+    MAINTENANCE NOTES
+    - Keep feature controls near the callbacks that handle them.
+    - Execution order matters: callbacks share locals declared in earlier sections.
+    - When adding a toggle, also review unloadModules() and relevant respawn hooks.
+]]
+-- 01 | BOOTSTRAP AND DEPENDENCIES
 while not game:IsLoaded() do
     task.wait()
 end
@@ -18,11 +44,7 @@ library.ForceCheckbox = false
 library.ShowToggleFrameInKeybinds = true
 library.NotifyOnError = true
 
---[[
-        ==========================
-=============== SERVICES & CONSTANTS ==================
-        ==========================
-]]
+-- 02 | SERVICES, SHARED CONSTANTS, AND VISUAL DEFAULTS
 local gameName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
 local players = game:GetService("Players")
 local localplayer = players.LocalPlayer
@@ -33,17 +55,13 @@ local killersFolder = game.Workspace:FindFirstChild("Killers")
 local area51 = game:GetService("Workspace").AREA51
 local camera = game:GetService("Workspace").CurrentCamera
 
-local restrictedWeapons = {
-    Crossbow = true,
-    MG42 = true,
-    FreezeGun = true
-}
-
+-- Default colors used when rainbow cycling is reset.
 local defaults = {
     killerESPColor_ColorPicker = Color3.fromRGB(255, 0, 0),
     killerNameTagColor_ColorPicker = Color3.fromRGB(255, 255, 255)
 }
 
+-- Names used by the target-exclusion dropdowns.
 local killerNames = {
     "Alien", "Ao Oni", "Captain Zombie",
     "Chucky", "Eyeless Jack", "Fishface",
@@ -56,37 +74,7 @@ local killerNames = {
     "Giant", "Evil Lawn Mower"
 }
 
-local collectibles = {
-    Gem = true,
-    Antenna = true,
-    Bone = true,
-    Brain = true,
-    Claw = true,
-    Fabric = true,
-    Fur = true,
-    Glass = true,
-    Hair = true,
-    Horn = true,
-    Ice = true,
-    Metal = true,
-    Plastic = true,
-    Pumpkin = true,
-    ["Red Light"] = true,
-    Ribbon = true,
-    Rubber = true,
-    Skin = true,
-    Slime = true,
-    Spike = true,
-    Tentacle = true,
-    Tie = true,
-    Wood = true
-}
-
---[[
-        ==========================
-=============== VARIABLES ==================
-        ==========================
-]]
+-- 03 | SHARED RUNTIME STATE
 
 local cancelPAPQueue = false
 local wasTeleporterBusy = false
@@ -94,11 +82,7 @@ local wasTeleporterBusy = false
 local rainbowConnections = {}
 local hues = {}
 
---[[
-        ==========================
-=============== WINDOW ==================
-        ==========================
-]]
+-- 04 | WINDOW CONFIGURATION
 
 local function getMode(): string
     if game.PlaceId == 2092166489 then
@@ -150,11 +134,7 @@ window.keybindFrameEnabled = true
 
 library.KeybindFrame.Visible = window.keybindFrameEnabled
 
---[[
-        ==========================
-=============== TABS ==================
-        ==========================
-]]
+-- 05 | TAB REGISTRATION
 
 local tabs = {
     home = window:AddTab("Home", assetLib.fetchAsset("Icons/info.png")),
@@ -168,20 +148,9 @@ local tabs = {
     uiSettings = window:AddTab("UI Settings", assetLib.fetchAsset("Icons/settings.png")),
 }
 
--- =================================================
---                   FUNCTIONS                   --
--- =================================================
+-- 06 | SHARED HELPERS
 
---[[
-
-    NotifyPriority = {
-        Urgent = 0,
-        Normal = 1,
-        Low = 2,
-    },
-
-]]
-
+-- [Shared Helpers / Notifications] Volume and notification formatting
 local function getAlertVolume()
     return window.notifSoundEnabled and (tonumber(window.alertVolume) or 3) or 0
 end
@@ -241,6 +210,7 @@ local function notify(notificationType: string, title: string, desc: string, dur
 end
 
 
+-- [Shared Helpers / Character State] Character part and alive-state accessors
 local function getHRP()
     return entityLib.getCharInstance("HumanoidRootPart") or nil
 end
@@ -253,6 +223,7 @@ local function isAlive()
     return entityLib.isAlive()
 end
 
+-- [Shared Helpers / Color Cycling] Rainbow picker lifecycle
 local function toggleRainbow(enabled, colorPickerName)
     if enabled then
         if not rainbowConnections[colorPickerName] then
@@ -287,6 +258,7 @@ local function toggleRainbow(enabled, colorPickerName)
     end
 end
 
+-- [Shared Helpers / Teleporter State] State checks shared by travel workflows
 local function teleporterInUse()
     local displayLabel = area51.TeleporterRoom.Teleporter["Control Panels"].Middle.Displayer.SurfaceGui.Frame.TextLabel
     local teleportSmoke = area51.TeleporterRoom.Teleporter.Teleporter.Collision.Smoke
@@ -318,6 +290,7 @@ local function getTeleporterState()
     end
 end
 
+-- [Shared Helpers / Character Control] Save and restore movement values
 local function freeze(enabled)
     local hum = getHumanoid()
 
@@ -348,6 +321,7 @@ local function getSuffix(sliderObj, suffixString)
     return val == 1 and " " .. suffixString or " " .. suffixString .. "s"
 end
 
+-- [Shared Helpers / Navigation] Named destination handling
 local function teleport(destination, hrp)
     local cframeValues = {
         ["Surface"] = CFrame.new(326.087067, 511.699921, 392.975769, 0.999967098, 0, 0.00810976978, 0, 1, 0, -0.00810976978, 0, 0.999967098),
@@ -389,6 +363,7 @@ local function teleport(destination, hrp)
     end
 end
 
+-- [Shared Helpers / Game State] Gamepass and killer-state queries
 local function getEnergyDrinkState()
     return utils.fetchOwnership("Gamepass", 1182965)
 end
@@ -398,58 +373,16 @@ local function isKillerAlive(model)
     return hum and hum.Health > 0
 end
 
-local gunModFuncs = {
-    infiniteAmmo = function()
-        for _, weapon in next, getgc(true) do
-            if type(weapon) == "table" and rawget(weapon, "ammo") then
-                weapon.ammo = math.huge
-                weapon.stored_ammo = math.huge
-            end
-        end
-    end,
-
-    fullAuto = function()
-        for _, v in next, getgc(true) do
-            if type(v) == "table" and rawget(v, "inaccuracy") then
-                v.inaccuracy = 0.00001
-            end
-        end
-
-        for _, weapon in next, getgc(true) do
-            if type(weapon) == "table" and rawget(weapon, "ammo") then
-                weapon.is_auto = true
-            end
-        end
-    end,
-
-    fireRate = function()
-        for _, weapon in next, getgc(true) do
-            if type(weapon) == "table" and rawget(weapon, "ammo") then
-                weapon.shoot_wait = 1e-14
-                weapon.is_auto = true
-            end
-        end
-    end,
-
-    bulletCount = function(count)
-        for _, weapon in next, getgc(true) do
-            if type(weapon) == "table" and rawget(weapon, "ammo") then
-                weapon.bullet_count = count
-            end
-        end
-    end
-}
 
 
--- =================================================
---                   TAB: HOME                   --
--- =================================================
+
+-- ============================================================================
+-- 07 | TAB: HOME
+-- ============================================================================
 
 local infoTabBox = tabs.home:AddLeftTabbox()
 
--------------------------------------
---      HOME: TAB BOXES  --
--------------------------------------
+-- [Home / Panels] Player, game, and optional whitelist tabs
 
 local playerTab = infoTabBox:AddTab("Player")
 local gameTab = infoTabBox:AddTab("Game")
@@ -463,9 +396,7 @@ if getgenv()._celestial_auth then
     whitelistTab:AddLabel("Discord ID: " .. user.DiscordId, true)
 end
 
--------------------------------------
---      TAB BOX: PLAYER  --
--------------------------------------
+-- [Home / Player] Player status and actions
 
 playerTab:AddImage("UserThumbnail", {
     Image = utils.fetchUserThumbnail("AvatarBust", "Size420x420"),
@@ -498,9 +429,7 @@ respawnButton_Toggle:OnChanged(function(enabled)
     utils.setGuiEnabled("reset button", enabled)
 end)
 
--------------------------------------
---      TAB BOX: GAME  --
--------------------------------------
+-- [Home / Game] Game information and session actions
 
 gameTab:AddImage("GameIcon", { Image = utils.fetchGameImage("Icon"), Height = 200, BackgroundTransparency = 1 })
 
@@ -572,18 +501,17 @@ gameTab:AddButton({
     end,
 })
 
--- =================================================
---                   TAB: UTILITY                   --
--- =================================================
+-- ============================================================================
+-- 08 | TAB: UTILITY
+-- ============================================================================
 
+-- [Utility / Layout] Groupbox registration
 local teleportGroup = tabs.utils:AddLeftGroupbox("Teleport")
 local healingGroup = tabs.utils:AddRightGroupbox("Healing")
 local soundsGroup = tabs.utils:AddLeftGroupbox("Sounds")
 local otherGroup2 = tabs.utils:AddRightGroupbox("Other")
 
--------------------------------------
---      UTILITY: TELEPORT GROUP  --
--------------------------------------
+-- [Utility / Teleport] Location controls
 
 teleportGroup:AddDropdown("regularLocationsList_Dropdown", { Text = "Teleport", Tooltip = false, Values = {"Surface", "Area 51", "Teleporter", "Alien", "Alien Code Input",
 "Pack A Punch Machine", "Ammo Box", "Zombie Morpher", "Radioactive Zone"}, Default = 1 })
@@ -609,10 +537,9 @@ teleportGroup:AddButton({ Text = "Office Teleport", Tooltip = "Teleports you to 
     Mode = "Press",
 })
 
--------------------------------------
---      UTILITY: HEALING GROUP  --
--------------------------------------
+-- [Utility / Healing] Drink inventory, auto-drink, and refill controls
 
+-- [Utility / Healing] Drink inventory lookup
 local function getEnergyDrink(allowEmpty)
     if not getEnergyDrinkState() then
         return nil, "You do not own the gamepass."
@@ -708,9 +635,10 @@ healingGroup:AddButton({ Text = "Refill", Disabled = not getEnergyDrinkState(), 
 })
 
 -----------------------
---    AUTO DRINK  --
+-- [Utility / Healing] Auto-drink thresholds and loop state
 -----------------------
 
+-- [Utility / Healing] Threshold calculation and background loops
 local function getMaxThreshold()
     if utils.fetchOwnership("Gamepass", 1273854) then -- If the player owns the "Survivor pack" gamepass
         return 150
@@ -802,10 +730,11 @@ local function startAutoRefillLoop()
     end)
 end
 
--- AUTO DRINK
+-- [Utility / Healing] Auto-drink and auto-refill controls
 
 autoDrinkToggle = healingGroup:AddToggle("autoDrink_Toggle", { Text = "Auto Drink", Tooltip = "Drinks the entire energy drink when you are below the threshold.", Default = false, Disabled = not getEnergyDrinkState() })
 
+-- [Utility / Healing] Toggle controls and dependency wiring
 local autoDrinkDepbox = healingGroup:AddDependencyBox()
 autoDrinkThresholdSlider = autoDrinkDepbox:AddSlider("autoDrinkThreshold_Slider", { Text = "Threshold", Tooltip = false, Default = 40, Min = 10, Max = getMaxThreshold(), Rounding = 0 })
 
@@ -829,7 +758,7 @@ toggles.autoRefill_Toggle:OnChanged(function(enabled)
     end
 end)
 
--- Auto restart
+-- [Utility / Healing] Respawn and auto-restart handling
 
 localplayer.CharacterAdded:Connect(function()
     drinkLoopRunning = false
@@ -841,12 +770,10 @@ localplayer.CharacterAdded:Connect(function()
 end)
 
 -----------------------------
---    END OF AUTO DRINK  --
+-- [Utility / Healing] End of the auto-drink control block
 -----------------------------
 
--------------------------------------
---      UTILITY: SOUNDS GROUP  --
--------------------------------------
+-- [Utility / Sounds] Sound toggles and loop management
 
 local disabledSounds: {[string]: boolean} = {
     Lightning = false,
@@ -856,6 +783,7 @@ local disabledSounds: {[string]: boolean} = {
 
 local runningLoops: {[string]: boolean} = {}
 
+-- [Utility / Sounds] Reusable sound-loop controller
 local function updateSoundLoop(soundName, isEnabled)
     if isEnabled and not runningLoops[soundName] then
         runningLoops[soundName] = true
@@ -910,9 +838,7 @@ soundsGroup:AddButton({ Text = "Disable All Ambience",
     end,
 })
 
--------------------------------------
---      UTILITY: INTERACTION GROUP  --
--------------------------------------
+-- [Utility / Interactions] Prompt reach and door interaction helpers
 
 otherGroup2:AddToggle("promptReach_Toggle", { Text = "Prompt Reach", Tooltip = false, Default = false })
 otherGroup2:AddToggle("weaponPromptReach_Toggle", { Text = "Weapon Prompt Reach", Tooltip = false, Default = false })
@@ -960,6 +886,7 @@ toggles.instantInteract_Toggle:OnChanged(function(enabled)
 end)
 
 local doorScannerConn
+-- [Utility / Interactions] Door-prompt cache and refresh loop
 local doorPromptCache = {}
 local lastCacheUpdate = 0
 
@@ -1020,21 +947,20 @@ end
 toggles.autoOpenDoors_Toggle:OnChanged(updateDoorLoop)
 toggles.autoCloseDoors_Toggle:OnChanged(updateDoorLoop)
 
--- =================================================
---                   TAB: PLAYER                   --
--- =================================================
+-- ============================================================================
+-- 09 | TAB: PLAYER
+-- ============================================================================
 
+-- [Player / Layout] Groupbox registration
 local movementGroup = tabs.player:AddLeftGroupbox("Movement")
 local othersGroup3 = tabs.player:AddRightGroupbox("Other")
 
 tabs.player:UpdateWarningBox({ Title = "Warning", Text = "Due to Roblox's physics limitations, high velocity speeds may cause unexpected falling on collisions.\n\nFly is NOT compatible when Speed Exploit's mode is set as Velocity and will be swapped.",
 Visible = true })
 
--------------------------------------
---      PLAYER: MOVEMENT GROUP  --
--------------------------------------
+-- [Player / Movement] Speed, fly, noclip, and jump settings
 
--- SPEED EXPLOIT
+-- [Player / Speed Exploit] Controls
 
 movementGroup:AddToggle("speedExploit_Toggle", { Text = "Speed Exploit", Tooltip = false, Default = false })
 
@@ -1044,7 +970,7 @@ speedExploitDepbox:AddDropdown("speedExploitMethod_Dropdown", { Text = "Method",
 speedExploitDepbox:AddSlider("speedExploitAmount_Slider", { Text = "Amount", Tooltip = false, Default = 20, Min = 16, Max = 100, Rounding = 0 })
 speedExploitDepbox:AddDivider()
 
--- FLY
+-- [Player / Fly] Controls and input handling
 
 movementGroup:AddToggle("enableFly_Toggle", { Text = "Enable Fly" })
 
@@ -1055,7 +981,7 @@ local flyHorizSpeed_Slider = flyDepbox:AddSlider("flyHorizSpeed_Slider", { Text 
 local flyVertSpeed_Slider = flyDepbox:AddSlider("flyVertSpeed_Slider", { Text = "Vertical Speed", Tooltip = "The speed you go when ascending/descending.", Default = 100, Min = 30, Max = 300, Rounding = 0 })
 flyDepbox:AddDivider()
 
--- NOCLIP
+-- [Player / Noclip] Controls
 
 movementGroup:AddToggle("enableNoclip_Toggle", { Text = "Enable Noclip" })
 
@@ -1064,7 +990,7 @@ noclipDepbox:AddToggle("toggleNoclip_Toggle", { Text = "Noclip" })
 :AddKeyPicker("noclip_KeyPicker", { Text = "Noclip", Default = "G", SyncToggleState = true, Mode = "Toggle", NoUI = true, Disabled = true })
 noclipDepbox:AddDivider()
 
--- JUMPPOWER
+-- [Player / Jump Power] Controls
 
 movementGroup:AddToggle("enableJumpPower_Toggle", { Text = "Enable JumpPower" })
 
@@ -1162,7 +1088,7 @@ toggles.toggleNoclip_Toggle:OnChanged(function(noclipToggleEnabled)
     end
 end)
 
--- SPEED EXPLOIT
+-- [Player / Speed Exploit] Initial configuration and runtime updates
 
 local method = options.speedExploitMethod_Dropdown.Value
 local slider = options.speedExploitAmount_Slider
@@ -1179,7 +1105,7 @@ local rootPart: BasePart? = nil
 local bodyVelocity: BodyVelocity? = nil
 local velocityConnection: RBXScriptConnection? = nil
 
--- Helpers
+-- [Player / Speed Exploit] Character and velocity helpers
 
 local function getCharacterParts()
     local character = localplayer.Character or localplayer.CharacterAdded:Wait()
@@ -1280,7 +1206,7 @@ options.speedExploitMethod_Dropdown:OnChanged(function()
     applySpeed()
 end)
 
--- Handling character respawns
+-- [Player / Speed Exploit] Reapply speed after respawn
 
 local function speedOnCharacterAdded(char: Model?)
     if not char then return end
@@ -1303,7 +1229,7 @@ else
     speedOnCharacterAdded(character)
 end
 
--- WalkSpeed Enforcement -  Link the WalkSpeed assignment to every frame update
+-- [Player / Speed Exploit] WalkSpeed enforcement
 runService.RenderStepped:Connect(function()
     if not options.speedExploitMethod_Dropdown then return end
     if humanoid and toggles.speedExploit_Toggle.Value and options.speedExploitMethod_Dropdown.Value == "WalkSpeed" then
@@ -1314,14 +1240,12 @@ runService.RenderStepped:Connect(function()
     end
 end)
 
--------------------------------------
---      PLAYER: OTHERS GROUP  --
--------------------------------------
+-- [Player / Other] Door noclip, backtrack, and freecam
 
 othersGroup3:AddToggle("doorNoclip_Toggle", { Text = "Door Noclip" })
 othersGroup3:AddToggle("autoBacktrack_Toggle", { Text = "Backtrack", Tooltip = "Automatically teleports you back to your last death location." })
 
--- FREECAM
+-- [Player / Freecam] Controls and camera lifecycle
 
 othersGroup3:AddToggle("freecam_Toggle", { Text = "Freecam", Tooltip = false, Default = false })
 
@@ -1361,6 +1285,7 @@ toggles.doorNoclip_Toggle:OnChanged(function(enabled)
     end
 end)
 
+-- [Player / Backtrack] Store death location and restore it on respawn
 local backtrackCFrame
 local function connectDied(humanoid)
     humanoid.Died:Connect(function()
@@ -1414,17 +1339,16 @@ options.freecamPanSpeedSlider:OnChanged(function(val)
     camLib.Freecam:updatePanSpeed(freecamPanSpeedSlider.Value)
 end)
 
--- =================================================
---                   TAB: EXPLOITS                   --
--- =================================================
+-- ============================================================================
+-- 10 | TAB: EXPLOITS
+-- ============================================================================
 
 local exploitsGroup = tabs.exploits:AddLeftGroupbox("Exploits")
 local killersGroup = tabs.exploits:AddRightGroupbox("Killers")
 
--------------------------------------
---      EXPLOITS: EXPLOITS GROUP  --
--------------------------------------
+-- [Exploits / Main] Weapon workflow and aim controls
 
+-- [Exploits / Pack-a-Punch] Single-weapon teleporter workflow
 local function singlePAP(weaponName)
     local busy = teleporterInUse()
 
@@ -1433,14 +1357,14 @@ local function singlePAP(weaponName)
         return
     end
 
-    -- Weapon check
+    -- Validate selected weapon
 
     if not entityLib.getTool("Specific", weaponName) then
         notify("Error", "Invalid tool", "You don't have " .. weaponName .. " in your inventory.", 6)
         return false
     end
 
-    -- Kill requirements
+    -- Validate required kill count
 
     local requirements = require(game:GetService("StarterPlayer").StarterPlayerScripts.LocalAnimations["Classic area"].Teleportation.PackAPunch["Classic mode"].Requirements)
     local requiredKills = requirements[weaponName]
@@ -1493,6 +1417,7 @@ end
 
 exploitsGroup:AddToggle("enableAimbot_Toggle", { Text = "Enable Aimbot", Tooltip = false })
 
+-- [Exploits / Aimbot] Targeting controls
 local aimbotDepbox = exploitsGroup:AddDependencyBox()
 aimbotDepbox:AddDropdown("aimbotHitPart_Dropdown", { Text = "Hit Part", Tooltip = false, Values = { "Head", "HumanoidRootPart" }, Default = 1, Multi = false })
 aimbotDepbox:AddDropdown("aimbotTargetType_Dropdown", { Text = "Target Type", Tooltip = false, Values = { "Closest", "Closest to Cursor" }, Default = 2, Multi = false })
@@ -1569,8 +1494,9 @@ exploitsGroup:AddButton({ Text = "Complete Area 51 Personnel",
 aimbotDepbox:SetupDependencies({ { toggles.enableAimbot_Toggle, true } })
 silentAimDepbox:SetupDependencies({ { toggles.enableSilentAim_Toggle, true } })
 
--- Silent Aim
+-- [Exploits / Silent Aim] Settings, target resolution, and weapon hooks
 -- Ported from the provided standalone script and wired into ScriptHub's controls.
+-- [Exploits / Silent Aim] Target filters and hook state
 local silentAimBlacklistedNames = {
     Jane = true,
     Giant = true,
@@ -1835,7 +1761,7 @@ end)
 
 local aimbotConnection
 
--- Visibility check
+-- [Exploits / Aimbot] Visibility helper
 
 local function isVisible(targetPart)
     if not toggles.aimbotVisibilityCheck_Toggle.Value then
@@ -1863,7 +1789,7 @@ local function isVisible(targetPart)
     return true
 end
 
--- Exclusion check
+-- [Exploits / Aimbot] Target exclusion rules
 
 local function isExcluded(killer)
     local excluded = options.aimbotExcludedKillers_Dropdown.Value
@@ -1879,7 +1805,7 @@ local function isExcluded(killer)
     return false
 end
 
--- Closest killer
+-- [Exploits / Aimbot] Closest target by world distance
 
 local function getClosestKiller()
 
@@ -1919,7 +1845,7 @@ local function getClosestKiller()
     return closest
 end
 
--- Closest to cursor
+-- [Exploits / Aimbot] Closest target to cursor
 
 local function getClosestToCursor()
 
@@ -1969,7 +1895,7 @@ local function getClosestToCursor()
     return closest
 end
 
--- Aimbot toggle
+-- [Exploits / Aimbot] Render-step connection lifecycle
 
 toggles.enableAimbot_Toggle:OnChanged(function(state)
 
@@ -2020,7 +1946,35 @@ toggles.enableAimbot_Toggle:OnChanged(function(state)
     end
 end)
 
+-- [Exploits / Collection] Recognized ingredient names
+local collectibles = {
+    Gem = true,
+    Antenna = true,
+    Bone = true,
+    Brain = true,
+    Claw = true,
+    Fabric = true,
+    Fur = true,
+    Glass = true,
+    Hair = true,
+    Horn = true,
+    Ice = true,
+    Metal = true,
+    Plastic = true,
+    Pumpkin = true,
+    ["Red Light"] = true,
+    Ribbon = true,
+    Rubber = true,
+    Skin = true,
+    Slime = true,
+    Spike = true,
+    Tentacle = true,
+    Tie = true,
+    Wood = true
+}
+
 local autoCollectRunning = false
+-- [Exploits / Collection] Collection loop and toggle callback
 toggles.autoCollect_Toggle:OnChanged(function(state)
     autoCollectRunning = state
 
@@ -2043,11 +1997,9 @@ toggles.autoCollect_Toggle:OnChanged(function(state)
     end
 end)
 
--------------------------------------
---      EXPLOITS: KILLERS GROUP  --
--------------------------------------
+-- [Exploits / Killer Controls] Disable Aura and defensive toggles
 
--- DISABLE AURA
+-- [Exploits / Killer Controls] Disable Aura
 
 killersGroup:AddToggle("disableAllKillers_Toggle", { Text = "Disable Aura", Tooltip = "Breaks the movement for all NEARBY killers within the specified amount of studs." })
 
@@ -2057,7 +2009,7 @@ disableKillersDepbox:AddSlider("disableKillersDistance_Slider", { Text = "Range"
 disableKillersDepbox:AddToggle("disableAuraDebugNotifs_Toggle", { Text = "Debug Notifications", Tooltip = "Sends a notification each time a killer is killed via Disable Aura." })
 disableKillersDepbox:AddDivider()
 
--- KILLER GODMODE
+-- [Exploits / Killer Controls] Defensive toggles
 
 killersGroup:AddToggle("killerGodmode_Toggle", { Text = "Killer Godmode", Tooltip = "Makes you invincible to the killers by blocking killer interactions." })
 
@@ -2237,15 +2189,14 @@ toggles.antiSlendermanJumpscare_Toggle:OnChanged(function(enabled)
     end
 end)
 
--- =================================================
---                   TAB: VISUALS                   --
--- =================================================
+-- ============================================================================
+-- 11 | TAB: VISUALS
+-- ============================================================================
 
+-- [Visuals / Layout] Groupbox and control registration
 local visualsGroup = tabs.visuals:AddLeftGroupbox("Visuals")
 
--------------------------------------
---      VISUALS: VISUALS GROUP  --
--------------------------------------
+-- [Visuals / Controls] ESP, name tags, fog, FOV, and anti-effects
 
 visualsGroup:AddToggle("removeFog_Toggle", { Text = "Remove Fog", Tooltip = false, Default = false })
 visualsGroup:AddToggle("killerESP_Toggle", { Text = "Killer ESP", Tooltip = false })
@@ -2281,6 +2232,7 @@ killerESPDepbox:SetupDependencies({ { toggles.killerESP_Toggle, true } })
 killerNametagDepbox:SetupDependencies({ { toggles.toggleKillersNametags_Toggle, true } })
 fieldOfViewDepbox:SetupDependencies({ { toggles.enableFOV_Toggle, true } })
 
+-- [Visuals / Fog] Toggle lifecycle and property-change connections
 local fogConnections = {}
 toggles.removeFog_Toggle:OnChanged(function(enabled)
     if enabled then
@@ -2340,6 +2292,7 @@ local excludedKillers = { Giant = true, Jane = true, Tinsel = true, Chipper = tr
 
 local defaultTextSize = 15
 
+-- [Visuals / Killer ESP] Creation, refresh, and cleanup helpers
 local function clearESPForModel(model: Model)
     if model:IsA("Model") then
         local highlight = model:FindFirstChild("_CelestialKillerESP")
@@ -2668,6 +2621,7 @@ options.fieldOfViewValue_Slider:OnChanged(function(val)
     end
 end)
 
+-- [Visuals / Anti-effects] Ink and popup handling
 local function destroyInkEvent()
     local eyelessJack = killersFolder:FindFirstChild("Eyeless Jack")
     if eyelessJack then
@@ -2720,16 +2674,14 @@ toggles.antiTailsPopup_Toggle:OnChanged(function(enabled)
     end
 end)
 
--- =================================================
---                   TAB: WORLD                   --
--- =================================================
+-- ============================================================================
+-- 12 | TAB: WORLD
+-- ============================================================================
 
 local worldGroup = tabs.world:AddLeftGroupbox("World")
 local unlockAlienGroup = tabs.world:AddRightGroupbox("Alien")
 
--------------------------------------
---      WORLD: WORLD GROUP  --
--------------------------------------
+-- [World / Environment] Hazards, radioactive area, and kill parts
 
 worldGroup:AddToggle("disableCactuses_Toggle", { Text = "Disable Cactuses", Tooltip = false })
 worldGroup:AddToggle("removeBearTraps_Toggle", { Text = "Remove Bear Traps", Tooltip = false })
@@ -2833,6 +2785,7 @@ toggles.disableRadioactiveFog_Toggle:OnChanged(function(enabled)
     area51.RadioactiveArea.RadioactiveDrop.Part.Smoke.Enabled = not enabled
 end)
 
+-- [World / Kill Parts] Discovery, highlighting, and state restoration
 local function getKillParts()
     local parts = {
         area51.CentralSewerRoom.Spinner.Kill,
@@ -2918,9 +2871,7 @@ toggles.disableKillParts_Toggle:OnChanged(function(enabled)
 end)
 
 
--------------------------------------
---      WORLD: ALIEN GROUP  --
--------------------------------------
+-- [World / Alien] Code display and navigation actions
 
 local alienCode = area51.CodeModel.Code.Value
 
@@ -2969,9 +2920,9 @@ localplayer.CharacterAdded:Connect(function(char)
     end
 end)
 
--- =================================================
---                   TAB: WEAPONS                   --
--- =================================================
+-- ============================================================================
+-- 13 | TAB: WEAPONS
+-- ============================================================================
 
 tabs.weapons:UpdateWarningBox({ Title = "Warning", Text = "Usage of any gun mods has a high chance of resulting in a permanent game ban.", Visible = true })
 
@@ -2979,10 +2930,16 @@ local weaponsGroup = tabs.weapons:AddLeftGroupbox("Weapons")
 local defenseGroup = tabs.weapons:AddRightGroupbox("Defense")
 local othersGroup = tabs.weapons:AddRightGroupbox("Other")
 
--------------------------------------
---      WEAPONS: WEAPONS GROUP  --
--------------------------------------
+-- [Weapons / Inventory] Weapon catalog, acquisition, and selection
 
+-- [Weapons / Inventory] Restricted weapon rules
+local restrictedWeapons = {
+    Crossbow = true,
+    MG42 = true,
+    FreezeGun = true
+}
+
+-- [Weapons / Inventory] Build the selectable weapon catalog
 local weaponNames = {}
 local giveWeaponBtn, papWeaponBtn, papHeldBtn
 
@@ -3027,6 +2984,7 @@ weaponsGroup:AddDropdown("weaponsList_Dropdown", { Text = "Obtain Weapon(s)", To
 
 weaponsGroup:AddDropdown("giveWeaponMethod_Dropdown", { Text = "Method", Tooltip = false, Values = { "Touch Events", "ProximityPrompt" }, Default = 1, Multi = false, Searchable = false })
 
+-- [Weapons / Inventory] Acquire the selected weapons
 local function obtainSelectedWeapons()
     local selected = options.weaponsList_Dropdown.Value
     local anySelected = false
@@ -3107,15 +3065,16 @@ giveWeaponBtn = weaponsGroup:AddButton({ Text = "Obtain Weapon",
     end,
 })
 
+-- [Weapons / Pack-a-Punch] Validate weapon, satisfy requirements, and enter teleporter
 local function pap(weaponName, selectedWeapons, currentIndex)
-    -- Weapon check
+    -- Validate selected weapon
 
     if not entityLib.getTool("Specific", weaponName) then
         notify("Error", "Unavailable tool", "You don't have " .. weaponName .. " in your inventory. Skipping...", 6)
         return false
     end
 
-    -- Kill requirements
+    -- Validate required kill count
 
     local requirements = require(game:GetService("StarterPlayer").StarterPlayerScripts.LocalAnimations["Classic area"].Teleportation.PackAPunch["Classic mode"].Requirements)
     local requiredKills = requirements[weaponName]
@@ -3433,9 +3392,7 @@ task.spawn(function()
 end)
 
 
--------------------------------------
---      WEAPONS: DEFENSE GROUP  --
--------------------------------------
+-- [Weapons / Defense] Morph, armor, helmet, and glow settings
 
 defenseGroup:AddToggle("zombieMorph_Toggle", { Text = "Zombie Morph", Tooltip = false })
 
@@ -3526,9 +3483,7 @@ localplayer.CharacterAdded:Connect(function(char)
     end
 end)
 
--------------------------------------
---      WEAPONS: OTHERS GROUP  --
--------------------------------------
+-- [Weapons / Other] Auto reload and gun-mod controls
 
 othersGroup:AddToggle("autoReloadWeapons_Toggle", { Text = "Auto Reload", Tooltip = false })
 
@@ -3539,6 +3494,49 @@ autoReloadDepbox:AddSlider("autoReloadDelay_Slider", { Text = "Delay", Tooltip =
         options.autoReloadDelay_Slider:SetSuffix(getSuffix(options.autoReloadDelay_Slider, "Second"))
     end
 })
+
+-- [Weapons / Gun Mods] Reusable weapon modifier operations
+local gunModFuncs = {
+    infiniteAmmo = function()
+        for _, weapon in next, getgc(true) do
+            if type(weapon) == "table" and rawget(weapon, "ammo") then
+                weapon.ammo = math.huge
+                weapon.stored_ammo = math.huge
+            end
+        end
+    end,
+
+    fullAuto = function()
+        for _, v in next, getgc(true) do
+            if type(v) == "table" and rawget(v, "inaccuracy") then
+                v.inaccuracy = 0.00001
+            end
+        end
+
+        for _, weapon in next, getgc(true) do
+            if type(weapon) == "table" and rawget(weapon, "ammo") then
+                weapon.is_auto = true
+            end
+        end
+    end,
+
+    fireRate = function()
+        for _, weapon in next, getgc(true) do
+            if type(weapon) == "table" and rawget(weapon, "ammo") then
+                weapon.shoot_wait = 1e-14
+                weapon.is_auto = true
+            end
+        end
+    end,
+
+    bulletCount = function(count)
+        for _, weapon in next, getgc(true) do
+            if type(weapon) == "table" and rawget(weapon, "ammo") then
+                weapon.bullet_count = count
+            end
+        end
+    end
+}
 
 othersGroup:AddToggle("enableGunMods_Toggle", { Text = "Enable Gun Mods", Tooltip = "Usage of any gun mods has a high chance of resulting in a permanent game ban.", Risky = true })
 
@@ -3579,7 +3577,7 @@ toggles.infiniteAmmoGunMod_Toggle:OnChanged(function(enabled)
     end
 end)
 
--- New tools
+-- [Weapons / Gun Mods] Backpack listener for newly acquired tools
 
 local function setupBackpackListener()
     local backpack = localplayer:FindFirstChild("Backpack") or localplayer:WaitForChild("Backpack")
@@ -3598,7 +3596,7 @@ end
 
 setupBackpackListener()
 
--- Respawns
+-- [Weapons / Gun Mods] Reapply listeners after respawn
 
 localplayer.CharacterAdded:Connect(function()
     task.defer(setupBackpackListener)
@@ -3621,16 +3619,15 @@ options.bulletCountGunMod_Slider:OnChanged(function(val)
 end)
 
 
--- =================================================
---                   TAB: MISCELLANEOUS                   --
--- =================================================
+-- ============================================================================
+-- 14 | TAB: MISCELLANEOUS
+-- ============================================================================
 
 local othersGroup2 = tabs.misc:AddLeftGroupbox("Others")
 
--------------------------------------
---      MISCELLANEOUS: OTHERS GROUP  --
--------------------------------------
+-- [Miscellaneous / Other] Keycards, teleport actions, and weapon spam
 
+-- [Miscellaneous / Weapon Spam] Repeated equip/unequip cycle
 othersGroup2:AddToggle("weaponSpam_Toggle", { Text = "Weapon Spam", Tooltip = false })
 othersGroup2:AddButton({ Text = "Give Office Card",
     Func = function()
@@ -3751,9 +3748,9 @@ localplayer.CharacterAdded:Connect(function(char)
     end
 end)
 
--- =================================================
---                   TAB: UI SETTINGS                   --
--- =================================================
+-- ============================================================================
+-- 15 | TAB: UI SETTINGS AND CLEANUP
+-- ============================================================================
 
 local menuGroup = tabs.uiSettings:AddLeftGroupbox("Menu")
 
@@ -3783,6 +3780,7 @@ menuGroup:AddDropdown("DPIDropdown", { Text = "DPI Scale", Values = { "50%", "75
 local rainbowSpeed_Slider = menuGroup:AddSlider("rainbowSpeed_Slider", { Text = "Rainbow Speed", Tooltip = false, Default = window.rainbowSpeed, Min = 0.1, Max = 1, Rounding = 1 })
 menuGroup:AddLabel("Menu bind"):AddKeyPicker("menuKeybind_KeyPicker", { Text = "Menu keybind", Default = "RightControl", NoUI = true })
 
+-- [UI Settings / Teardown] Disable active features and clear shared state
 local function unloadModules()
     local modules = { "autoDrink_Toggle", "autoRefill_Toggle", "promptReach_Toggle", "weaponPromptReach_Toggle", "instantInteract_Toggle", "speedExploit_Toggle", "enableFly_Toggle", "toggleFly_Toggle",
     "enableNoclip_Toggle", "enableJumpPower_Toggle", "doorNoclip_Toggle", "removeFog_Toggle", "killerESP_Toggle", "toggleKillersNametags_Toggle", "enableFOV_Toggle", "disableCactuses_Toggle",
@@ -3804,7 +3802,7 @@ local function unloadModules()
     isUpdatingTeleporterState = false
 end
 
--- Handle any case were the interface is destroyed abruptly
+-- [UI Settings / Teardown] Watch for external UI removal
 
 for _, newUI in pairs(gethui():GetDescendants()) do
     if newUI:IsA("ScreenGui") then
@@ -3835,6 +3833,7 @@ library.ToggleKeybind = options.menuKeybind_KeyPicker
 notifAlertVolume_Slider:OnChanged(function(val) window.alertVolume = val end)
 rainbowSpeed_Slider:OnChanged(function(val) window.rainbowSpeed = val end)
 
+-- [UI Settings / Persistence] Theme and configuration setup
 themeManager:SetLibrary(library)
 saveManager:SetLibrary(library)
 saveManager:IgnoreThemeSettings()
