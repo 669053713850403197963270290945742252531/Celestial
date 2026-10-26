@@ -80,7 +80,11 @@ local cancelPAPQueue = false
 local wasTeleporterBusy = false
 
 local rainbowConnections = {}
-local hues = {}
+-- Every rainbow color picker follows this ONE hue (advanced once per frame), so rainbow colors can never drift apart.
+local rainbowState = { hue = 0, active = {} }
+
+-- Callbacks executed once on unload, while library.Toggles / library.Options are still populated.
+local teardownTasks = {}
 
 -- 04 | WINDOW CONFIGURATION
 
@@ -224,26 +228,43 @@ local function isAlive()
 end
 
 -- [Shared Helpers / Color Cycling] Rainbow picker lifecycle
+-- Every rainbow picker (killer ESP boxes, name tags, ...) follows ONE shared hue that a single RenderStepped
+-- connection advances once per frame. They therefore always show the exact same color and can never end up on
+-- separate cycles, no matter when each rainbow toggle was switched on.
 local function toggleRainbow(enabled, colorPickerName)
+    local active = rainbowState.active
+
     if enabled then
-        if not rainbowConnections[colorPickerName] then
-            hues[colorPickerName] = hues[colorPickerName] or 0
-            rainbowConnections[colorPickerName] = runService.RenderStepped:Connect(function(deltaTime)
-                hues[colorPickerName] = (hues[colorPickerName] + deltaTime * window.rainbowSpeed) % 1
+        if not options[colorPickerName] or not defaults[colorPickerName] then
+            notify("Error", "Invalid object", "Invalid colorpicker object and/or no valid default was found.", 99999)
+            return
+        end
 
-                if not options[colorPickerName] or not defaults[colorPickerName] then
+        active[colorPickerName] = true
 
-                    notify("Error", "Invalid object", "Invalid colorpicker object and/or no valid default was found.", 99999)
-                    return
-                else
-                    options[colorPickerName]:SetValueRGB(Color3.fromHSV(hues[colorPickerName], 1, 1))
+        if not rainbowConnections.driver then
+            rainbowConnections.driver = runService.RenderStepped:Connect(function(deltaTime)
+                rainbowState.hue = (rainbowState.hue + deltaTime * window.rainbowSpeed) % 1
+                local color = Color3.fromHSV(rainbowState.hue, 1, 1)
+
+                for pickerName in pairs(rainbowState.active) do
+                    local picker = options[pickerName]
+
+                    if picker then
+                        picker:SetValueRGB(color)
+                    else
+                        rainbowState.active[pickerName] = nil
+                    end
                 end
             end)
         end
     else
-        if rainbowConnections[colorPickerName] then
-            rainbowConnections[colorPickerName]:Disconnect()
-            rainbowConnections[colorPickerName] = nil
+        active[colorPickerName] = nil
+
+        -- Stop the shared driver once no picker is cycling anymore (the hue itself is kept for the next time).
+        if next(active) == nil and rainbowConnections.driver then
+            rainbowConnections.driver:Disconnect()
+            rainbowConnections.driver = nil
         end
 
         if window.autoResetRainbowColor then
@@ -1230,15 +1251,21 @@ else
 end
 
 -- [Player / Speed Exploit] WalkSpeed enforcement
-runService.RenderStepped:Connect(function()
-    if not options.speedExploitMethod_Dropdown then return end
-    if humanoid and toggles.speedExploit_Toggle.Value and options.speedExploitMethod_Dropdown.Value == "WalkSpeed" then
-        local targetSpeed = options.speedExploitAmount_Slider.Value
-        if humanoid.WalkSpeed ~= targetSpeed then
-            humanoid.WalkSpeed = targetSpeed
+do
+    local walkSpeedConnection = runService.RenderStepped:Connect(function()
+        if not options.speedExploitMethod_Dropdown then return end
+        if humanoid and toggles.speedExploit_Toggle.Value and options.speedExploitMethod_Dropdown.Value == "WalkSpeed" then
+            local targetSpeed = options.speedExploitAmount_Slider.Value
+            if humanoid.WalkSpeed ~= targetSpeed then
+                humanoid.WalkSpeed = targetSpeed
+            end
         end
-    end
-end)
+    end)
+
+    table.insert(teardownTasks, function()
+        walkSpeedConnection:Disconnect()
+    end)
+end
 
 -- [Player / Other] Door noclip, backtrack, and freecam
 
@@ -1506,7 +1533,12 @@ local silentAimHookRecords = {}
 local silentAimHookedObjects = setmetatable({}, { __mode = "k" })
 
 local function isSilentAimEnabled()
-    return toggles.enableSilentAim_Toggle.Value
+    if library.Unloaded then
+        return false
+    end
+
+    local silentAimToggle = toggles.enableSilentAim_Toggle
+    return silentAimToggle ~= nil and silentAimToggle.Value == true
 end
 
 local function isValidSilentAimTarget(model)
@@ -1632,7 +1664,7 @@ local function findSilentAimTargetModelFromPart(part)
 end
 
 local function hookSilentAimWeaponTable(object)
-    if type(object) ~= "table" or silentAimHookedObjects[object] then
+    if library.Unloaded or type(object) ~= "table" or silentAimHookedObjects[object] then
         return
     end
 
@@ -1710,14 +1742,35 @@ local function scanSilentAimWeaponTables()
         return false
     end
 
+    -- Fast path: let the executor filter the heap natively instead of handing back ~570k objects to walk in Lua.
+    if type(filtergc) == "function" then
+        local filtered, matches = pcall(filtergc, "table", { Keys = { "screen_to_target" } }, false)
+
+        if filtered and type(matches) == "table" then
+            for _, object in ipairs(matches) do
+                hookSilentAimWeaponTable(object)
+            end
+            return true
+        end
+    end
+
     local success, objects = pcall(getgc, true)
     if not success or type(objects) ~= "table" then
         warn("[Silent Aim] getgc(true) failed: " .. tostring(objects))
         return true
     end
 
-    for _, object in ipairs(objects) do
-        hookSilentAimWeaponTable(object)
+    -- Walk the heap in slices so the scan is spread over several frames instead of one long one.
+    for index = 1, #objects do
+        hookSilentAimWeaponTable(objects[index])
+
+        if index % 15000 == 0 then
+            task.wait()
+
+            if library.Unloaded then
+                return true
+            end
+        end
     end
     return true
 end
@@ -1737,26 +1790,140 @@ if type(Drawing) == "table" and type(Drawing.new) == "function" then
     end
 end
 
-runService.RenderStepped:Connect(function()
-    if not silentAimFOVCircle then
+do
+    local silentAimFOVConnection = runService.RenderStepped:Connect(function()
+        if not silentAimFOVCircle then
+            return
+        end
+
+        silentAimFOVCircle.Visible = isSilentAimEnabled() and toggles.silentAimShowFOV_Toggle.Value
+        silentAimFOVCircle.Radius = tonumber(options.FOV_Slider.Value) or 150
+        silentAimFOVCircle.Position = uis:GetMouseLocation()
+    end)
+
+    -- On unload: stop drawing, put the game's original weapon functions back, and remove the FOV circle.
+    table.insert(teardownTasks, function()
+        silentAimFOVConnection:Disconnect()
+
+        for _, record in ipairs(silentAimHookRecords) do
+            pcall(function()
+                local object = record.Object
+
+                if rawget(object, "screen_to_target") == record.HookedScreenToTarget then
+                    object.screen_to_target = record.OriginalScreenToTarget
+                end
+
+                if record.HookedRayCallback and rawget(object, "target_ray_callback") == record.HookedRayCallback then
+                    object.target_ray_callback = record.OriginalRayCallback
+                end
+
+                if record.HookedMissileHit and rawget(object, "missile_hit") == record.HookedMissileHit then
+                    object.missile_hit = record.OriginalMissileHit
+                end
+            end)
+        end
+
+        table.clear(silentAimHookRecords)
+        table.clear(silentAimHookedObjects)
+
+        if silentAimFOVCircle then
+            pcall(function() silentAimFOVCircle:Remove() end)
+            silentAimFOVCircle = nil
+        end
+    end)
+end
+
+-- [Exploits / Silent Aim] On-demand weapon table scanning
+-- The weapon tables used to be re-scanned every 5 seconds for as long as the script was loaded, even with Silent Aim
+-- switched off. Every scan walks the whole Lua heap (~570k objects) inside one frame, which is what caused a stutter
+-- every few seconds from execution until unload. A scan now only runs when Silent Aim is enabled AND a new weapon
+-- table can actually exist: when the toggle is switched on, when a tool is added / equipped, and after a respawn.
+local silentAimScanQueued = false
+local silentAimScanOwed = true
+local silentAimConnections = {}
+
+if type(getgc) ~= "function" then
+    warn("[Silent Aim] This executor does not provide getgc(true); weapon hooks cannot be installed.")
+end
+
+local function requestSilentAimScan(delaySeconds)
+    if library.Unloaded or type(getgc) ~= "function" then
         return
     end
 
-    silentAimFOVCircle.Visible = isSilentAimEnabled() and toggles.silentAimShowFOV_Toggle.Value
-    silentAimFOVCircle.Radius = tonumber(options.FOV_Slider.Value) or 150
-    silentAimFOVCircle.Position = uis:GetMouseLocation()
+    silentAimScanOwed = true
+
+    if silentAimScanQueued then
+        return
+    end
+
+    silentAimScanQueued = true
+
+    task.delay(delaySeconds or 0, function()
+        silentAimScanQueued = false
+
+        -- While Silent Aim is off the scan stays owed and runs the moment it is switched on.
+        if library.Unloaded or not silentAimScanOwed or not isSilentAimEnabled() then
+            return
+        end
+
+        silentAimScanOwed = false
+        scanSilentAimWeaponTables()
+    end)
+end
+
+local function watchSilentAimContainer(container)
+    if container then
+        table.insert(silentAimConnections, container.ChildAdded:Connect(function(child)
+            if child:IsA("Tool") then
+                requestSilentAimScan(2)
+            end
+        end))
+    end
+end
+
+watchSilentAimContainer(localplayer:FindFirstChildOfClass("Backpack"))
+watchSilentAimContainer(localplayer.Character)
+
+table.insert(silentAimConnections, localplayer.ChildAdded:Connect(function(child)
+    if child:IsA("Backpack") then
+        watchSilentAimContainer(child)
+        requestSilentAimScan(3)
+    end
+end))
+
+table.insert(silentAimConnections, localplayer.CharacterAdded:Connect(function(character)
+    watchSilentAimContainer(character)
+    requestSilentAimScan(3)
+end))
+
+toggles.enableSilentAim_Toggle:OnChanged(function(enabled)
+    if enabled then
+        requestSilentAimScan(0)
+    end
 end)
 
+-- Safety net: Silent Aim is on but no weapon table has been hooked yet (e.g. the weapon scripts loaded late).
 task.spawn(function()
-    if type(getgc) ~= "function" then
-        warn("[Silent Aim] This executor does not provide getgc(true); weapon hooks cannot be installed.")
-        return
+    while not library.Unloaded do
+        task.wait(15)
+
+        if isSilentAimEnabled() and #silentAimHookRecords == 0 then
+            requestSilentAimScan(0)
+        end
+    end
+end)
+
+if isSilentAimEnabled() then
+    requestSilentAimScan(0)
+end
+
+table.insert(teardownTasks, function()
+    for _, connection in ipairs(silentAimConnections) do
+        connection:Disconnect()
     end
 
-    while true do
-        scanSilentAimWeaponTables()
-        task.wait(5)
-    end
+    table.clear(silentAimConnections)
 end)
 
 local aimbotConnection
@@ -1974,21 +2141,55 @@ local collectibles = {
 }
 
 local autoCollectRunning = false
+
+-- [Exploits / Collection] Touch helper
+-- utils.fireTouchEvent() sends touch-begin, yields a frame, then sends touch-end. A dropped ingredient is usually
+-- collected (destroyed) by the server during that yield, so the touch-end hit a part that had already left the
+-- physics world and threw "new overlap in different world". The collection below sends the begin/end pair itself,
+-- re-checks both parts right before the touch-end (after the yield), and wraps every call in pcall so an ingredient
+-- that vanishes mid-touch can never raise an error. It also yields once per sweep instead of once per ingredient.
+local autoCollectInFlight = setmetatable({}, { __mode = "k" })
+
+local function collectIngredients(hrp)
+    local touching = {}
+
+    for _, obj in ipairs(workspace:GetChildren()) do
+        if (obj:IsA("Part") or obj:IsA("MeshPart")) and collectibles[obj.Name] and not autoCollectInFlight[obj] then
+            -- Touch-begin. Skipped silently when the part is not in the physics world yet; the next sweep retries it.
+            if hrp:IsDescendantOf(workspace) and pcall(firetouchinterest, hrp, obj, 0) then
+                autoCollectInFlight[obj] = true
+                table.insert(touching, obj)
+            end
+        end
+    end
+
+    if #touching == 0 then
+        return
+    end
+
+    task.wait()
+
+    for _, obj in ipairs(touching) do
+        autoCollectInFlight[obj] = nil
+
+        -- Touch-end only if both parts survived the yield.
+        if obj:IsDescendantOf(workspace) and hrp:IsDescendantOf(workspace) then
+            pcall(firetouchinterest, hrp, obj, 1)
+        end
+    end
+end
+
 -- [Exploits / Collection] Collection loop and toggle callback
 toggles.autoCollect_Toggle:OnChanged(function(state)
     autoCollectRunning = state
 
     if state then
         task.spawn(function()
-            while autoCollectRunning do
+            while autoCollectRunning and not library.Unloaded do
                 local hrp = getHRP()
 
                 if hrp then
-                    for _, obj in ipairs(workspace:GetChildren()) do
-                        if (obj:IsA("Part") or obj:IsA("MeshPart")) and collectibles[obj.Name] then
-                            utils.fireTouchEvent(hrp, obj)
-                        end
-                    end
+                    collectIngredients(hrp)
                 end
 
                 task.wait(0.2)
@@ -2204,8 +2405,10 @@ visualsGroup:AddToggle("killerESP_Toggle", { Text = "Killer ESP", Tooltip = fals
 local killerESPDepbox = visualsGroup:AddDependencyBox()
 
 killerESPDepbox:AddDropdown("excludedKillers_Dropdown", { Text = "Excluded Killers", Tooltip = false, Values = killerNames, Default = { "Giant", "Jane" }, Multi = true, Searchable = true })
-killerESPDepbox:AddSlider("killerESPDistance_Slider", { Text = "Range", Tooltip = "How far away to highlight killers", Default = 150, Min = 100, Max = 1000, Suffix = " Studs", Rounding = 0 })
-killerESPDepbox:AddLabel("ESP Color"):AddColorPicker("killerESPColor_ColorPicker",{ Title = "ESP Color", Default = Color3.fromRGB(255, 0, 0), Transparency = 0.5 })
+killerESPDepbox:AddSlider("killerESPDistance_Slider", { Text = "Range", Tooltip = "How far away to show ESP on killers", Default = 150, Min = 100, Max = 1000, Suffix = " Studs", Rounding = 0 })
+killerESPDepbox:AddDropdown("killerESPBoxType_Dropdown", { Text = "Box Type", Tooltip = "2D draws a flat box around the killer, 3D draws a wireframe box.", Values = { "2D", "3D" }, Default = "2D" })
+killerESPDepbox:AddToggle("killerESPHealthBar_Toggle", { Text = "Health Bar", Tooltip = "Shows a health bar next to the killer.", Default = true })
+killerESPDepbox:AddLabel("ESP Color"):AddColorPicker("killerESPColor_ColorPicker",{ Title = "ESP Color", Default = Color3.fromRGB(255, 0, 0), Transparency = nil })
 killerESPDepbox:AddCheckbox("rainbowESPColor_Toggle", { Text = "Rainbow ESP Color" })
 killerESPDepbox:AddToggle("toggleKillersNametags_Toggle", { Text = "Enable Name Tags" })
 killerESPDepbox:AddDivider()
@@ -2282,303 +2485,437 @@ toggles.removeFog_Toggle:OnChanged(function(enabled)
     end
 end)
 
-local killerESPToggle = toggles.killerESP_Toggle
-local killerESPRangeSlider = options.killerESPDistance_Slider
-local killerColorPicker = options.killerESPColor_ColorPicker
-local nameTagColorPicker = options.killerNameTagColor_ColorPicker
-
-local espConnections = {}
 local excludedKillers = { Giant = true, Jane = true, Tinsel = true, Chipper = true, Yeti = true, Keeps = true, Destroido = true }
 
 local defaultTextSize = 15
 
--- [Visuals / Killer ESP] Creation, refresh, and cleanup helpers
-local function clearESPForModel(model: Model)
-    if model:IsA("Model") then
-        local highlight = model:FindFirstChild("_CelestialKillerESP")
-        if highlight then
-            highlight:Destroy()
-        end
+-- [Visuals / Killer ESP] Drawing library rendering
+-- Each killer gets an unfilled 2D box or a 3D wireframe box, an optional health bar and an optional name tag.
+do
+    local killerESPToggle = toggles.killerESP_Toggle
+    local killerESPRangeSlider = options.killerESPDistance_Slider
+    local killerColorPicker = options.killerESPColor_ColorPicker
+    local nameTagColorPicker = options.killerNameTagColor_ColorPicker
 
-        local head = model:FindFirstChild("Head")
-        if head then
-            local billboardGui = head:FindFirstChild("_CelestialBillboard")
-            if billboardGui then
-                billboardGui:Destroy()
+    local renderConnection: RBXScriptConnection? = nil
+
+    -- espObjects[model] = { mode, box, boxOutline, lines, healthBG, healthFill, label }
+    local espObjects: { [Instance]: any } = {}
+
+    -- The 8 corners of a box (multipliers of its half size). Corner index = 1 + x * 4 + y * 2 + z, where each of
+    -- x / y / z is 0 for the negative side and 1 for the positive side.
+    local boxCorners: { Vector3 } = {}
+    for x = -1, 1, 2 do
+        for y = -1, 1, 2 do
+            for z = -1, 1, 2 do
+                table.insert(boxCorners, Vector3.new(x, y, z))
             end
         end
     end
-end
 
-local function clearESP(folder: Instance)
-    for _, child in ipairs(folder:GetChildren()) do
-        if child:IsA("Model") then
-            clearESPForModel(child)
+    -- The 12 edges of the box, as pairs of corner indices (corners that differ by exactly one axis).
+    local boxEdges: { { number } } = {
+        { 1, 2 }, { 3, 4 }, { 5, 6 }, { 7, 8 }, -- along Z
+        { 1, 3 }, { 2, 4 }, { 5, 7 }, { 6, 8 }, -- along Y
+        { 1, 5 }, { 2, 6 }, { 3, 7 }, { 4, 8 }, -- along X
+    }
+
+    -- A killer's box is measured ONCE from its humanoid body parts and then never changes. Extra moving parts
+    -- (Slenderman's tentacles, tails, capes, held items, ...) are ignored, which is what used to make the box resize
+    -- every frame when it was built from Model:GetBoundingBox(). Arms are skipped because they swing around; legs
+    -- only contribute their height. Works for R15 and R6 rigs.
+    local boxCoreParts = { HumanoidRootPart = true, Head = true, UpperTorso = true, LowerTorso = true, Torso = true }
+    local boxLegParts = {
+        LeftUpperLeg = true, LeftLowerLeg = true, LeftFoot = true,
+        RightUpperLeg = true, RightLowerLeg = true, RightFoot = true,
+        ["Left Leg"] = true, ["Right Leg"] = true,
+    }
+
+    -- boxCache[killer] = { size = Vector3, offset = Vector3 }. size is the fixed box size, offset is the box center
+    -- relative to the killer's HumanoidRootPart (so the box moves and turns with the killer without ever resizing).
+    local boxCache: { [Instance]: any } = setmetatable({}, { __mode = "k" })
+
+    local function destroyDrawing(drawing: any)
+        if drawing then
+            pcall(function() drawing:Destroy() end)
         end
     end
-end
 
-local function applyESP(folder: Instance)
-    local hrp = getHRP()
+    local function setVisible(drawing: any, visible: boolean)
+        if drawing then
+            drawing.Visible = visible
+        end
+    end
 
-    for _, child in ipairs(folder:GetChildren()) do
-        if child:IsA("Model") and not excludedKillers[child.Name] then
-            local childHumanoid = child:FindFirstChildOfClass("Humanoid")
-            if not childHumanoid or childHumanoid.Health <= 0 then
-                clearESPForModel(child)
+    local function destroyBoxDrawings(objs: any)
+        destroyDrawing(objs.box)
+        destroyDrawing(objs.boxOutline)
+        objs.box = nil
+        objs.boxOutline = nil
+
+        if objs.lines then
+            for _, line in ipairs(objs.lines) do
+                destroyDrawing(line)
+            end
+            objs.lines = nil
+        end
+
+        objs.mode = nil
+    end
+
+    local function destroyHealthBar(objs: any)
+        destroyDrawing(objs.healthBG)
+        destroyDrawing(objs.healthFill)
+        objs.healthBG = nil
+        objs.healthFill = nil
+    end
+
+    local function hideESPObjects(objs: any)
+        setVisible(objs.box, false)
+        setVisible(objs.boxOutline, false)
+        setVisible(objs.healthBG, false)
+        setVisible(objs.healthFill, false)
+        setVisible(objs.label, false)
+
+        if objs.lines then
+            for _, line in ipairs(objs.lines) do
+                line.Visible = false
+            end
+        end
+    end
+
+    local function clearESPForModel(model: Instance)
+        local objs = espObjects[model]
+        if objs then
+            destroyBoxDrawings(objs)
+            destroyHealthBar(objs)
+            destroyDrawing(objs.label)
+            espObjects[model] = nil
+            boxCache[model] = nil
+        end
+    end
+
+    local function clearESP()
+        for model in pairs(espObjects) do
+            clearESPForModel(model)
+        end
+    end
+
+    local function createESPObjects(): any
+        local label = Drawing.new("Text")
+        label.Center = true
+        label.Outline = true
+        label.OutlineColor = Color3.new(0, 0, 0)
+        label.Transparency = 1
+        label.ZIndex = 4
+        label.Visible = false
+
+        return { label = label }
+    end
+
+    -- Creates the drawings for the selected box style (and removes the other style's drawings when it changes).
+    local function ensureBoxDrawings(objs: any, mode: string)
+        if objs.mode == mode then
+            return
+        end
+
+        destroyBoxDrawings(objs)
+        objs.mode = mode
+
+        if mode == "3D" then
+            local lines = {}
+
+            for index = 1, #boxEdges do
+                local line = Drawing.new("Line")
+                line.Thickness = 1.5
+                line.Transparency = 1
+                line.ZIndex = 2
+                line.Visible = false
+                lines[index] = line
+            end
+
+            objs.lines = lines
+        else
+            local outline = Drawing.new("Square")
+            outline.Filled = false
+            outline.Thickness = 3
+            outline.Color = Color3.new(0, 0, 0)
+            outline.Transparency = 1
+            outline.ZIndex = 1
+            outline.Visible = false
+
+            local box = Drawing.new("Square")
+            box.Filled = false
+            box.Thickness = 1
+            box.Transparency = 1
+            box.ZIndex = 2
+            box.Visible = false
+
+            objs.boxOutline = outline
+            objs.box = box
+        end
+    end
+
+    local function ensureHealthBar(objs: any)
+        if objs.healthBG then
+            return
+        end
+
+        local background = Drawing.new("Square")
+        background.Filled = true
+        background.Color = Color3.new(0, 0, 0)
+        background.Transparency = 0.7
+        background.ZIndex = 1
+        background.Visible = false
+
+        local fill = Drawing.new("Square")
+        fill.Filled = true
+        fill.Transparency = 1
+        fill.ZIndex = 3
+        fill.Visible = false
+
+        objs.healthBG = background
+        objs.healthFill = fill
+    end
+
+    -- Measures the killer's fixed box size from its humanoid body parts, in the HumanoidRootPart's local space.
+    local function measureKillerBox(model: Model, root: BasePart): any
+        local rootCFrame = root.CFrame
+        local minV = Vector3.new(math.huge, math.huge, math.huge)
+        local maxV = Vector3.new(-math.huge, -math.huge, -math.huge)
+        local found = 0
+
+        for _, part in ipairs(model:GetChildren()) do
+            local isCore = boxCoreParts[part.Name] == true
+
+            if part:IsA("BasePart") and (isCore or boxLegParts[part.Name]) then
+                local half = part.Size / 2
+                found += 1
+
+                for _, corner in ipairs(boxCorners) do
+                    local p = rootCFrame:PointToObjectSpace(part.CFrame:PointToWorldSpace(corner * half))
+
+                    if isCore then
+                        minV = Vector3.new(math.min(minV.X, p.X), math.min(minV.Y, p.Y), math.min(minV.Z, p.Z))
+                        maxV = Vector3.new(math.max(maxV.X, p.X), math.max(maxV.Y, p.Y), math.max(maxV.Z, p.Z))
+                    else
+                        minV = Vector3.new(minV.X, math.min(minV.Y, p.Y), minV.Z)
+                        maxV = Vector3.new(maxV.X, math.max(maxV.Y, p.Y), maxV.Z)
+                    end
+                end
+            end
+        end
+
+        local size = maxV - minV
+        local valid = found > 1
+            and size.X > 0 and size.Y > 0 and size.Z > 0
+            and size.X < math.huge and size.Y < math.huge and size.Z < math.huge
+
+        if valid then
+            return {
+                size = Vector3.new(math.max(size.X, 1), math.max(size.Y, 1), math.max(size.Z, 1)),
+                offset = (minV + maxV) / 2,
+            }
+        end
+
+        -- Not a humanoid rig: fall back to the model's bounding box, measured once and then kept as well.
+        local boundsCFrame, boundsSize = model:GetBoundingBox()
+        return { size = boundsSize, offset = rootCFrame:PointToObjectSpace(boundsCFrame.Position) }
+    end
+
+    local function getKillerBox(model: Model, root: BasePart): any
+        local box = boxCache[model]
+
+        if not box then
+            box = measureKillerBox(model, root)
+            boxCache[model] = box
+        end
+
+        return box
+    end
+
+    -- Builds the killer's fixed-size box on screen. Returns nil when the killer is behind the camera.
+    --   minX / minY / width / height : the 2D rectangle (also used by the health bar and name tag in 3D mode)
+    --   points                       : the 8 projected corners of the 3D box (only built when need3D is true);
+    --                                  points[i] is false when that corner is behind the camera
+    local function projectBox(model: Model, root: BasePart, cam: Camera, need3D: boolean): any
+        local box = getKillerBox(model, root)
+        local size = box.size
+        local boxCFrame = root.CFrame * CFrame.new(box.offset)
+
+        local center = cam:WorldToViewportPoint(boxCFrame.Position)
+        if center.Z <= 0 then
+            return nil
+        end
+
+        -- Pixels per stud at the killer's depth, from the camera's field of view. The 2D rectangle depends only on
+        -- the fixed box size and the distance, never on the killer's pose, rotation or the camera angle.
+        local pixelsPerStud = cam.ViewportSize.Y / (2 * center.Z * math.tan(math.rad(cam.FieldOfView) / 2))
+        local width = math.floor(math.max(size.X, size.Z) * pixelsPerStud + 0.5)
+        local height = math.floor(size.Y * pixelsPerStud + 0.5)
+
+        local points: { any }? = nil
+
+        if need3D then
+            local half = size / 2
+            points = {}
+
+            for index, corner in ipairs(boxCorners) do
+                local screen = cam:WorldToViewportPoint(boxCFrame:PointToWorldSpace(corner * half))
+                points[index] = screen.Z > 0 and Vector2.new(screen.X, screen.Y) or false
+            end
+        end
+
+        return {
+            points = points,
+            minX = math.floor(center.X - width / 2 + 0.5),
+            minY = math.floor(center.Y - height / 2 + 0.5),
+            width = width,
+            height = height,
+        }
+    end
+
+    local function updateESP()
+        local hrp = getHRP()
+        local folder = killersFolder or workspace:FindFirstChild("Killers")
+        local cam = workspace.CurrentCamera
+
+        if not hrp or not folder or not cam then
+            for _, objs in pairs(espObjects) do
+                hideESPObjects(objs)
+            end
+            return
+        end
+
+        local espColor = killerColorPicker.Value
+        local tagColor = nameTagColorPicker.Value
+        local showTags = toggles.toggleKillersNametags_Toggle.Value
+        local showHealth = toggles.killerESPHealthBar_Toggle.Value
+        local boxMode = options.killerESPBoxType_Dropdown.Value == "3D" and "3D" or "2D"
+        local maxDistance = killerESPRangeSlider.Value
+
+        local seen = {}
+
+        for _, killer in ipairs(folder:GetChildren()) do
+            if not killer:IsA("Model") or excludedKillers[killer.Name] then
                 continue
             end
 
-            local root = child:FindFirstChild("HumanoidRootPart")
-            if root then
-                local distance = entityLib.getEntityDistance(hrp, root)
-                local maxDistance = killerESPRangeSlider.Value
+            -- Dead / invalid killers are left unseen so their drawings get destroyed below
+            local root = killer:FindFirstChild("HumanoidRootPart")
+            local killerHumanoid = killer:FindFirstChildOfClass("Humanoid")
+            if not root or not killerHumanoid or killerHumanoid.Health <= 0 then
+                continue
+            end
 
-                if distance <= maxDistance then
-                    -- Highlight
+            seen[killer] = true
 
-                    if not child:FindFirstChild("_CelestialKillerESP") then
-                        local highlight = Instance.new("Highlight", child)
-                        highlight.Name = "_CelestialKillerESP"
-                        highlight.FillColor = killerColorPicker.Value
-                        highlight.OutlineColor = killerColorPicker.Value
-                        highlight.FillTransparency = killerColorPicker.Transparency
-                    end
+            local objs = espObjects[killer]
 
-                    -- BillboardGui
+            if entityLib.getEntityDistance(hrp, root) > maxDistance then
+                if objs then hideESPObjects(objs) end
+                continue
+            end
 
-                    local head = child:FindFirstChild("Head")
-                    if head and not head:FindFirstChild("_CelestialBillboard") and toggles.toggleKillersNametags_Toggle.Value then
-                        local billboardGui = Instance.new("BillboardGui", head)
-                        billboardGui.Name = "_CelestialBillboard"
-                        billboardGui.Size = UDim2.new(4, 0, 1, 0)
-                        billboardGui.StudsOffset = Vector3.new(0, 2, 0)
-                        billboardGui.Adornee = head
-                        billboardGui.AlwaysOnTop = true
+            local projection = projectBox(killer, root, cam, boxMode == "3D")
+            if not projection then
+                if objs then hideESPObjects(objs) end
+                continue
+            end
 
-                        local textLabel = Instance.new("TextLabel", billboardGui)
-                        textLabel.Size = UDim2.new(1, 0, 1, 0)
-                        textLabel.BackgroundTransparency = 1
-                        textLabel.Text = child.Name
-                        textLabel.TextScaled = false
-                        textLabel.TextColor3 = nameTagColorPicker.Value
-                        textLabel.Font = Enum.Font.GothamBold
-                        textLabel.TextSize = defaultTextSize
-                    end
-                else
-                    -- Remove Highlight and Billboard if they exist and out of range
+            if not objs then
+                objs = createESPObjects()
+                espObjects[killer] = objs
+            end
 
-                    local highlight = child:FindFirstChild("_CelestialKillerESP")
-                    if highlight then
-                        highlight:Destroy()
-                    end
+            local points = projection.points
+            local minX, minY = projection.minX, projection.minY
+            local width, height = projection.width, projection.height
 
-                    local head = child:FindFirstChild("Head")
-                    if head then
-                        local billboardGui = head:FindFirstChild("_CelestialBillboard")
-                        if billboardGui then
-                            billboardGui:Destroy()
-                        end
+            -- Box (never filled)
+            ensureBoxDrawings(objs, boxMode)
+
+            if boxMode == "3D" then
+                for index, edge in ipairs(boxEdges) do
+                    local from, to = points[edge[1]], points[edge[2]]
+                    local line = objs.lines[index]
+
+                    if from and to then
+                        line.From = from
+                        line.To = to
+                        line.Color = espColor
+                        line.Visible = true
+                    else
+                        line.Visible = false
                     end
                 end
             else
-                warn("Killer model missing HumanoidRootPart:", child.Name)
+                local position = Vector2.new(minX, minY)
+                local size = Vector2.new(width, height)
+
+                objs.boxOutline.Position = position
+                objs.boxOutline.Size = size
+                objs.boxOutline.Visible = true
+
+                objs.box.Position = position
+                objs.box.Size = size
+                objs.box.Color = espColor
+                objs.box.Visible = true
+            end
+
+            -- Health bar (vertical, left of the box; fills from the bottom up)
+            if showHealth then
+                ensureHealthBar(objs)
+
+                local healthRatio = math.clamp(killerHumanoid.Health / math.max(killerHumanoid.MaxHealth, 1), 0, 1)
+                local fillHeight = math.floor(height * healthRatio + 0.5)
+
+                objs.healthBG.Position = Vector2.new(minX - 7, minY - 1)
+                objs.healthBG.Size = Vector2.new(4, height + 2)
+                objs.healthBG.Visible = true
+
+                objs.healthFill.Position = Vector2.new(minX - 6, minY + height - fillHeight)
+                objs.healthFill.Size = Vector2.new(2, fillHeight)
+                objs.healthFill.Color = Color3.fromRGB(255, 0, 0):Lerp(Color3.fromRGB(0, 255, 0), healthRatio)
+                objs.healthFill.Visible = fillHeight > 0
+            elseif objs.healthBG then
+                destroyHealthBar(objs)
+            end
+
+            -- Name tag
+            objs.label.Text = killer.Name
+            objs.label.Size = defaultTextSize
+            objs.label.Color = tagColor
+            objs.label.Position = Vector2.new(minX + math.floor(width / 2), minY - defaultTextSize - 4)
+            objs.label.Visible = showTags
+        end
+
+        for model in pairs(espObjects) do
+            if not seen[model] then
+                clearESPForModel(model)
             end
         end
     end
+
+    toggles.killerESP_Toggle:OnChanged(function(enabled)
+        if renderConnection then
+            renderConnection:Disconnect()
+            renderConnection = nil
+        end
+
+        clearESP()
+
+        if enabled then
+            if not Drawing then
+                notify("Error", "Drawing unsupported", "Your executor does not support the Drawing library.", 8)
+                killerESPToggle:SetValue(false)
+                return
+            end
+
+            renderConnection = runService.RenderStepped:Connect(updateESP)
+        end
+    end)
 end
-
-local shouldRunLiveUpdate = false
-toggles.killerESP_Toggle:OnChanged(function(enabled)
-    if enabled then
-        shouldRunLiveUpdate = true
-
-        -- Clear & reapply
-
-        if killersFolder then
-            clearESP(killersFolder)
-            applyESP(killersFolder)
-        end
-
-        -- Disconnect previous connections
-
-        for _, connection in pairs(espConnections) do
-            if typeof(connection) == "RBXScriptConnection" then
-                connection:Disconnect()
-            end
-        end
-        table.clear(espConnections)
-
-        -- Reapply on new killers
-
-        if killersFolder then
-            espConnections["ChildAdded"] = killersFolder.ChildAdded:Connect(function()
-                applyESP(killersFolder)
-            end)
-        end
-
-        -- Update
-
-        espConnections["LiveUpdate"] = task.spawn(function()
-            while shouldRunLiveUpdate do
-                local hrp = getHRP()
-                if not hrp then
-                    task.wait(0.1)
-                    continue
-                end
-
-                local currentKillersFolder = killersFolder
-                if not currentKillersFolder then
-                    task.wait(0.1)
-                    continue
-                end
-
-                for _, killer in ipairs(currentKillersFolder:GetChildren()) do
-                    if killer:IsA("Model") and not excludedKillers[killer.Name] then
-                        local root = killer:FindFirstChild("HumanoidRootPart")
-                        local head = killer:FindFirstChild("Head")
-                        local killerHumanoid = killer:FindFirstChildOfClass("Humanoid")
-
-                        -- Alive check
-
-                        if not killerHumanoid or killerHumanoid.Health <= 0 then
-                            clearESPForModel(killer)
-                            continue
-                        end
-
-                        if root then
-                            local distance = entityLib.getEntityDistance(hrp, root)
-                            local inRange = distance <= killerESPRangeSlider.Value
-
-                            -- Highlight
-
-                            local highlight = killer:FindFirstChild("_CelestialKillerESP")
-                            if inRange and not highlight then
-                                highlight = Instance.new("Highlight", killer)
-                                highlight.Name = "_CelestialKillerESP"
-                                highlight.FillColor = killerColorPicker.Value
-                                highlight.OutlineColor = killerColorPicker.Value
-                                highlight.FillTransparency = killerColorPicker.Transparency
-                            elseif not inRange and highlight then
-                                highlight:Destroy()
-                            elseif highlight then
-                                highlight.FillColor = killerColorPicker.Value
-                                highlight.OutlineColor = killerColorPicker.Value
-                                highlight.FillTransparency = killerColorPicker.Transparency
-                            end
-
-                            -- Billboard
-
-                            if head and toggles.toggleKillersNametags_Toggle.Value then
-                                local billboard = head:FindFirstChild("_CelestialBillboard")
-                                if inRange and not billboard then
-                                    billboard = Instance.new("BillboardGui", head)
-                                    billboard.Name = "_CelestialBillboard"
-                                    billboard.Size = UDim2.new(4, 0, 1, 0)
-                                    billboard.StudsOffset = Vector3.new(0, 2, 0)
-                                    billboard.Adornee = head
-                                    billboard.AlwaysOnTop = true
-
-                                    local label = Instance.new("TextLabel", billboard)
-                                    label.Size = UDim2.new(1, 0, 1, 0)
-                                    label.BackgroundTransparency = 1
-                                    label.Text = killer.Name
-                                    label.TextScaled = false
-                                    label.TextColor3 = nameTagColorPicker.Value
-                                    label.Font = Enum.Font.GothamBold
-                                    label.TextSize = defaultTextSize
-                                elseif not inRange and billboard then
-                                    billboard:Destroy()
-                                elseif billboard then
-                                    local label = billboard:FindFirstChildOfClass("TextLabel")
-                                    if label then
-                                        label.TextColor3 = nameTagColorPicker.Value
-                                        label.TextSize = defaultTextSize
-                                    end
-                                end
-                            elseif head then
-                                local existing = head:FindFirstChild("_CelestialBillboard")
-                                if existing then existing:Destroy() end
-                            end
-                        end
-                    end
-                end
-
-                task.wait(0.1)
-            end
-        end)
-    else
-        shouldRunLiveUpdate = false
-
-        if killersFolder then clearESP(killersFolder) end
-
-        for _, connection in pairs(espConnections) do
-            if typeof(connection) == "RBXScriptConnection" then
-                connection:Disconnect()
-            end
-        end
-        table.clear(espConnections)
-    end
-end)
-
-toggles.toggleKillersNametags_Toggle:OnChanged(function()
-    local hrp = getHRP()
-    if not hrp then return end
-
-    for _, child in ipairs(killersFolder:GetChildren()) do
-        if child:IsA("Model") and not excludedKillers[child.Name] and killerESPToggle.Value then
-            if not isKillerAlive(child) then
-                clearESPForModel(child)
-                continue
-            end
-
-            local killerRoot = child:FindFirstChild("HumanoidRootPart")
-            if killerRoot then
-                local distance = entityLib.getEntityDistance(hrp, killerRoot)
-                if distance <= killerESPRangeSlider.Value then
-                    -- Highlight
-
-                    if not child:FindFirstChild("_CelestialKillerESP") then
-                        local highlight = Instance.new("Highlight", child)
-                        highlight.Name = "_CelestialKillerESP"
-                        highlight.FillColor = killerColorPicker.Value
-                        highlight.OutlineColor = killerColorPicker.Value
-                        highlight.FillTransparency = killerColorPicker.Transparency
-                    end
-
-                    -- BillboardGui
-
-                    local head = child:FindFirstChild("Head")
-                    if head then
-                        local existing = head:FindFirstChild("_CelestialBillboard")
-                        if toggles.toggleKillersNametags_Toggle.Value then
-                            if not existing then
-                                local billboardGui = Instance.new("BillboardGui", head)
-                                billboardGui.Name = "_CelestialBillboard"
-                                billboardGui.Size = UDim2.new(4, 0, 1, 0)
-                                billboardGui.StudsOffset = Vector3.new(0, 2, 0)
-                                billboardGui.Adornee = head
-                                billboardGui.AlwaysOnTop = true
-
-                                local textLabel = Instance.new("TextLabel", billboardGui)
-                                textLabel.Size = UDim2.new(1, 0, 1, 0)
-                                textLabel.BackgroundTransparency = 1
-                                textLabel.Text = child.Name
-                                textLabel.TextScaled = false
-                                textLabel.TextColor3 = nameTagColorPicker.Value
-                                textLabel.Font = Enum.Font.GothamBold
-                                textLabel.TextSize = defaultTextSize
-                            end
-                        elseif existing then
-                            existing:Destroy()
-                        end
-                    end
-                end
-            end
-        end
-    end
-end)
-
 
 options.textSize_Slider:OnChanged(function(val) defaultTextSize = val end)
 
@@ -2587,13 +2924,7 @@ options.excludedKillers_Dropdown:OnChanged(function(val)
     for name in pairs(val) do
         excludedKillers[name] = true
     end
-
-    if killerESPToggle.Value then
-        if killersFolder then
-            clearESP(killersFolder)
-            applyESP(killersFolder)
-        end
-    end
+    -- updateESP() clears drawings for newly excluded killers on its next frame
 end)
 
 toggles.rainbowESPColor_Toggle:OnChanged(function(enabled)
@@ -3495,49 +3826,6 @@ autoReloadDepbox:AddSlider("autoReloadDelay_Slider", { Text = "Delay", Tooltip =
     end
 })
 
--- [Weapons / Gun Mods] Reusable weapon modifier operations
-local gunModFuncs = {
-    infiniteAmmo = function()
-        for _, weapon in next, getgc(true) do
-            if type(weapon) == "table" and rawget(weapon, "ammo") then
-                weapon.ammo = math.huge
-                weapon.stored_ammo = math.huge
-            end
-        end
-    end,
-
-    fullAuto = function()
-        for _, v in next, getgc(true) do
-            if type(v) == "table" and rawget(v, "inaccuracy") then
-                v.inaccuracy = 0.00001
-            end
-        end
-
-        for _, weapon in next, getgc(true) do
-            if type(weapon) == "table" and rawget(weapon, "ammo") then
-                weapon.is_auto = true
-            end
-        end
-    end,
-
-    fireRate = function()
-        for _, weapon in next, getgc(true) do
-            if type(weapon) == "table" and rawget(weapon, "ammo") then
-                weapon.shoot_wait = 1e-14
-                weapon.is_auto = true
-            end
-        end
-    end,
-
-    bulletCount = function(count)
-        for _, weapon in next, getgc(true) do
-            if type(weapon) == "table" and rawget(weapon, "ammo") then
-                weapon.bullet_count = count
-            end
-        end
-    end
-}
-
 othersGroup:AddToggle("enableGunMods_Toggle", { Text = "Enable Gun Mods", Tooltip = "Usage of any gun mods has a high chance of resulting in a permanent game ban.", Risky = true })
 
 local gunModsDepbox = othersGroup:AddDependencyBox()
@@ -3571,25 +3859,193 @@ toggles.autoReloadWeapons_Toggle:OnChanged(function(enabled)
     end)
 end)
 
-toggles.infiniteAmmoGunMod_Toggle:OnChanged(function(enabled)
-    if enabled then
-        gunModFuncs.infiniteAmmo()
+-- [Weapons / Gun Mods] Non-destructive weapon modifiers
+--
+-- How this works (and why it is built this way):
+--   * Only live weapon objects are modified: tables that hold a Tool in `.instance`. The game keeps each weapon's stat
+--     template (`get_stats`) as a constant table that ALSO has an `ammo` key. Overwriting those templates destroys the
+--     source values permanently, and every weapon built afterwards copies them (max_ammo / max_stored become math.huge).
+--     Templates and class tables are never touched.
+--   * Before a field is overwritten, its raw value is saved per weapon (nil when the weapon inherits it from its class).
+--     Turning a mod off writes that value back, so inherited fields go back to being inherited.
+--   * Every mod is described by the fields it wants (getDesiredGunMods) and a single reconcile pass applies or undoes
+--     them. Fields shared by several mods (is_auto: Fully Automatic + Rapid Fire) stay overridden until all are off.
+--   * max_ammo / max_stored (the real capacities used by reload and the ammo box) are never written.
+
+local GUN_MOD_FIELDS = { "ammo", "stored_ammo", "is_auto", "shoot_wait", "bullet_count", "inaccuracy" }
+
+-- Current-ammo fields mapped to the field that holds the weapon's real capacity.
+local GUN_MOD_CAPACITY_FIELD = { ammo = "max_ammo", stored_ammo = "max_stored" }
+
+local gunModSnapshots = setmetatable({}, { __mode = "k" }) -- weapon -> { [field] = { value = original raw value } }
+local gunModApplied = setmetatable({}, { __mode = "k" })   -- weapon -> { [field] = value written by a mod }
+local gunModsEngaged = false -- true while any weapon may still hold a modified value
+local gunModsUnloaded = false
+
+local function isFiniteNumber(value: any): boolean
+    return type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge
+end
+
+local function findGunModTargets(): { any }
+    local targets = {}
+
+    for _, object in next, getgc(true) do
+        if type(object) == "table"
+            and rawget(object, "ammo") ~= nil
+            and typeof(rawget(object, "instance")) == "Instance"
+            and getmetatable(object) ~= nil then
+            table.insert(targets, object)
+        end
     end
-end)
+
+    return targets
+end
+
+-- What every managed field should currently be overridden to. A field that is absent here must be original.
+local function getDesiredGunMods(): { [string]: any }
+    local desired = {}
+
+    if gunModsUnloaded or not toggles.enableGunMods_Toggle.Value then
+        return desired
+    end
+
+    if toggles.infiniteAmmoGunMod_Toggle.Value then
+        desired.ammo = math.huge
+        desired.stored_ammo = math.huge
+    end
+
+    if toggles.fullAutoGunMod_Toggle.Value then
+        desired.is_auto = true
+        desired.inaccuracy = 0.00001
+    end
+
+    if toggles.fireRateGunMod_Toggle.Value then
+        desired.shoot_wait = 1e-14
+        desired.is_auto = true
+    end
+
+    -- 1 is the slider's neutral position, so it leaves weapons untouched (some natively fire more than one bullet).
+    local bulletCount = options.bulletCountGunMod_Slider.Value
+    if type(bulletCount) == "number" and bulletCount > 1 then
+        desired.bullet_count = bulletCount
+    end
+
+    return desired
+end
+
+-- Returns true when a value was written back.
+local function restoreGunModField(weapon: any, field: string, original: any): boolean
+    local capacityField = GUN_MOD_CAPACITY_FIELD[field]
+
+    if capacityField then
+        local target = original and original.value
+
+        -- No usable snapshot (e.g. the weapon was already infinite when first seen): use its real capacity instead.
+        if not isFiniteNumber(target) then
+            target = rawget(weapon, capacityField)
+        end
+
+        if isFiniteNumber(target) then
+            rawset(weapon, field, target)
+            return true
+        end
+
+        return false
+    end
+
+    if original then
+        rawset(weapon, field, original.value) -- nil removes the override so the class value shows through again
+        return true
+    end
+
+    return false
+end
+
+local function reconcileGunMods()
+    local desired = getDesiredGunMods()
+
+    if next(desired) == nil and not gunModsEngaged then
+        return
+    end
+
+    for _, weapon in ipairs(findGunModTargets()) do
+        local snapshot = gunModSnapshots[weapon]
+        local applied = gunModApplied[weapon]
+        local ammoRestored = false
+
+        for _, field in ipairs(GUN_MOD_FIELDS) do
+            local wanted = desired[field]
+
+            if wanted ~= nil then
+                if not snapshot then
+                    snapshot, applied = {}, {}
+                    gunModSnapshots[weapon] = snapshot
+                    gunModApplied[weapon] = applied
+                end
+
+                local current = rawget(weapon, field)
+
+                if GUN_MOD_CAPACITY_FIELD[field] then
+                    -- Always keep the latest real value (it may have been refilled since), never an infinite one.
+                    if isFiniteNumber(current) then
+                        snapshot[field] = { value = current }
+                    end
+                elseif snapshot[field] == nil then
+                    snapshot[field] = { value = current }
+                end
+
+                if current ~= wanted then
+                    rawset(weapon, field, wanted)
+                end
+
+                applied[field] = wanted
+            elseif applied and applied[field] ~= nil then
+                -- Only undo what is still ours: if the game changed the field since (refill, fire-mode switch), keep it.
+                if rawget(weapon, field) == applied[field] and restoreGunModField(weapon, field, snapshot[field]) then
+                    if GUN_MOD_CAPACITY_FIELD[field] then
+                        ammoRestored = true
+                    end
+                end
+
+                applied[field] = nil
+                snapshot[field] = nil
+            end
+        end
+
+        -- Refresh the on-screen counter so it stops showing the infinite value.
+        if ammoRestored and type(weapon.update_ammo_gui) == "function" then
+            pcall(weapon.update_ammo_gui, weapon)
+        end
+    end
+
+    gunModsEngaged = next(desired) ~= nil
+end
+
+toggles.enableGunMods_Toggle:OnChanged(reconcileGunMods)
+toggles.infiniteAmmoGunMod_Toggle:OnChanged(reconcileGunMods)
+toggles.fullAutoGunMod_Toggle:OnChanged(reconcileGunMods)
+toggles.fireRateGunMod_Toggle:OnChanged(reconcileGunMods)
+options.bulletCountGunMod_Slider:OnChanged(reconcileGunMods)
 
 -- [Weapons / Gun Mods] Backpack listener for newly acquired tools
 
+local gunModBackpackConnection: RBXScriptConnection? = nil
+
 local function setupBackpackListener()
+    if gunModBackpackConnection then
+        gunModBackpackConnection:Disconnect()
+        gunModBackpackConnection = nil
+    end
+
+    if gunModsUnloaded then
+        return
+    end
+
     local backpack = localplayer:FindFirstChild("Backpack") or localplayer:WaitForChild("Backpack")
 
-    backpack.ChildAdded:Connect(function(tool)
-        if toggles.infiniteAmmoGunMod_Toggle.Value and tool:IsA("Tool") then
-            task.delay(0.5, function()
-                gunModFuncs.infiniteAmmo()
-                gunModFuncs.fullAuto()
-                gunModFuncs.fireRate()
-                gunModFuncs.bulletCount(options.bulletCountGunMod_Slider.Value)
-            end)
+    gunModBackpackConnection = backpack.ChildAdded:Connect(function(tool)
+        if tool:IsA("Tool") then
+            task.delay(0.5, reconcileGunMods) -- gives the game time to build the weapon object; no-op when no mod is on
         end
     end)
 end
@@ -3598,24 +4054,21 @@ setupBackpackListener()
 
 -- [Weapons / Gun Mods] Reapply listeners after respawn
 
-localplayer.CharacterAdded:Connect(function()
+local gunModCharacterConnection = localplayer.CharacterAdded:Connect(function()
     task.defer(setupBackpackListener)
 end)
 
-toggles.fullAutoGunMod_Toggle:OnChanged(function(enabled)
-    if enabled then
-        gunModFuncs.fullAuto()
-    end
-end)
+-- Runs from unloadModules() after every toggle has been switched off; the final reconcile is a safety net.
+table.insert(teardownTasks, function()
+    gunModsUnloaded = true
 
-toggles.fireRateGunMod_Toggle:OnChanged(function(enabled)
-    if enabled then
-        gunModFuncs.fireRate()
+    if gunModBackpackConnection then
+        gunModBackpackConnection:Disconnect()
+        gunModBackpackConnection = nil
     end
-end)
 
-options.bulletCountGunMod_Slider:OnChanged(function(val)
-    gunModFuncs.bulletCount(val)
+    gunModCharacterConnection:Disconnect()
+    reconcileGunMods()
 end)
 
 
@@ -3782,25 +4235,66 @@ menuGroup:AddLabel("Menu bind"):AddKeyPicker("menuKeybind_KeyPicker", { Text = "
 
 -- [UI Settings / Teardown] Disable active features and clear shared state
 local function unloadModules()
-    local modules = { "autoDrink_Toggle", "autoRefill_Toggle", "promptReach_Toggle", "weaponPromptReach_Toggle", "instantInteract_Toggle", "speedExploit_Toggle", "enableFly_Toggle", "toggleFly_Toggle",
-    "enableNoclip_Toggle", "enableJumpPower_Toggle", "doorNoclip_Toggle", "removeFog_Toggle", "killerESP_Toggle", "toggleKillersNametags_Toggle", "enableFOV_Toggle", "disableCactuses_Toggle",
-    "removeBearTraps_Toggle", "disableRadioactiveZone_Toggle", "removeBarriers_Toggle", "removeEntrance_Toggle", "disableRadioactiveFog_Toggle", "disableKillParts_Toggle", "viewAlienCode_Toggle",
-    "fireOnRespawn_Toggle", "zombieMorph_Toggle", "disableSelfGlow_Toggle", "obtainArmor_Toggle", "autoReloadWeapons_Toggle", "disableAllKillers_Toggle", "killerGodmode_Toggle", "antiPinhead_Toggle",
-    "antiSlendermanJumpscare_Toggle", "weaponSpam_Toggle", "rainbowESPColor_Toggle", "rainbowNameTagColor_Toggle", "antiInk_Toggle", "antiTailsPopup_Toggle", "obtainHelmet_Toggle", "autoBacktrack_Toggle",
-    "freecam_Toggle", "enableAimbot_Toggle", "autoCollect_Toggle" }
+    -- Switch off every toggle (rather than a hand-maintained list) so each OnChanged handler can stop its own
+    -- loops, connections and hooks. Menu-only toggles are skipped.
+    for name, toggle in pairs(toggles) do
+        if type(toggle) == "table" and toggle.Value == true and type(toggle.SetValue) == "function"
+            and name ~= "KeybindMenuOpen" and name ~= "autoResetColor_Toggle" and name ~= "notifSound_Toggle" then
+            local success = pcall(toggle.SetValue, toggle, false)
 
-    for _, moduleName in ipairs(modules) do
-        if toggles[moduleName] and toggles[moduleName].Value == true then
-            toggles[moduleName]:SetValue(false)
+            if not success then
+                -- The UI side failed; still make sure the value is off and the handler runs.
+                toggle.Value = false
+                pcall(function() toggle:RunChanged() end)
+            end
         end
     end
 
-    shared.scriptLoaded = false
+    -- Rainbow loops index options[...] every frame, so stop them explicitly.
+    for _, connection in pairs(rainbowConnections) do
+        if typeof(connection) == "RBXScriptConnection" then
+            connection:Disconnect()
+        end
+    end
 
     table.clear(rainbowConnections)
-    table.clear(hues)
+    table.clear(rainbowState.active)
+    rainbowState.hue = 0
+
+    shared.scriptLoaded = false
     isUpdatingTeleporterState = false
+
+    -- Feature teardown (silent aim hooks, FOV circle, always-on RenderStepped handlers).
+    for _, teardown in ipairs(teardownTasks) do
+        local success, err = pcall(teardown)
+
+        if not success then
+            warn("[Celestial] Teardown error:", err)
+        end
+    end
+
+    table.clear(teardownTasks)
 end
+
+-- Library:Unload() empties library.Toggles / library.Options right after it runs its unload callbacks. Anything that
+-- outlives the UI (event connections, game weapon hooks, looping threads) would then hit "attempt to index nil with
+-- 'Value'", so this script's references are swapped to snapshots *before* anything else happens.
+library:OnUnload(function()
+    local function snapshot(source)
+        local copy = {}
+
+        for key, value in pairs(source) do
+            copy[key] = value
+        end
+
+        return copy
+    end
+
+    toggles = snapshot(toggles)
+    options = snapshot(options)
+
+    unloadModules()
+end)
 
 -- [UI Settings / Teardown] Watch for external UI removal
 
@@ -3809,9 +4303,8 @@ for _, newUI in pairs(gethui():GetDescendants()) do
         if newUI.Name == "Obsidian" then
             task.spawn(function()
                 newUI.AncestryChanged:Connect(function(_, parent)
-                    if not parent then
-                        unloadModules()
-                        library:Unload()
+                    if not parent and not library.Unloaded then
+                        library:Unload() -- runs unloadModules() through the OnUnload callback
                     end
                 end)
             end)
@@ -3823,8 +4316,7 @@ menuGroup:AddButton({
     Text = "Unload",
     DoubleClick = true,
     Func = function()
-        library:Unload()
-        unloadModules()
+        library:Unload() -- runs unloadModules() through the OnUnload callback, before the library clears its tables
     end,
 })
 
