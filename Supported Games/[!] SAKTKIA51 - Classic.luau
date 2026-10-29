@@ -14,7 +14,7 @@
     10. Exploits: Pack-a-Punch, aim controls, collection, and killer controls
     11. Visuals: ESP, FOV, fog, and anti-effect handlers
     12. World: environmental settings and alien / kill-part controls
-    13. Weapons: inventory, Pack-a-Punch queue, defense, and gun options
+    13. Weapons: inventory, Pack-a-Punch queue, defense, gun options, and skin changer
     14. Miscellaneous: utility actions and weapon spam
     15. UI settings, teardown, and configuration persistence
 
@@ -3730,89 +3730,194 @@ defenseGroup:AddToggle("zombieMorph_Toggle", { Text = "Zombie Morph", Tooltip = 
 local zombieMorphDepbox = defenseGroup:AddDependencyBox()
 
 zombieMorphDepbox:AddToggle("disableSelfGlow_Toggle", { Text = "Disable Self Glow", Tooltip = "Disables the green glow from you only." })
+zombieMorphDepbox:AddToggle("normalAppearance_Toggle", { Text = "Normal Appearance", Tooltip = "Shows your normal character instead of the zombie morph's green skin. The morph stays worn, only its look is hidden." })
 
 defenseGroup:AddToggle("obtainArmor_Toggle", { Text = "Obtain Armor", Tooltip = false })
 defenseGroup:AddToggle("obtainHelmet_Toggle", { Text = "Obtain Helmet", Tooltip = false, Disabled = not (getMode() == "Extreme"), DisabledTooltip = "This feature is not available in this mode." })
 
 zombieMorphDepbox:SetupDependencies({ { toggles.zombieMorph_Toggle, true } })
 
-toggles.zombieMorph_Toggle:OnChanged(function(enabled)
-    if enabled then
-        -- Morph
+-- Scoped in a do-block: the main chunk is close to Luau's 200 local variable limit,
+-- so these helpers must not stay alive as top-level locals.
+do
+    -- Zombie morph appearance: the morph hides your normal R15 body and shows green zombie parts on top of it
+    -- (the zombie head also carries the red eyes decal). These helpers swap which of the two sets is visible.
+    -- Visual only, the morph itself stays worn.
+    local zombieSkinModels = { "Chest", "LeftArm", "RightArm", "LeftLeg", "RightLeg" }
+    local normalBodyLookup = {}
+    for _, name in ipairs({
+        "Head", "UpperTorso", "LowerTorso",
+        "LeftUpperArm", "LeftLowerArm", "LeftHand",
+        "RightUpperArm", "RightLowerArm", "RightHand",
+        "LeftUpperLeg", "LeftLowerLeg", "LeftFoot",
+        "RightUpperLeg", "RightLowerLeg", "RightFoot",
+    }) do
+        normalBodyLookup[name] = true
+    end
 
+    local morphAppearanceChar = nil
+    local morphAppearanceConnections = {}
+
+    -- Returns the Transparency this instance should have, or nil if it isn't part of the swap
+    local function getMorphTransparency(char, inst, showZombieSkin)
+        if inst.Parent == char and inst:IsA("BasePart") and normalBodyLookup[inst.Name] then
+            return showZombieSkin and 1 or 0
+        end
+
+        -- Zombie skin parts and the decals on them (red eyes). "Middle" parts are invisible helpers, leave them alone
+        if (inst:IsA("BasePart") and inst.Name ~= "Middle") or inst:IsA("Decal") or inst:IsA("Texture") then
+            for _, name in ipairs(zombieSkinModels) do
+                local model = char:FindFirstChild(name)
+                if model and inst:IsDescendantOf(model) then
+                    return showZombieSkin and 0 or 1
+                end
+            end
+        end
+
+        return nil
+    end
+
+    local function applyMorphAppearance(char, showZombieSkin)
+        for _, inst in ipairs(char:GetDescendants()) do
+            local transparency = getMorphTransparency(char, inst, showZombieSkin)
+            if transparency then
+                inst.Transparency = transparency
+            end
+        end
+    end
+
+    -- Keeps one instance in the right state while Normal Appearance is on (covers the server changing it later)
+    local function watchMorphInstance(char, inst)
+        if not (inst:IsA("BasePart") or inst:IsA("Decal") or inst:IsA("Texture")) then
+            return
+        end
+
+        local function enforce()
+            if toggles.normalAppearance_Toggle.Value then
+                local transparency = getMorphTransparency(char, inst, false)
+                if transparency then
+                    inst.Transparency = transparency
+                end
+            end
+        end
+
+        enforce()
+        table.insert(morphAppearanceConnections, inst:GetPropertyChangedSignal("Transparency"):Connect(enforce))
+    end
+
+    local function refreshMorphAppearance(char)
+        task.spawn(function()
+            -- The server builds the morph after the button is touched, so wait for it to show up.
+            -- Without a morph there is nothing to swap, so the normal body is left untouched.
+            if not (char and char:WaitForChild("Chest", 10)) then
+                return
+            end
+
+            -- Watch the character once, so anything added or changed later (like the eyes decal) is handled too
+            if morphAppearanceChar ~= char then
+                for _, connection in ipairs(morphAppearanceConnections) do
+                    connection:Disconnect()
+                end
+                table.clear(morphAppearanceConnections)
+                morphAppearanceChar = char
+
+                for _, inst in ipairs(char:GetDescendants()) do
+                    watchMorphInstance(char, inst)
+                end
+
+                table.insert(morphAppearanceConnections, char.DescendantAdded:Connect(function(inst)
+                    watchMorphInstance(char, inst)
+                end))
+            end
+
+            applyMorphAppearance(char, not toggles.normalAppearance_Toggle.Value)
+        end)
+    end
+
+    toggles.normalAppearance_Toggle:OnChanged(function()
+        refreshMorphAppearance(localplayer.Character)
+    end)
+
+    toggles.zombieMorph_Toggle:OnChanged(function(enabled)
+        if enabled then
+            -- Morph
+
+            local hrp = getHRP()
+            if hrp then
+                utils.fireTouchEvent(hrp, area51.Outside.Hangar.Right["Zombie Morph"].TheButton)
+                refreshMorphAppearance(localplayer.Character)
+            else
+                notify("Error", "Unavailable root", "Could not find HumanoidRootPart.", 10)
+                toggles.zombieMorph_Toggle:SetValue(false)
+            end
+        end
+    end)
+
+    toggles.disableSelfGlow_Toggle:OnChanged(function(enabled)
+        local glow = localplayer.Character.Chest.Torso:FindFirstChildOfClass("PointLight")
+
+        if glow then
+            glow.Enabled = not enabled
+        end
+    end)
+
+    toggles.obtainArmor_Toggle:OnChanged(function(enabled)
+        if enabled then
+            local hrp = getHRP()
+            utils.fireTouchEvent(hrp, area51.Amory2Room.Armory.Giver)
+        end
+    end)
+
+    toggles.obtainHelmet_Toggle:OnChanged(function(enabled)
+        if enabled then
+
+            local hrp = getHRP()
+            utils.fireTouchEvent(hrp, area51.ComputersRoom.Helmet)
+        end
+    end)
+
+    localplayer.CharacterAdded:Connect(function(char)
         local hrp = getHRP()
-        if hrp then
+        task.wait(0.5)
+
+        if toggles.zombieMorph_Toggle.Value then
+            local disableSelfGlowEnabled = toggles.disableSelfGlow_Toggle.Value
+
             utils.fireTouchEvent(hrp, area51.Outside.Hangar.Right["Zombie Morph"].TheButton)
-        else
-            notify("Error", "Unavailable root", "Could not find HumanoidRootPart.", 10)
-            toggles.zombieMorph_Toggle:SetValue(false)
+            refreshMorphAppearance(char)
+
+            if disableSelfGlowEnabled then
+                local chest
+                repeat
+                    task.wait()
+                    chest = localplayer.Character:FindFirstChild("Chest")
+                until chest
+
+                local torso
+                repeat
+                    task.wait()
+                    torso = chest:FindFirstChild("Torso")
+                until torso
+
+                local glow
+                repeat
+                    task.wait()
+                    glow = torso:FindFirstChildOfClass("PointLight")
+                until glow
+
+                glow.Enabled = false
+            end
         end
-    end
-end)
 
-toggles.disableSelfGlow_Toggle:OnChanged(function(enabled)
-    local glow = localplayer.Character.Chest.Torso:FindFirstChildOfClass("PointLight")
-
-    if glow then
-        glow.Enabled = not enabled
-    end
-end)
-
-toggles.obtainArmor_Toggle:OnChanged(function(enabled)
-    if enabled then
-        local hrp = getHRP()
-        utils.fireTouchEvent(hrp, area51.Amory2Room.Armory.Giver)
-    end
-end)
-
-toggles.obtainHelmet_Toggle:OnChanged(function(enabled)
-    if enabled then
-
-        local hrp = getHRP()
-        utils.fireTouchEvent(hrp, area51.ComputersRoom.Helmet)
-    end
-end)
-
-localplayer.CharacterAdded:Connect(function(char)
-    local hrp = getHRP()
-    task.wait(0.5)
-
-    if toggles.zombieMorph_Toggle.Value then
-        local disableSelfGlowEnabled = toggles.disableSelfGlow_Toggle.Value
-
-        utils.fireTouchEvent(hrp, area51.Outside.Hangar.Right["Zombie Morph"].TheButton)
-
-        if disableSelfGlowEnabled then
-            local chest
-            repeat
-                task.wait()
-                chest = localplayer.Character:FindFirstChild("Chest")
-            until chest
-
-            local torso
-            repeat
-                task.wait()
-                torso = chest:FindFirstChild("Torso")
-            until torso
-
-            local glow
-            repeat
-                task.wait()
-                glow = torso:FindFirstChildOfClass("PointLight")
-            until glow
-
-            glow.Enabled = false
+        if toggles.obtainArmor_Toggle.Value then
+            utils.fireTouchEvent(hrp, area51.Amory2Room.Armory.Giver)
         end
-    end
 
-    if toggles.obtainArmor_Toggle.Value then
-        utils.fireTouchEvent(hrp, area51.Amory2Room.Armory.Giver)
-    end
-
-    if toggles.obtainHelmet_Toggle.Value then
-        utils.fireTouchEvent(hrp, area51.ComputersRoom.Helmet)
-    end
-end)
+        if toggles.obtainHelmet_Toggle.Value then
+            utils.fireTouchEvent(hrp, area51.ComputersRoom.Helmet)
+        end
+    end)
+end
 
 -- [Weapons / Other] Auto reload and gun-mod controls
 
@@ -3833,6 +3938,11 @@ local gunModsDepbox = othersGroup:AddDependencyBox()
 gunModsDepbox:AddToggle("infiniteAmmoGunMod_Toggle", { Text = "Infinite Ammo", Tooltip = false, Risky = true })
 gunModsDepbox:AddToggle("fullAutoGunMod_Toggle", { Text = "Fully Automatic", Tooltip = false, Risky = true })
 gunModsDepbox:AddToggle("fireRateGunMod_Toggle", { Text = "Rapid Fire", Tooltip = false, Risky = true })
+gunModsDepbox:AddToggle("noOverheatGunMod_Toggle", { Text = "Flamethrower: No Overheat", Tooltip = "Stops the Flamethrower from building heat, so it can be held down for as long as you like with no overheat lockout and no re-press delay. Pair with Infinite Ammo for unlimited gas.", Risky = true })
+gunModsDepbox:AddToggle("noBoltGunMod_Toggle", { Text = "Disable Sniper Bolt", Tooltip = "Skips the bolt-action animation after each shot so Snipers can fire rapidly. Pair with Rapid Fire.", Risky = true })
+gunModsDepbox:AddToggle("noRecoilGunMod_Toggle", { Text = "No Recoil", Tooltip = "Removes the camera kick when firing.", Risky = true })
+gunModsDepbox:AddToggle("noSpreadGunMod_Toggle", { Text = "No Spread", Tooltip = "Removes bullet inaccuracy.", Risky = true })
+gunModsDepbox:AddToggle("fastReloadGunMod_Toggle", { Text = "Fast Reload", Tooltip = "Shortens reload (and bolt) animations to a fraction of their normal time.", Risky = true })
 gunModsDepbox:AddSlider("bulletCountGunMod_Slider", { Text = "Bullet Count", Tooltip = false, Default = 1, Min = 1, Max = 100, Suffix = " Bullet", Rounding = 0, Risky = true,
     Callback = function(val)
         options.bulletCountGunMod_Slider:SetSuffix(getSuffix(options.bulletCountGunMod_Slider, "Bullet"))
@@ -3871,8 +3981,30 @@ end)
 --   * Every mod is described by the fields it wants (getDesiredGunMods) and a single reconcile pass applies or undoes
 --     them. Fields shared by several mods (is_auto: Fully Automatic + Rapid Fire) stay overridden until all are off.
 --   * max_ammo / max_stored (the real capacities used by reload and the ammo box) are never written.
+--   * Disable Sniper Bolt (bolt_fire), No Recoil (move_camera: recoil_camera() routes every shot through it, and it is used for
+--     nothing else), No Spread (inaccuracy) and Fast Reload (reload_wait: play_animation() yields on it between reload/bolt
+--     frames) are plain per-weapon field overrides handled by the same snapshot/reconcile pass. Perks such as Deadshot Daiquiri and
+--     Speed Cola write move_camera / reload_wait themselves; the "only undo what is still ours" rule keeps the two from fighting.
+--   * Flamethrower heat is NOT a stat field: it is runtime state that the weapon increments on every fire tick, so a one-off
+--     write cannot hold it down. "No Overheat" instead wraps two methods on the live Flamethrower object only
+--     (update_ammo_gui, called right after every heat increment, and stop_fire) and puts the raw values back when switched off.
 
-local GUN_MOD_FIELDS = { "ammo", "stored_ammo", "is_auto", "shoot_wait", "bullet_count", "inaccuracy" }
+local GUN_MOD_FIELDS = { "ammo", "stored_ammo", "is_auto", "shoot_wait", "bullet_count", "inaccuracy", "bolt_fire", "move_camera", "reload_wait" }
+
+-- Replacement methods. They are created once so their identity is stable for the "is this still ours?" comparison.
+local GUN_MOD_FAST_RELOAD_SCALE = 0.1 -- reload/bolt animation waits are multiplied by this (lower = faster)
+
+local function gunModNoRecoilMoveCamera()
+    -- Intentionally empty: skipping the camera rotation is the whole mod.
+end
+
+local function gunModFastReloadWait(duration)
+    if type(duration) == "number" then
+        return task.wait(duration * GUN_MOD_FAST_RELOAD_SCALE)
+    end
+
+    return task.wait(duration)
+end
 
 -- Current-ammo fields mapped to the field that holds the weapon's real capacity.
 local GUN_MOD_CAPACITY_FIELD = { ammo = "max_ammo", stored_ammo = "max_stored" }
@@ -3924,6 +4056,22 @@ local function getDesiredGunMods(): { [string]: any }
         desired.is_auto = true
     end
 
+    if toggles.noBoltGunMod_Toggle.Value then
+        desired.bolt_fire = false
+    end
+
+    if toggles.noRecoilGunMod_Toggle.Value then
+        desired.move_camera = gunModNoRecoilMoveCamera
+    end
+
+    if toggles.noSpreadGunMod_Toggle.Value then
+        desired.inaccuracy = 0.00001
+    end
+
+    if toggles.fastReloadGunMod_Toggle.Value then
+        desired.reload_wait = gunModFastReloadWait
+    end
+
     -- 1 is the slider's neutral position, so it leaves weapons untouched (some natively fire more than one bullet).
     local bulletCount = options.bulletCountGunMod_Slider.Value
     if type(bulletCount) == "number" and bulletCount > 1 then
@@ -3961,10 +4109,93 @@ local function restoreGunModField(weapon: any, field: string, original: any): bo
     return false
 end
 
+-- [Weapons / Gun Mods] Flamethrower: No Overheat
+--   The Flamethrower only fires while `heat < max_heat`. Every tick does `heat += 1; update_ammo_gui()`, hitting max_heat locks it
+--   out (with a 5 second cooldown before heat drains), and stop_fire() stamps `flaming_stop_moment` which button1down() uses to
+--   ignore presses for 1 second. Keeping heat at 0 and clearing that stamp removes both delays.
+local gunModHeatHooks = setmetatable({}, { __mode = "k" }) -- weapon -> { RawUpdate, RawStop, HookedUpdate, HookedStop }
+
+local function isNoOverheatDesired()
+    return not gunModsUnloaded
+        and toggles.enableGunMods_Toggle.Value == true
+        and toggles.noOverheatGunMod_Toggle.Value == true
+end
+
+local function applyNoOverheat(weapon)
+    -- Only Flamethrower-style weapons own a max_heat number (Flamethrower and PAPFlamethrower).
+    if gunModHeatHooks[weapon] or type(rawget(weapon, "max_heat")) ~= "number" then
+        return
+    end
+
+    local originalUpdate = weapon.update_ammo_gui -- resolves through the metatable when inherited
+    local originalStop = weapon.stop_fire
+    if type(originalUpdate) ~= "function" or type(originalStop) ~= "function" then
+        return
+    end
+
+    local record = {
+        RawUpdate = rawget(weapon, "update_ammo_gui"), -- nil when inherited from the class
+        RawStop = rawget(weapon, "stop_fire"),
+    }
+
+    record.HookedUpdate = function(self, ...)
+        if isNoOverheatDesired() and (rawget(self, "heat") or 0) > 0 then
+            rawset(self, "heat", 0)
+        end
+
+        return originalUpdate(self, ...)
+    end
+
+    record.HookedStop = function(self, ...)
+        originalStop(self, ...)
+
+        if isNoOverheatDesired() then
+            rawset(self, "flaming_stop_moment", 0) -- removes the 1 second re-press lockout
+        end
+    end
+
+    local success, hookError = pcall(function()
+        rawset(weapon, "update_ammo_gui", record.HookedUpdate)
+        rawset(weapon, "stop_fire", record.HookedStop)
+    end)
+
+    if not success then
+        warn("[Gun Mods] Could not hook the Flamethrower: " .. tostring(hookError))
+        return
+    end
+
+    gunModHeatHooks[weapon] = record
+
+    -- Already hot when the mod was switched on: cool it down immediately.
+    if (rawget(weapon, "heat") or 0) > 0 then
+        rawset(weapon, "heat", 0)
+        pcall(originalUpdate, weapon)
+    end
+end
+
+local function removeNoOverheat(weapon)
+    local record = gunModHeatHooks[weapon]
+    if not record then
+        return
+    end
+
+    -- Only undo what is still ours.
+    if rawget(weapon, "update_ammo_gui") == record.HookedUpdate then
+        rawset(weapon, "update_ammo_gui", record.RawUpdate) -- nil removes the override so the class method shows through again
+    end
+
+    if rawget(weapon, "stop_fire") == record.HookedStop then
+        rawset(weapon, "stop_fire", record.RawStop)
+    end
+
+    gunModHeatHooks[weapon] = nil
+end
+
 local function reconcileGunMods()
     local desired = getDesiredGunMods()
+    local noOverheat = isNoOverheatDesired()
 
-    if next(desired) == nil and not gunModsEngaged then
+    if next(desired) == nil and not noOverheat and not gunModsEngaged then
         return
     end
 
@@ -4012,19 +4243,30 @@ local function reconcileGunMods()
             end
         end
 
+        if noOverheat then
+            applyNoOverheat(weapon)
+        else
+            removeNoOverheat(weapon)
+        end
+
         -- Refresh the on-screen counter so it stops showing the infinite value.
         if ammoRestored and type(weapon.update_ammo_gui) == "function" then
             pcall(weapon.update_ammo_gui, weapon)
         end
     end
 
-    gunModsEngaged = next(desired) ~= nil
+    gunModsEngaged = next(desired) ~= nil or noOverheat
 end
 
 toggles.enableGunMods_Toggle:OnChanged(reconcileGunMods)
 toggles.infiniteAmmoGunMod_Toggle:OnChanged(reconcileGunMods)
 toggles.fullAutoGunMod_Toggle:OnChanged(reconcileGunMods)
 toggles.fireRateGunMod_Toggle:OnChanged(reconcileGunMods)
+toggles.noOverheatGunMod_Toggle:OnChanged(reconcileGunMods)
+toggles.noBoltGunMod_Toggle:OnChanged(reconcileGunMods)
+toggles.noRecoilGunMod_Toggle:OnChanged(reconcileGunMods)
+toggles.noSpreadGunMod_Toggle:OnChanged(reconcileGunMods)
+toggles.fastReloadGunMod_Toggle:OnChanged(reconcileGunMods)
 options.bulletCountGunMod_Slider:OnChanged(reconcileGunMods)
 
 -- [Weapons / Gun Mods] Backpack listener for newly acquired tools
@@ -4069,6 +4311,383 @@ table.insert(teardownTasks, function()
 
     gunModCharacterConnection:Disconnect()
     reconcileGunMods()
+end)
+
+
+-- ============================================================================
+-- [Weapons / Skin Changer] Client-side weapon skins
+-- ============================================================================
+-- Recolors weapons locally through the game's own Utilities:apply_skin, using the skins from Constants.Skins.SKINS.
+-- Only you see the result and nothing is sent to the server (the skin remotes are never fired from here).
+-- Each tool's original AppliedSkin attribute is stored before it is touched, so "Reset Skins" restores the real look.
+
+task.spawn(function()
+    local skinGroup = tabs.weapons:AddLeftGroupbox("Skin Changer")
+    local replicatedStorage = game:GetService("ReplicatedStorage")
+
+    local skinUtilities: any, skinList: any
+    local loaded, loadError = pcall(function()
+        skinUtilities = require(replicatedStorage:WaitForChild("Utilities", 10))
+        skinList = require(replicatedStorage:WaitForChild("Constants", 10):WaitForChild("Skins", 10)).SKINS
+    end)
+
+    if not loaded or type(skinList) ~= "table" or type(skinUtilities.apply_skin) ~= "function" then
+        warn("[Skin Changer] Could not load the game's skin data: " .. tostring(loadError))
+        skinGroup:AddLabel("The game's skin data could not be loaded.", true)
+        return
+    end
+
+    -- Full skin list straight from the game ("[None]" is covered by the Reset button instead).
+    local skinNames = {}
+    for name in pairs(skinList) do
+        if name ~= "[None]" then
+            table.insert(skinNames, name)
+        end
+    end
+    table.sort(skinNames, function(a, b)
+        return a:lower() < b:lower()
+    end)
+
+    local state = { skin = nil, scope = "Equipped weapon", auto = false, matchBullets = true }
+    local touched = setmetatable({}, { __mode = "k" }) -- tool -> { hadAttr, attr, skin, probe, look }
+    local autoConnections = {}
+    local sourceConnections = {}
+    local autoToken = 0
+    local unloaded = false
+
+    local function disconnectAll(list)
+        for _, connection in ipairs(list) do
+            connection:Disconnect()
+        end
+        table.clear(list)
+    end
+
+    -- Parts the game's apply_skin actually recolors (same condition it uses).
+    local function getSkinParts(tool: Instance)
+        local parts = {}
+        if not tool:FindFirstChild("Handle") then
+            return parts
+        end
+
+        for _, descendant in ipairs(tool:GetDescendants()) do
+            if descendant:IsA("BasePart") and descendant:FindFirstChild("HandleDistance") then
+                table.insert(parts, descendant)
+            end
+        end
+
+        return parts
+    end
+
+    -- Cheap fingerprint of one recolorable part, used to notice when the game overwrites the skin.
+    local function getLook(part: any): string
+        return part.Color:ToHex() .. "|" .. part.Material.Name
+    end
+
+    local function getTargets(scope: string)
+        local targets = {}
+        local character = localplayer.Character
+
+        if scope == "Equipped weapon" then
+            local held = character and character:FindFirstChildOfClass("Tool")
+            if held then
+                table.insert(targets, held)
+            end
+            return targets
+        end
+
+        local backpack = localplayer:FindFirstChildOfClass("Backpack")
+        if backpack then
+            for _, child in ipairs(backpack:GetChildren()) do
+                if child:IsA("Tool") then
+                    table.insert(targets, child)
+                end
+            end
+        end
+
+        if character then
+            for _, child in ipairs(character:GetChildren()) do
+                if child:IsA("Tool") then
+                    table.insert(targets, child)
+                end
+            end
+        end
+
+        return targets
+    end
+
+    local function restoreAttribute(tool: Instance, record)
+        tool:SetAttribute("AppliedSkin", record.hadAttr and record.attr or nil)
+    end
+
+    local function applySkin(tool: Instance, skinName: string, knownParts: any?): boolean
+        if not skinList[skinName] then
+            return false
+        end
+
+        local parts = knownParts or getSkinParts(tool)
+        if #parts == 0 then
+            return false
+        end
+
+        local record = touched[tool]
+        if not record then
+            local original = tool:GetAttribute("AppliedSkin")
+            record = { hadAttr = original ~= nil, attr = original }
+            touched[tool] = record
+        end
+
+        local success, err = pcall(skinUtilities.apply_skin, skinUtilities, tool, skinName)
+        if not success then
+            warn("[Skin Changer] apply_skin failed for " .. tool.Name .. ": " .. tostring(err))
+            return false
+        end
+
+        -- Bullet color follows the AppliedSkin attribute; setting it locally makes bullets match the skin.
+        if state.matchBullets then
+            tool:SetAttribute("AppliedSkin", skinName)
+        end
+
+        record.skin = skinName
+        record.probe = parts[1]
+        record.look = getLook(parts[1])
+        return true
+    end
+
+    local function restoreTool(tool: Instance, record)
+        restoreAttribute(tool, record)
+
+        local realSkin = "[None]"
+        if record.hadAttr and type(record.attr) == "string" and skinList[record.attr] then
+            realSkin = record.attr
+        end
+
+        pcall(skinUtilities.apply_skin, skinUtilities, tool, realSkin)
+    end
+
+    local function resetAll(): number
+        local tools = {}
+        for tool in pairs(touched) do
+            table.insert(tools, tool)
+        end
+
+        local restored = 0
+        for _, tool in ipairs(tools) do
+            local record = touched[tool]
+            touched[tool] = nil
+
+            if record and tool.Parent then
+                restoreTool(tool, record)
+                restored += 1
+            end
+        end
+
+        return restored
+    end
+
+    -- Re-applies the chosen skin wherever it is missing (new tools, respawn, or the game putting the real skin back).
+    local function reapplyAll(force: boolean?)
+        if unloaded or not state.skin then
+            return
+        end
+
+        -- Forget weapons the game has destroyed (it rebuilds tools on respawn) so records don't pile up.
+        for tool in pairs(touched) do
+            if not tool.Parent then
+                touched[tool] = nil
+            end
+        end
+
+        for _, tool in ipairs(getTargets(state.scope)) do
+            local record = touched[tool]
+            local probe = record and record.probe
+
+            if force ~= true and probe and probe:IsDescendantOf(tool) then
+                -- Known tool: one part is enough to tell whether the game has put its own look back.
+                local stale = record.skin ~= state.skin
+                    or record.look ~= getLook(probe)
+                    or (state.matchBullets and tool:GetAttribute("AppliedSkin") ~= state.skin)
+
+                if stale then
+                    applySkin(tool, state.skin)
+                end
+            else
+                local parts = getSkinParts(tool)
+
+                if #parts > 0 then
+                    applySkin(tool, state.skin, parts)
+                end
+            end
+        end
+    end
+
+    local function hookSources()
+        disconnectAll(sourceConnections)
+
+        if not state.auto or unloaded then
+            return
+        end
+
+        local onToolAdded = function(child: Instance)
+            if child:IsA("Tool") then
+                task.delay(0.1, reapplyAll)
+            end
+        end
+
+        local backpack = localplayer:FindFirstChildOfClass("Backpack")
+        if backpack then
+            table.insert(sourceConnections, backpack.ChildAdded:Connect(onToolAdded))
+        end
+
+        local character = localplayer.Character
+        if character then
+            table.insert(sourceConnections, character.ChildAdded:Connect(onToolAdded))
+        end
+    end
+
+    local function setAuto(enabled: boolean)
+        state.auto = enabled
+        autoToken += 1
+        disconnectAll(autoConnections)
+        disconnectAll(sourceConnections)
+
+        if not enabled or unloaded then
+            return
+        end
+
+        -- Read-only listener: the game re-applies the real skin on equip, loadout change and respawn.
+        local characterRemotes = replicatedStorage:FindFirstChild("Character Remotes")
+        local skinsEquipped = characterRemotes and characterRemotes:FindFirstChild("SkinsEquipped")
+        if skinsEquipped and skinsEquipped:IsA("RemoteEvent") then
+            table.insert(autoConnections, skinsEquipped.OnClientEvent:Connect(function()
+                task.delay(0.05, reapplyAll)
+            end))
+        end
+
+        table.insert(autoConnections, localplayer.CharacterAdded:Connect(function()
+            task.delay(0.5, function()
+                hookSources()
+                reapplyAll()
+            end)
+        end))
+
+        hookSources()
+        reapplyAll()
+
+        -- Safety net for anything the events miss; only re-applies when the look has actually changed.
+        local token = autoToken
+        task.spawn(function()
+            while state.auto and not unloaded and token == autoToken do
+                task.wait(0.5)
+
+                if state.auto and not unloaded and token == autoToken then
+                    pcall(reapplyAll)
+                end
+            end
+        end)
+    end
+
+    local function syncBulletAttribute()
+        for tool, record in pairs(touched) do
+            if tool.Parent then
+                if state.matchBullets and record.skin then
+                    tool:SetAttribute("AppliedSkin", record.skin)
+                else
+                    restoreAttribute(tool, record)
+                end
+            end
+        end
+    end
+
+    -- UI
+    skinGroup:AddDropdown("skinChangerSkin_Dropdown", { Text = "Skin", Tooltip = "Every skin from the game's own skin list. Search by typing.", Values = skinNames, Default = nil, Multi = false, Searchable = true,
+        Callback = function(val)
+            state.skin = val
+
+            if state.auto then
+                reapplyAll()
+            end
+        end,
+    })
+
+    skinGroup:AddDropdown("skinChangerTarget_Dropdown", { Text = "Apply To", Tooltip = "Which weapon(s) get the skin.", Values = { "Equipped weapon", "All weapons" }, Default = 1, Multi = false, Searchable = false,
+        Callback = function(val)
+            state.scope = val or "Equipped weapon"
+
+            if state.auto then
+                reapplyAll()
+            end
+        end,
+    })
+
+    skinGroup:AddButton({ Text = "Apply Skin", Tooltip = "Applies the selected skin once.",
+        Func = function()
+            if not state.skin then
+                notify("Error", "No skin selected", "Pick a skin from the dropdown first.", 6)
+                return
+            end
+
+            local applied = 0
+            for _, tool in ipairs(getTargets(state.scope)) do
+                if applySkin(tool, state.skin) then
+                    applied += 1
+                end
+            end
+
+            if applied == 0 then
+                local hint = state.scope == "Equipped weapon"
+                    and "Hold a weapon first, or switch Apply To to All weapons."
+                    or "No skinnable weapons were found in your hands or backpack."
+                notify("Error", "No weapon found", hint, 7)
+            else
+                notify("Success", "Skin applied", state.skin .. " applied to " .. applied .. (applied == 1 and " weapon." or " weapons."), 5)
+            end
+        end,
+    })
+
+    skinGroup:AddToggle("skinChangerAuto_Toggle", { Text = "Auto Re-apply", Tooltip = "Keeps the skin on after equipping, respawning, loadout changes, or picking up weapons.", Default = false,
+        Callback = function(enabled)
+            setAuto(enabled)
+        end,
+    })
+
+    skinGroup:AddToggle("skinChangerBullets_Toggle", { Text = "Match Bullet Color", Tooltip = "Also sets the weapon's AppliedSkin attribute locally so your bullets use the skin's color.", Default = true,
+        Callback = function(enabled)
+            state.matchBullets = enabled
+            syncBulletAttribute()
+        end,
+    })
+
+    skinGroup:AddButton({ Text = "Reset Skins", Tooltip = "Turns off Auto Re-apply and puts every weapon back to its real skin.",
+        Func = function()
+            if toggles.skinChangerAuto_Toggle.Value then
+                toggles.skinChangerAuto_Toggle:SetValue(false)
+            end
+
+            local restored = resetAll()
+            if restored > 0 then
+                notify("Success", "Skins reset", "Restored " .. restored .. (restored == 1 and " weapon" or " weapons") .. " to the real skin.", 5)
+            else
+                notify("Error", "Nothing to reset", "No weapons have a local skin applied.", 5)
+            end
+        end,
+    })
+
+    skinGroup:AddLabel("Client-side only: other players still see the skin you actually have equipped.", true)
+
+    -- Pick up whatever the dropdowns / toggles loaded with (saved configs may set them before the callbacks run).
+    state.skin = options.skinChangerSkin_Dropdown.Value
+    state.scope = options.skinChangerTarget_Dropdown.Value or "Equipped weapon"
+    state.matchBullets = toggles.skinChangerBullets_Toggle.Value
+
+    -- Runs from unloadModules(): stop listening and give every touched weapon its real look back.
+    table.insert(teardownTasks, function()
+        unloaded = true
+        state.auto = false
+        autoToken += 1
+        disconnectAll(autoConnections)
+        disconnectAll(sourceConnections)
+        resetAll()
+    end)
 end)
 
 
