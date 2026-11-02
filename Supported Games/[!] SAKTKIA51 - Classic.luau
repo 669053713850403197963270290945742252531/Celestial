@@ -99,6 +99,27 @@ local function getMode(): string
     return "Unknown"
 end
 
+-- Name the main menu uses to request the current Classic mode (used by Serverhop).
+-- Asks the game itself first, then falls back to the PlaceId, then to Normal.
+local function getModeRequestName(): string
+    local ok, result = pcall(function()
+        return require(game:GetService("ReplicatedStorage"):WaitForChild("Utilities")):get_gamemode()
+    end)
+
+    if ok and (result == "Classic mode" or result == "Hard classic mode" or result == "Extreme classic mode") then
+        return result
+    end
+
+    local mode = getMode()
+    if mode == "Hard" then
+        return "Hard classic mode"
+    elseif mode == "Extreme" then
+        return "Extreme classic mode"
+    end
+
+    return "Classic mode"
+end
+
 local window = library:CreateWindow({
     Title = "Celestial",
     Footer = "Survive and Kill the Killers in Area 51: " .. gameName .. " - " .. getMode(),
@@ -743,7 +764,7 @@ gameTab:AddButton({
         window:AddDialog("reloadConfirmation_Dialog", {
             Title = "Reload",
             Description = "Would you like to reload the script when you join the new server?",
-            AutoDismiss = true,
+            AutoDismiss = false,
             OutsideClickDismiss = true,
 
             FooterButtons = {
@@ -773,6 +794,8 @@ gameTab:AddButton({
         repeat task.wait() until typeof(reload) == "boolean"
 
 
+        local requestedMode = getModeRequestName()
+
         game:GetService("ReplicatedStorage")["Remote Events"].TeleportToMenu:FireServer()
 
         queue_on_teleport(string.format([[
@@ -785,8 +808,8 @@ gameTab:AddButton({
                 ]=])
             end
 
-            game:GetService("ReplicatedStorage").TeleportEvents.TeleportRequested:FireServer("Classic mode")
-        ]], tostring(reload)))
+            game:GetService("ReplicatedStorage").TeleportEvents.TeleportRequested:FireServer("%s")
+        ]], tostring(reload), requestedMode))
     end,
 })
 
@@ -1174,7 +1197,7 @@ toggles.instantInteract_Toggle:OnChanged(function(enabled)
     end
 end)
 
-local doorScannerConn
+local doorLoopRunning = false
 -- [Utility / Interactions] Door-prompt cache and refresh loop
 local doorPromptCache = {}
 local lastCacheUpdate = 0
@@ -1191,45 +1214,53 @@ local function updateDoorCache()
     end
 end
 
-local function updateDoorLoop()
-    if doorScannerConn then return end
+local function doorLoopWanted()
+    return toggles.autoOpenDoors_Toggle.Value or toggles.autoCloseDoors_Toggle.Value
+end
 
-    doorScannerConn = task.spawn(function()
-        while toggles.autoOpenDoors_Toggle.Value or toggles.autoCloseDoors_Toggle.Value do
-            local hrp = getHRP()
-            if not hrp then
-                task.wait(0.2)
-                continue
-            end
+local function doorLoopStep()
+    local hrp = getHRP()
+    if not hrp then return end
 
-            -- Update cache every 5 seconds
+    -- Update cache every 5 seconds
+    if os.clock() - lastCacheUpdate > 5 then
+        updateDoorCache()
+        lastCacheUpdate = os.clock()
+    end
 
-            if os.clock() - lastCacheUpdate > 5 then
-                updateDoorCache()
-                lastCacheUpdate = os.clock()
-            end
+    for _, prompt in ipairs(doorPromptCache) do
+        if prompt.Parent and prompt.Enabled then
+            local promptName = prompt.Parent.Name
+            if (promptName == "Open" and toggles.autoOpenDoors_Toggle.Value)
+            or (promptName == "Close" and toggles.autoCloseDoors_Toggle.Value) then
 
-            for _, prompt in ipairs(doorPromptCache) do
-                if prompt.Enabled then
-                    local promptName = prompt.Parent.Name
-                    if (promptName == "Open" and toggles.autoOpenDoors_Toggle.Value)
-                    or (promptName == "Close" and toggles.autoCloseDoors_Toggle.Value) then
+                local dist = entityLib.getEntityDistance(hrp, prompt.Parent)
+                local maxDist = prompt.MaxActivationDistance or 10
 
-                        local dist = entityLib.getEntityDistance(hrp, prompt.Parent)
-                        local maxDist = prompt.MaxActivationDistance or 10
-
-                        if dist <= maxDist then
-                            utils.fireProxPrompt(prompt.Parent)
-                            task.wait(0.02)
-                        end
-                    end
+                if dist <= maxDist then
+                    utils.fireProxPrompt(prompt.Parent)
+                    task.wait(0.02)
                 end
             end
+        end
+    end
+end
 
+-- A boolean flag guards the loop: an outdated thread could block the loop from ever starting again.
+local function updateDoorLoop()
+    if doorLoopRunning or not doorLoopWanted() then return end
+    doorLoopRunning = true
+
+    task.spawn(function()
+        while doorLoopWanted() do
+            local ok, err = pcall(doorLoopStep)
+            if not ok then
+                warn("[Auto Doors] " .. tostring(err))
+            end
             task.wait(0.15)
         end
 
-        doorScannerConn = nil
+        doorLoopRunning = false
     end)
 end
 
@@ -3156,12 +3187,14 @@ end)
 
 -- [Exploits / Killer Controls] Disable Aura
 
-killersGroup:AddToggle("disableAllKillers_Toggle", { Text = "Disable Aura", Tooltip = "Breaks the movement for all NEARBY killers within the specified amount of studs." })
+killersGroup:AddToggle("disableAllKillers_Toggle", { Text = "Disable Aura", Tooltip = "Deals with all nearby killers within the specified amount of studs, using the selected method." })
 
 local disableKillersDepbox = killersGroup:AddDependencyBox()
-disableKillersDepbox:AddDropdown("disableAuraMethod_Dropdown", { Text = "Method", Tooltip = false, Values = { "Kill", "Disable Movement", "Disable Humanoid" }, Default = 2, Multi = false, Searchable = false })
-disableKillersDepbox:AddSlider("disableKillersDistance_Slider", { Text = "Range", Tooltip = "How far away to disable killers", Default = 20, Min = 10, Max = 50, Suffix = " Studs", Rounding = 0 })
-disableKillersDepbox:AddToggle("disableAuraDebugNotifs_Toggle", { Text = "Debug Notifications", Tooltip = "Sends a notification each time a killer is killed via Disable Aura." })
+disableKillersDepbox:AddDropdown("disableAuraMethod_Dropdown", { Text = "Method", Tooltip = false, Values = { "Kill", "Disable Movement", "Disable Humanoid", "Push" }, Default = 4, Multi = false, Searchable = false })
+disableKillersDepbox:AddSlider("disableKillersDistance_Slider", { Text = "Range", Tooltip = "How far away to disable killers", Default = 20, Min = 10, Max = 100, Suffix = " Studs", Rounding = 0 })
+disableKillersDepbox:AddToggle("disableAuraWallCheck_Toggle", { Text = "Wall Check", Tooltip = "Only affects Killers that are visible. Killers behind walls are left alone. Emergency Kill ignores this.", Default = false })
+disableKillersDepbox:AddLabel("Emergency Kill"):AddKeyPicker("emergencyKill_KeyPicker", { Text = "Emergency Kill", Default = "X", Mode = "Hold", NoUI = true, Disabled = true })
+disableKillersDepbox:AddToggle("disableAuraDebugNotifs_Toggle", { Text = "Debug Notifications", Tooltip = "Sends a notification each time Disable Aura kills, disables or starts pushing a killer." })
 disableKillersDepbox:AddDivider()
 
 -- [Exploits / Killer Controls] Defensive toggles
@@ -3787,6 +3820,64 @@ do
     end)
 end
 
+-- [Exploits / Killer Controls] Disable Aura: Wall Check helper
+do
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.IgnoreWater = true
+    -- Only solid parts count as walls, so invisible triggers and other non-collidable parts never hide a killer
+    params.RespectCanCollide = true
+
+    local lastBuilt = 0
+    local lastCharacter = nil
+
+    -- Rays must look straight through every killer and every character, so only the map can block them
+    local function refreshFilter()
+        local now = os.clock()
+        local character = localplayer.Character
+
+        if now - lastBuilt < 0.25 and character == lastCharacter then
+            return
+        end
+
+        lastBuilt = now
+        lastCharacter = character
+
+        local filter = { killersFolder }
+
+        for _, player in ipairs(players:GetPlayers()) do
+            if player.Character then
+                table.insert(filter, player.Character)
+            end
+        end
+
+        local folder = character and character.Parent
+
+        if folder and folder ~= workspace then
+            table.insert(filter, folder)
+        end
+
+        params.FilterDescendantsInstances = filter
+    end
+
+    -- A killer is visible when a straight line from `origin` to its body or its head has no wall in the way
+    utils.isKillerVisible = function(origin, model, root)
+        refreshFilter()
+
+        if not workspace:Raycast(origin, root.Position - origin, params) then
+            return true
+        end
+
+        local head = model:FindFirstChild("Head")
+
+        if head and head:IsA("BasePart") and not workspace:Raycast(origin, head.Position - origin, params) then
+            return true
+        end
+
+        return false
+    end
+end
+
 local affectedKillers = {}
 local proximityRange = options.disableKillersDistance_Slider.Value
 
@@ -3804,7 +3895,7 @@ local function releaseKiller(hum)
     affectedKillers[hum] = nil
 end
 
-local function updateKiller(hum, model, method, inRange)
+local function updateKiller(hum, model, method, inRange, visible)
     if hum.Health <= 0 then
         if affectedKillers[hum] then
             releaseKiller(hum)
@@ -3826,6 +3917,9 @@ local function updateKiller(hum, model, method, inRange)
 
     -- Skip if method already applied
     if affectedKillers[hum] == method then return end
+
+    -- Wall Check: killers behind walls are left alone
+    if visible == false then return end
 
     -- Restore previous movement if switching methods
     if affectedKillers[hum] == "Disable Movement" then
@@ -3860,7 +3954,84 @@ local function updateKiller(hum, model, method, inRange)
     affectedKillers[hum] = method
 end
 
+-- Set by the Push block further down
+local pushToggled
+
+-- [Exploits / Killer Controls] Disable Aura: Emergency Kill (Hold)
+-- While the key is held, every killer inside the Range is killed, whatever Method is selected.
+do
+    local loopId = 0
+    local lastError = nil
+
+    local function step()
+        local keypicker = options.emergencyKill_KeyPicker
+
+        -- Hold mode: GetState() is only true while the key is physically down. Typing in chat must not trigger it.
+        if not keypicker or keypicker.Disabled or uis:GetFocusedTextBox() or not keypicker:GetState() then
+            return
+        end
+
+        local hrp = getHRP()
+        if not hrp then
+            return
+        end
+
+        local range = proximityRange or 30
+
+        for _, model in ipairs(killersFolder:GetChildren()) do
+            if not model:IsA("Model") then
+                continue
+            end
+
+            local hum = model:FindFirstChildOfClass("Humanoid")
+            local root = model:FindFirstChild("HumanoidRootPart")
+
+            if hum and root and hum.Health > 0 and entityLib.getEntityDistance(hrp, root) <= range then
+                hum.Health = 0
+
+                if toggles.disableAuraDebugNotifs_Toggle.Value then
+                    notify("Info", "Emergency Kill", "Killed " .. model.Name, 3)
+                end
+            end
+        end
+    end
+
+    utils.emergencyKillToggled = function(enabled)
+        local keypicker = options.emergencyKill_KeyPicker
+
+        if keypicker then
+            pcall(keypicker.SetDisabled, keypicker, not enabled)
+            pcall(keypicker.SetNoUI, keypicker, not enabled)
+        end
+
+        -- Invalidates any previous loop
+        loopId += 1
+        local myLoopId = loopId
+
+        if enabled then
+            task.spawn(function()
+                while toggles.disableAllKillers_Toggle.Value and loopId == myLoopId and not library.Unloaded do
+                    local ok, err = pcall(step)
+
+                    if not ok and err ~= lastError then
+                        lastError = err
+                        warn("[Disable Aura: Emergency Kill] " .. tostring(err))
+                    end
+
+                    task.wait()
+                end
+            end)
+        end
+    end
+end
+
 toggles.disableAllKillers_Toggle:OnChanged(function(enabled)
+    utils.emergencyKillToggled(enabled)
+
+    if pushToggled then
+        pushToggled(enabled)
+    end
+
     if enabled then
         task.spawn(function()
             while toggles.disableAllKillers_Toggle.Value do
@@ -3872,6 +4043,16 @@ toggles.disableAllKillers_Toggle:OnChanged(function(enabled)
 
                 local method = tostring(options.disableAuraMethod_Dropdown.Value)
                 local range = proximityRange or 30
+
+                -- Push runs every frame in its own loop (see Disable Aura: Push). Nothing is applied from here, and whatever another method applied is given back.
+                if method == "Push" then
+                    for trackedHum in pairs(affectedKillers) do
+                        releaseKiller(trackedHum)
+                    end
+
+                    task.wait(0.15)
+                    continue
+                end
 
                 -- Forget killers that are gone (removed corpses, destroyed humanoids)
                 for trackedHum in pairs(affectedKillers) do
@@ -3889,7 +4070,13 @@ toggles.disableAllKillers_Toggle:OnChanged(function(enabled)
                     if hum and root then
                         local distance = entityLib.getEntityDistance(hrp, root)
                         local inRange = distance <= range
-                        updateKiller(hum, model, method, inRange)
+                        local visible = true
+
+                        if inRange and affectedKillers[hum] ~= method and toggles.disableAuraWallCheck_Toggle.Value then
+                            visible = utils.isKillerVisible(hrp.Position, model, root)
+                        end
+
+                        updateKiller(hum, model, method, inRange, visible)
                     end
                 end
 
@@ -3913,6 +4100,300 @@ end)
 options.disableKillersDistance_Slider:OnChanged(function(val)
     proximityRange = val
 end)
+
+-- [Exploits / Killer Controls] Disable Aura: Push
+do
+    local PUSH_MAX_SPEED = 170      -- studs per second at the centre of the range, and for a killer that just teleported next to you
+    local PUSH_DECAY = 7            -- how quickly a throw loses speed once the killer is out of range (per second)
+    local PUSH_MAX_STEP = 6         -- the most a killer can be moved in a single frame, whatever the speed
+    local TELEPORT_JUMP = 12        -- a killer that moves further than this in one frame without our help has teleported (Slenderman)
+    local WALL_MARGIN = 0.25        -- studs kept between a killer and the wall that stopped it
+    local CAST_BACKOFF = 0.3        -- the box check starts this far behind the killer
+    local STEP_CLEARANCE = 0.8      -- wall checks start this far above the feet, so steps and the floor itself never count as walls
+    local GROUND_CHECK = 12         -- floor has to exist within this many studs under the new spot, so killers are never shoved off a ledge
+
+    local castParams = RaycastParams.new()
+    castParams.FilterType = Enum.RaycastFilterType.Exclude
+    castParams.RespectCanCollide = true
+    castParams.IgnoreWater = true
+    -- Only count what killers actually collide with, so invisible triggers and other non-solid parts never stop one
+    pcall(function()
+        castParams.CollisionGroup = "Killers"
+    end)
+
+    local shapes = setmetatable({}, { __mode = "k" })
+
+    -- How big the wall checks have to be for a killer: its width, how far its feet are under the root part and how far its head is above it
+    local function getShape(model, root)
+        local shape = shapes[model]
+
+        if shape then
+            return shape
+        end
+
+        local bottom, top, width = 3.5, 3, 3
+        local ok, boxCFrame, boxSize = pcall(model.GetBoundingBox, model)
+
+        if ok then
+            local rootY = root.Position.Y
+            bottom = math.clamp(rootY - (boxCFrame.Position.Y - boxSize.Y / 2), 1.5, 8)
+            top = math.clamp((boxCFrame.Position.Y + boxSize.Y / 2) - rootY, 1, 8)
+            width = math.clamp(math.min(boxSize.X, boxSize.Z) * 0.6, 1.6, 6)
+        end
+
+        shape = { bottom = bottom, top = top, width = width }
+        shapes[model] = shape
+
+        return shape
+    end
+
+    -- How far (0 to `distance`) a killer standing at `origin` can move along the flat direction `dir` before a wall stops it, and what stopped it.
+    local function castStep(origin, shape, dir, distance)
+        local low = origin.Y - shape.bottom + STEP_CLEARANCE
+        local high = origin.Y + shape.top * 0.9
+        local radius = shape.width / 2
+        local allowed = distance
+        local blocker = nil
+
+        local center = Vector3.new(origin.X, (low + high) / 2, origin.Z)
+        local start = center - dir * CAST_BACKOFF
+        local size = Vector3.new(shape.width, math.max(high - low, 1), shape.width)
+        local sweep = workspace:Blockcast(CFrame.lookAt(start, start + dir), size, dir * (distance + CAST_BACKOFF + WALL_MARGIN), castParams)
+
+        if sweep then
+            allowed = math.clamp(sweep.Distance - CAST_BACKOFF - WALL_MARGIN, 0, distance)
+            blocker = sweep
+        end
+
+        local side = dir:Cross(Vector3.yAxis) * (radius * 0.8)
+        local reach = distance + radius + WALL_MARGIN
+
+        for _, y in ipairs({ low + 0.2, center.Y, high }) do
+            for _, offset in ipairs({ Vector3.zero, side, -side }) do
+                local ray = workspace:Raycast(Vector3.new(origin.X, y, origin.Z) + offset, dir * reach, castParams)
+
+                if ray then
+                    local rayAllowed = math.clamp(ray.Distance - radius - WALL_MARGIN, 0, distance)
+
+                    if rayAllowed < allowed or not blocker then
+                        allowed = math.min(allowed, rayAllowed)
+                        blocker = ray
+                    end
+                end
+            end
+        end
+
+        return allowed, blocker
+    end
+
+    local function hasFloor(position, shape)
+        local from = Vector3.new(position.X, position.Y - shape.bottom + 2, position.Z)
+
+        return workspace:Raycast(from, Vector3.new(0, -(GROUND_CHECK + 2), 0), castParams) ~= nil
+    end
+
+    -- The move to apply to a killer: `distance` studs along `dir`, stopped by walls, sliding along the wall for whatever is left and
+    -- cancelled altogether if it would leave the killer over a drop. A killer is never moved through anything.
+    local function resolveMove(origin, shape, dir, distance)
+        local allowed, hit = castStep(origin, shape, dir, distance)
+        local first = dir * allowed
+        local move = first
+
+        if hit and allowed < distance - 0.01 then
+            local normal = hit.Normal
+            local slide = Vector3.new(dir.X - normal.X * dir:Dot(normal), 0, dir.Z - normal.Z * dir:Dot(normal))
+
+            if slide.Magnitude > 0.05 then
+                local slideDir = slide.Unit
+                local slideAllowed = castStep(origin + first, shape, slideDir, (distance - allowed) * slide.Magnitude)
+
+                move += slideDir * slideAllowed
+            end
+        end
+
+        if move.Magnitude > 0.005 and not hasFloor(origin + move, shape) then
+            return Vector3.zero, Vector3.zero
+        end
+
+        return move, first
+    end
+
+    local pushStates = setmetatable({}, { __mode = "k" })
+    local pushConnection = nil
+    local pushLastError = nil
+
+    local function ownsPart(part)
+        if type(isnetworkowner) ~= "function" then
+            return true
+        end
+
+        local ok, owned = pcall(isnetworkowner, part)
+
+        return ok and owned
+    end
+
+    -- Everything the wall checks must look straight through: killers, and every character (the LocalPlayer and the other players')
+    local function buildFilter()
+        local filter = { killersFolder }
+
+        for _, player in ipairs(players:GetPlayers()) do
+            if player.Character then
+                table.insert(filter, player.Character)
+            end
+        end
+
+        local folder = localplayer.Character and localplayer.Character.Parent
+
+        if folder and folder ~= workspace then
+            table.insert(filter, folder)
+        end
+
+        castParams.FilterDescendantsInstances = filter
+    end
+
+    local function stopPush()
+        if pushConnection then
+            pushConnection:Disconnect()
+            pushConnection = nil
+        end
+
+        table.clear(pushStates)
+    end
+
+    local function pushStep(deltaTime)
+        if library.Unloaded or not toggles.disableAllKillers_Toggle.Value then
+            stopPush()
+            return
+        end
+
+        if tostring(options.disableAuraMethod_Dropdown.Value) ~= "Push" then
+            if next(pushStates) then
+                table.clear(pushStates)
+            end
+
+            return
+        end
+
+        local hrp = getHRP()
+
+        if not hrp then
+            return
+        end
+
+        local dt = math.min(deltaTime, 0.05)
+        local origin = hrp.Position
+        local range = proximityRange or 30
+        local decay = math.exp(-PUSH_DECAY * dt)
+        local now = os.clock()
+        local filterBuilt = false
+        local wallCheck = toggles.disableAuraWallCheck_Toggle.Value
+
+        for _, model in ipairs(killersFolder:GetChildren()) do
+            local hum = model:IsA("Model") and model:FindFirstChildOfClass("Humanoid")
+            local root = hum and model:FindFirstChild("HumanoidRootPart")
+
+            -- Dead killers (and ones whose humanoid is gone) are left alone
+            if not (root and root:IsA("BasePart")) or hum.Health <= 0 then
+                pushStates[model] = nil
+                continue
+            end
+
+            local position = root.Position
+            local state = pushStates[model]
+
+            if not state then
+                state = { speed = 0, last = position, active = false, notifiedAt = 0 }
+                pushStates[model] = state
+            end
+
+            local distance = (position - origin).Magnitude
+            local inRange = distance <= range
+
+            -- Wall Check: killers behind walls are not pushed
+            if inRange and wallCheck and not utils.isKillerVisible(origin, model, root) then
+                inRange = false
+            end
+
+            -- Moving far in one frame without our help is a teleport
+            local teleported = (position - state.last).Magnitude > TELEPORT_JUMP
+
+            -- Harder the closer the killer is. A killer that keeps walking in is held at the edge because even the gentlest push is faster
+            -- than a walk, and a throw keeps its speed for a moment after the killer is out of range.
+            local speed = state.speed * decay
+
+            if inRange then
+                local want = PUSH_MAX_SPEED * math.sqrt(math.clamp(1 - distance / range, 0, 1))
+
+                if teleported then
+                    want = PUSH_MAX_SPEED
+                end
+
+                speed = math.max(speed, want)
+            end
+
+            if speed < 1 or not ownsPart(root) then
+                state.speed = 0
+                state.last = position
+                state.active = false
+                continue
+            end
+
+            state.speed = speed
+
+            if not filterBuilt then
+                buildFilter()
+                filterBuilt = true
+            end
+
+            -- Straight away from you, flat. A killer exactly above or below you is sent the way you are facing.
+            local away = Vector3.new(position.X - origin.X, 0, position.Z - origin.Z)
+
+            if away.Magnitude < 0.05 then
+                local look = hrp.CFrame.LookVector
+                away = Vector3.new(look.X, 0, look.Z)
+
+                if away.Magnitude < 0.05 then
+                    away = Vector3.xAxis
+                end
+            end
+
+            local move = resolveMove(position, getShape(model, root), away.Unit, math.min(speed * dt, PUSH_MAX_STEP))
+
+            if move.Magnitude > 0.005 then
+                root.CFrame += move
+                position += move
+            end
+
+            state.last = position
+
+            if inRange and not state.active and now - state.notifiedAt > 3 then
+                state.active = true
+                state.notifiedAt = now
+
+                if toggles.disableAuraDebugNotifs_Toggle.Value then
+                    notify("Info", "Disable Aura", "Pushing " .. model.Name, 3)
+                end
+            end
+        end
+    end
+
+    pushToggled = function(enabled)
+        stopPush()
+
+        if not enabled then
+            return
+        end
+
+        pushConnection = runService.Heartbeat:Connect(function(deltaTime)
+            local ok, err = pcall(pushStep, deltaTime)
+
+            if not ok and err ~= pushLastError then
+                pushLastError = err
+                warn("[Disable Aura: Push] " .. tostring(err))
+            end
+        end)
+    end
+end
 
 -- [Exploits / Killer Controls] Killer Godmode
 do
@@ -6471,9 +6952,70 @@ othersGroup2:AddButton({ Text = "Vault Keycard",
     end,
 })
 
+-- [Miscellaneous / Utility actions] Security camera teleport with return
+local securityCamActive = false
+
+-- Waits for the character to sit, then for it to leave the seat (space bar), then returns it.
+local function watchSecurityCamSeat(character, humanoid, seat, originCFrame)
+    local startedAt = os.clock()
+
+    local function characterGone()
+        return not humanoid.Parent or humanoid.Health <= 0 or localplayer.Character ~= character
+    end
+
+    while humanoid.SeatPart ~= seat do
+        if characterGone() then return end
+
+        if os.clock() - startedAt > 2 then
+            -- Never managed to sit (e.g. seat occupied), so put the player back where they were.
+            notify("Error", "Failed", "Could not sit on the security camera seat.", 8)
+            local root = getHRP()
+            if root then
+                root.CFrame = originCFrame
+            end
+            return
+        end
+
+        task.wait()
+    end
+
+    while humanoid.SeatPart == seat do
+        if characterGone() then return end
+        task.wait()
+    end
+
+    task.wait()
+    if characterGone() then return end
+
+    local root = getHRP()
+    if root then
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.CFrame = originCFrame
+    end
+end
+
 othersGroup2:AddButton({ Text = "Teleport to Security Cameras",
     Func = function()
-        entityLib.teleport(game:GetService("Workspace")["Surveillance Cameras"].Triggers.Seat)
+        if securityCamActive then return end
+
+        local hrp = getHRP()
+        local humanoid = getHumanoid()
+        if not hrp or not humanoid or humanoid.Health <= 0 then return end
+
+        local seat = game:GetService("Workspace")["Surveillance Cameras"].Triggers.Seat
+        local character = humanoid.Parent
+        local originCFrame = hrp.CFrame
+
+        securityCamActive = true
+        entityLib.teleport(seat)
+
+        task.spawn(function()
+            local ok, err = pcall(watchSecurityCamSeat, character, humanoid, seat, originCFrame)
+            if not ok then
+                warn("[Security Cameras] " .. tostring(err))
+            end
+            securityCamActive = false
+        end)
     end,
 })
 
@@ -6603,8 +7145,7 @@ menuGroup:AddLabel("Menu bind"):AddKeyPicker("menuKeybind_KeyPicker", { Text = "
 
 -- [UI Settings / Teardown] Disable active features and clear shared state
 local function unloadModules()
-    -- Switch off every toggle (rather than a hand-maintained list) so each OnChanged handler can stop its own
-    -- loops, connections and hooks.
+    -- Switch off every toggle so each OnChanged handler can stop its own loops, connections and hooks.
     for name, toggle in pairs(toggles) do
         if type(toggle) == "table" and toggle.Value == true and type(toggle.SetValue) == "function"
             and name ~= "KeybindMenuOpen" and name ~= "autoResetColor_Toggle" and name ~= "notifSound_Toggle" then
@@ -6646,7 +7187,7 @@ end
 
 -- Library:Unload() empties library.Toggles / library.Options right after it runs its unload callbacks. Anything that
 -- outlives the UI (event connections, game weapon hooks, looping threads) would then hit "attempt to index nil with
--- 'Value'", so this script's references are swapped to snapshots *before* anything else happens.
+-- 'Value'", so this script's references are swapped to snapshots before anything else happens.
 library:OnUnload(function()
     local function snapshot(source)
         local copy = {}
