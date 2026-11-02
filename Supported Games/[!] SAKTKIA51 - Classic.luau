@@ -159,7 +159,7 @@ local function getAlertVolume()
     return window.notifSoundEnabled and (tonumber(window.alertVolume) or 3) or 0
 end
 
-local function notify(notificationType: string, title: string, desc: string, duration: number?)
+local function notify(notificationType: string, title: string, desc: string, duration: number?, persist: boolean?)
     if typeof(title) ~= "string" then
         library:Notify("Error notifying", "Argument #1 (title) expected a string value but got a " .. typeof(title) .. " value.", 4590662766)
         return
@@ -177,40 +177,74 @@ local function notify(notificationType: string, title: string, desc: string, dur
 
     duration = duration or 5
 
+    local notification = nil
+
     if notificationType == "Success" then
-        library:Notify({
+        notification = library:Notify({
             Title = title,
             TitleColor = Color3.fromRGB(21, 140, 49),
             Description = desc,
             Time = duration,
+            Persist = persist == true,
             Priority = 1,
             SoundId = 4590662766,
             Volume = getAlertVolume(),
             BigIcon = assetLib.fetchAsset("Icons/circle-check.png"),
-            IconColor = Color3.fromRGB(21, 140, 49)
+            IconColor = Color3.fromRGB(21, 140, 49),
+            Closable = true,
         })
     elseif notificationType == "Error" then
-        library:Notify({
+        notification = library:Notify({
             Title = title,
             TitleColor = Color3.fromRGB(140, 21, 21),
 
             Description = desc,
             Time = duration,
+            Persist = persist == true,
             Priority = 0,
             SoundId = 4590662766,
-            Volume = getAlertVolume()
+            Volume = getAlertVolume(),
+            Closable = true,
         })
     elseif notificationType == "Info" then
-        library:Notify({
+        notification = library:Notify({
             Title = title,
             Description = desc,
             Time = duration,
+            Persist = persist == true,
             Priority = 2,
             SoundId = 4590662766,
             Volume = getAlertVolume(),
-            BigIcon = assetLib.fetchAsset("Icons/info.png")
+            BigIcon = assetLib.fetchAsset("Icons/info.png"),
+            Closable = true,
         })
     end
+
+    return notification
+end
+
+-- [Shared Helpers / Pack-a-Punch Notifications] Persistent progress notifications that are dismissed once their step is done
+utils.papNotify = function(notificationType, title, desc)
+    return notify(notificationType, title, desc, 5, true)
+end
+
+utils.dismissNotify = function(notification)
+    if typeof(notification) == "table" and not notification.Destroyed then
+        pcall(function() notification:Destroy("dismissed") end)
+    end
+end
+
+-- The queue notification stays up until the next queue update replaces it, or the queue is empty/cleared
+utils.papQueueNote = nil
+
+utils.setPAPQueueNote = function(title, desc)
+    utils.dismissNotify(utils.papQueueNote)
+    utils.papQueueNote = utils.papNotify("Info", title, desc)
+end
+
+utils.clearPAPQueueNote = function()
+    utils.dismissNotify(utils.papQueueNote)
+    utils.papQueueNote = nil
 end
 
 
@@ -228,9 +262,6 @@ local function isAlive()
 end
 
 -- [Shared Helpers / Color Cycling] Rainbow picker lifecycle
--- Every rainbow picker (killer ESP boxes, name tags, ...) follows ONE shared hue that a single RenderStepped
--- connection advances once per frame. They therefore always show the exact same color and can never end up on
--- separate cycles, no matter when each rainbow toggle was switched on.
 local function toggleRainbow(enabled, colorPickerName)
     local active = rainbowState.active
 
@@ -279,7 +310,7 @@ local function toggleRainbow(enabled, colorPickerName)
     end
 end
 
--- [Shared Helpers / Teleporter State] State checks shared by travel workflows
+-- [Shared Helpers / Teleporter State] State checks
 local function teleporterInUse()
     local displayLabel = area51.TeleporterRoom.Teleporter["Control Panels"].Middle.Displayer.SurfaceGui.Frame.TextLabel
     local teleportSmoke = area51.TeleporterRoom.Teleporter.Teleporter.Collision.Smoke
@@ -325,6 +356,243 @@ local function freeze(enabled)
         entityLib.restoreData(hum, "WalkSpeed")
         entityLib.restoreData(hum, "JumpPower")
     end
+end
+
+-- [Shared Helpers / Pack-a-Punch Teleporter]
+utils.runPAPTeleport = function(weaponName, cancelCheck)
+    local maxAttempts = 8
+    local confirmTimeout = 2.5 -- seconds to wait for the teleporter to react to one prompt fire
+    local busyTimeout = 120 -- seconds to wait for another player's teleport to finish
+    local arrivalTimeout = 15 -- seconds to wait for arriving in the punch room once inside
+
+    local standCFrame = CFrame.new(110.864708, 313.499969, 72.9767151)
+    local insideCFrame = CFrame.new(111.216148, 315.700012, 41.9078827)
+    local punchRoomCFrame = CFrame.new(109.300003, 335.499969, 62)
+
+    local teleporterModel = area51.TeleporterRoom.Teleporter
+    local promptPart = teleporterModel["Control Panels"].Middle.Teleport
+    local prompt = promptPart:FindFirstChildOfClass("ProximityPrompt")
+    local faceName = "PAPFaceTeleportPrompt"
+
+    -- One progress notification at a time: it stays up until the step it describes is done, then the next one replaces it
+    local statusNote = nil
+
+    local function clearStatus()
+        utils.dismissNotify(statusNote)
+        statusNote = nil
+    end
+
+    local function setStatus(title, desc)
+        clearStatus()
+        statusNote = utils.papNotify("Info", title, desc)
+        return statusNote
+    end
+
+    -- Teleport to the prompt surface part and face toward it to prevent incorrect activation edge cases
+    local facingStandCFrame = CFrame.lookAt(standCFrame.Position, Vector3.new(promptPart.Position.X, standCFrame.Position.Y, promptPart.Position.Z))
+
+    local function stopped(ignoreCancel)
+        if not ignoreCancel and cancelCheck and cancelCheck() then
+            return "cancelled"
+        end
+
+        if not isAlive() then
+            return "died"
+        end
+
+        return nil
+    end
+
+    local function blocked()
+        return teleporterInUse() or (prompt ~= nil and not prompt.Enabled)
+    end
+
+    local function waitUntil(condition, timeout)
+        local startedAt = os.clock()
+
+        repeat
+            if condition() then
+                return true
+            end
+
+            task.wait(0.05)
+        until os.clock() - startedAt >= timeout
+
+        return condition()
+    end
+
+    -- Keep the camera pointed at the prompt so it counts as visible and can be triggered
+    local function startFacing()
+        pcall(function() runService:UnbindFromRenderStep(faceName) end)
+
+        runService:BindToRenderStep(faceName, Enum.RenderPriority.Camera.Value + 1, function()
+            local currentCamera = workspace.CurrentCamera
+
+            if currentCamera then
+                currentCamera.CFrame = CFrame.lookAt(currentCamera.CFrame.Position, promptPart.Position)
+            end
+        end)
+    end
+
+    local function stopFacing()
+        pcall(function() runService:UnbindFromRenderStep(faceName) end)
+    end
+
+    local function activate()
+        for attempt = 1, maxAttempts do
+            local stopReason = stopped()
+            if stopReason then
+                return false, stopReason
+            end
+
+            -- Another player is using the teleporter: wait for it instead of firing into a locked prompt
+            if blocked() then
+                stopFacing()
+                setStatus("Waiting..", "Teleporter in use. Waiting for it to be free to pack a punch the " .. weaponName .. "...")
+
+                local freed = waitUntil(function()
+                    return stopped() ~= nil or not blocked()
+                end, busyTimeout)
+
+                stopReason = stopped()
+                if stopReason then
+                    return false, stopReason
+                end
+
+                if not freed then
+                    return false, "busy"
+                end
+
+                clearStatus()
+                task.wait(0.3)
+            end
+
+            -- (Re)position facing the panel so the prompt is in range and on screen
+            entityLib.teleport(facingStandCFrame)
+
+            waitUntil(function()
+                local root = getHRP()
+                return root ~= nil and entityLib.checkCFrame(root, standCFrame, 5)
+            end, 3)
+
+            startFacing()
+            task.wait(math.min(0.15 + 0.1 * (attempt - 1), 0.6))
+
+            utils.fireProxPrompt(promptPart)
+
+            if attempt >= 3 and prompt then
+                pcall(function()
+                    prompt:InputHoldBegin()
+                    task.wait()
+                    prompt:InputHoldEnd()
+                end)
+            end
+
+            -- Keep the "Retrying.." notification up while retrying; otherwise show that the teleport is being started
+            if attempt == 1 or statusNote == nil then
+                setStatus("Working..", "Teleporting in progress...\nPack a punching the " .. weaponName .. "...")
+            end
+
+            -- Confirm teleport has started
+            local started = waitUntil(function()
+                return teleporterInUse() or stopped() ~= nil
+            end, confirmTimeout)
+
+            stopReason = stopped()
+            if stopReason then
+                return false, stopReason
+            end
+
+            if started then
+                stopFacing()
+                return true
+            end
+
+            if attempt < maxAttempts then
+                setStatus("Retrying..", "The teleporter did not respond. Retrying (" .. attempt .. "/" .. (maxAttempts - 1) .. ")...")
+                task.wait(math.min(0.25 * attempt, 1.5))
+            end
+        end
+
+        return false, "retries"
+    end
+
+    local function enter()
+        local inside = teleporterModel.Teleporter.Inside
+        inside.CanCollide = false
+
+        -- Teleport inside teleporter
+        entityLib.teleport(insideCFrame)
+
+        local startedAt = os.clock()
+        local lastTeleport = os.clock()
+
+        while true do
+            local stopReason = stopped(true)
+            if stopReason then
+                return false, stopReason
+            end
+
+            local root = getHRP()
+
+            if root and entityLib.checkCFrame(root, punchRoomCFrame, 5) then
+                return true
+            end
+
+            if os.clock() - startedAt > arrivalTimeout then
+                return false, "arrival"
+            end
+
+            -- Got pushed out of the teleporter while it is running: put the player back inside
+            if root and teleporterInUse() and os.clock() - lastTeleport >= 1
+                and (root.Position - insideCFrame.Position).Magnitude > 10 then
+                lastTeleport = os.clock()
+                entityLib.teleport(insideCFrame)
+            end
+
+            task.wait()
+        end
+    end
+
+    local function run()
+        for cycle = 1, 2 do
+            local activated, activateReason = activate()
+            if not activated then
+                return false, activateReason
+            end
+
+            setStatus("Working..", "Correct teleport.\nPack a punching the " .. weaponName .. "...")
+
+            local arrived, arrivalReason = enter()
+            if arrived then
+                -- Handed to the caller, which dismisses it once the weapon has been pack a punched
+                return true, setStatus("Working..", "Teleport finished.\nPack a punching the " .. weaponName .. "...")
+            end
+
+            if arrivalReason ~= "arrival" or cycle == 2 then
+                return false, arrivalReason
+            end
+
+            setStatus("Retrying..", "Did not reach the punch room. Restarting the teleport...")
+        end
+
+        return false, "arrival"
+    end
+
+    local ran, success, reason = pcall(run)
+    stopFacing()
+
+    if not ran or not success then
+        clearStatus()
+    end
+
+    if not ran then
+        warn("utils.runPAPTeleport: " .. tostring(success))
+        return false, "error"
+    end
+
+    -- On success the second value is the "Teleport finished" notification, on failure it is the reason
+    return success, reason
 end
 
 local function getSuffix(sliderObj, suffixString)
@@ -1052,9 +1320,8 @@ end)
 
 toggles.enableFly_Toggle:OnChanged(function(enabled)
     local keypicker = options.fly_KeyPicker
-    keypicker.Disabled = not keypicker.Disabled
-    print(keypicker.Disabled)
-    keypicker:SetNoUI(not keypicker.NoUI)
+    keypicker:SetDisabled(not enabled)
+    keypicker:SetNoUI(not enabled)
 
     if not enabled then
         toggles.toggleFly_Toggle:SetValue(false)
@@ -1085,14 +1352,86 @@ end)
 
 toggles.enableNoclip_Toggle:OnChanged(function(enabled)
     local keypicker = options.noclip_KeyPicker
-    keypicker.Disabled = not keypicker.Disabled
-    print(keypicker.Disabled)
-    keypicker:SetNoUI(not keypicker.NoUI)
+    keypicker:SetDisabled(not enabled)
+    keypicker:SetNoUI(not enabled)
 
     if not enabled then
         toggles.toggleNoclip_Toggle:SetValue(false)
     end
 end)
+
+-- [Player / Noclip] Replacement for entityLib.toggleNoclip that survives death
+do
+    local noclip = {
+        Enabled = false,
+        Connection = nil,
+        Original = setmetatable({}, { __mode = "k" }), -- part -> CanCollide before noclip first touched it
+    }
+
+    function noclip.step()
+        local character = localplayer.Character
+
+        if not character then
+            return
+        end
+
+        for _, part in ipairs(character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                if noclip.Original[part] == nil then
+                    noclip.Original[part] = part.CanCollide
+                end
+
+                if part.CanCollide then
+                    part.CanCollide = false
+                end
+            end
+        end
+    end
+
+    function noclip.set(enabled)
+        local wasEnabled = noclip.Enabled
+
+        noclip.Enabled = enabled and true or false
+
+        if noclip.Connection then
+            noclip.Connection:Disconnect()
+            noclip.Connection = nil
+        end
+
+        if enabled then
+            noclip.step()
+            noclip.Connection = runService.Stepped:Connect(noclip.step)
+
+            return
+        end
+
+        if not wasEnabled then
+            return
+        end
+
+        local character = localplayer.Character
+
+        for part, original in pairs(noclip.Original) do
+            if character and part.Parent and part:IsDescendantOf(character) then
+                part.CanCollide = original
+            end
+        end
+
+        table.clear(noclip.Original)
+
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+
+        if humanoid and humanoid.Health > 0 then
+            humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+        end
+    end
+
+    entityLib.toggleNoclip = noclip.set
+
+    table.insert(teardownTasks, function()
+        noclip.set(false)
+    end)
+end
 
 toggles.toggleNoclip_Toggle:OnChanged(function(noclipToggleEnabled)
     local noclipAllowed = toggles.enableNoclip_Toggle.Value
@@ -1272,6 +1611,628 @@ end
 othersGroup3:AddToggle("doorNoclip_Toggle", { Text = "Door Noclip" })
 othersGroup3:AddToggle("autoBacktrack_Toggle", { Text = "Backtrack", Tooltip = "Automatically teleports you back to your last death location." })
 
+-- [Player / Out-of-Bounds Guard] Attempts to move you back to a safe spot before the game's out-of-bounds / in-wall kill fires
+
+othersGroup3:AddToggle("outOfBoundsGuard_Toggle", { Text = "Out-of-Bounds Guard", Tooltip = "The game kills you about 2-3 seconds after you leave the map or sit inside a wall. This teleports you back to your last safe position if you leave the real map (fly and noclip included) or end up inside a wall." })
+
+do
+    local guardDepbox = othersGroup3:AddDependencyBox()
+
+    guardDepbox:AddSlider("outOfBoundsGuardGrace_Slider", { Text = "Grace Time", Tooltip = "How long you can be out of bounds or inside a wall before you are moved back. The game kills you after about 2-3 seconds, so keep this well below that. Falling out of the map is always handled instantly.", Default = 0.8, Min = 0.1, Max = 1.5, Suffix = " Seconds", Rounding = 1,
+        Callback = function(val)
+            options.outOfBoundsGuardGrace_Slider:SetSuffix(getSuffix(options.outOfBoundsGuardGrace_Slider, "Second"))
+        end
+    })
+
+    guardDepbox:AddSlider("outOfBoundsGuardMargin_Slider", { Text = "Map Edge Margin", Tooltip = "How far from the real map (rooms, walls, fences, buildings) you can get before you are moved back. The map is much smaller than the game's own MapLimit box, so this is what keeps you from flying through walls and around outside it. Lower is tighter, but below 24 it can misfire in the largest halls. The open surface allows 4x this value.", Default = 24, Min = 16, Max = 96, Suffix = " Studs", Rounding = 0,
+        Callback = function(val)
+            options.outOfBoundsGuardMargin_Slider:SetSuffix(getSuffix(options.outOfBoundsGuardMargin_Slider, "Stud"))
+        end
+    })
+
+    guardDepbox:SetupDependencies({ { toggles.outOfBoundsGuard_Toggle, true } })
+
+    local config = {
+        SolidInterval = 0.05, -- seconds between the inside-a-wall checks
+        SolidBox = Vector3.new(1.6, 3.2, 1.6), -- smaller than the character, so standing on the floor or against a wall is clear
+        MinGrace = 0.1,
+        MaxGrace = 1.5, -- hard cap, so an old saved config can never outlast the kill timer
+        VoidHeight = 150, -- studs above the MapLimit floor; below this with nothing underneath counts as falling out of the map
+        NotifyCooldown = 3, -- seconds between notifications
+        GroundRay = 400,
+        EdgeInset = 1, -- studs the root part is held inside the map walls (a root part hugging a wall is already ~1 stud away)
+        CeilingInset = 3, -- studs the root part is held below the ceiling
+        RepeatWindow = 3, -- seconds after a rescue during which grace drops to MinGrace (fly/noclip pushing you straight back in)
+        HullFineCell = 8, -- studs per cell of the underground (3D) map hull
+        HullCoarseCell = 32, -- studs per cell of the surface (2D) map hull
+        HullMargin = { Default = 24, Min = 16, Max = 96 }, -- studs from real map geometry that still count as inside the map (matches the slider)
+        HullSurfaceScale = 4, -- the open surface allows this many times the margin (open desert between the buildings)
+        HullSurfaceAirHeight = 120, -- studs above the highest surface part that still count as inside the map
+        HullMaxPartCells = 60000, -- a single part that would cover more cells than this is skipped
+        HullSliceBudget = 0.004, -- seconds of hull building per frame, so building it never causes a hitch
+    }
+
+    local solidGroup = "Default"
+
+    for _, group in ipairs(game:GetService("PhysicsService"):GetRegisteredCollisionGroups()) do
+        if group.name == "Survivors" then
+            solidGroup = "Survivors"
+            break
+        end
+    end
+
+    local overlapParams = OverlapParams.new()
+    overlapParams.FilterType = Enum.RaycastFilterType.Exclude
+    overlapParams.RespectCanCollide = true
+    overlapParams.CollisionGroup = solidGroup
+
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = Enum.RaycastFilterType.Exclude
+    rayParams.RespectCanCollide = true
+    rayParams.CollisionGroup = solidGroup
+
+    local guard = {
+        Token = 0, -- incremented on every start/stop so a stale bounds measurement can tell it was cancelled
+        Heartbeat = nil,
+        CharacterAdded = nil,
+        SolidElapsed = 0,
+        InsideSolid = false, -- result of the last inside-a-wall check
+        Bounds = nil, -- { Min = Vector3, Max = Vector3, VoidY = number }
+        Hull = nil, -- { Fine = set, Coarse = set, SurfaceY = number?, SurfaceTop = number } (see guard.buildHull)
+        HullBuild = 0, -- incremented on every hull build so an older, slower build can tell it was replaced
+        HullRejected = false, -- true when the last hull build was dropped because you were outside it (retried when the margin changes)
+        LastInHull = nil, -- Vector3: the last position that was inside the map hull
+        LastSafe = nil, -- CFrame of the last position that was in bounds and not inside anything solid
+        LastGrounded = nil, -- CFrame of the last safe position you were standing on
+        UnsafeSince = nil,
+        LastNotify = -math.huge,
+        LastRescue = -math.huge,
+        FilteredCharacter = nil,
+        FiltersReady = false,
+    }
+
+    local function notifyGuard(notificationType, description, force)
+        local now = os.clock()
+
+        -- Repeating notices are throttled; one-time ones (force) always show.
+        if not force and now - guard.LastNotify < config.NotifyCooldown then
+            return
+        end
+
+        guard.LastNotify = now
+        notify(notificationType, "Out-of-Bounds Guard", description, 5)
+    end
+
+    -- Killers and the MapLimit walls are excluded completely. Other players' characters are skipped per hit (see isInsideSolid).
+    local function refreshFilters(character)
+        local ignored = {}
+
+        if character then
+            table.insert(ignored, character)
+        end
+
+        for _, name in ipairs({ "Killers", "Characters to kill" }) do
+            local folder = workspace:FindFirstChild(name)
+
+            if folder then
+                table.insert(ignored, folder)
+            end
+        end
+
+        local area = workspace:FindFirstChild("AREA51")
+        local limit = area and area:FindFirstChild("MapLimit")
+
+        if limit then
+            table.insert(ignored, limit)
+        end
+
+        overlapParams.FilterDescendantsInstances = ignored
+        rayParams.FilterDescendantsInstances = ignored
+        guard.FilteredCharacter = character
+        guard.FiltersReady = true
+    end
+
+    -- Builds the map's box from the INNER faces of the MapLimit walls.
+    -- A wall is thin on exactly one axis; that axis is the one it closes off.
+    local function measureMapBounds()
+        local area = workspace:FindFirstChild("AREA51") or workspace:WaitForChild("AREA51", 5)
+        local limit = area and (area:FindFirstChild("MapLimit") or area:WaitForChild("MapLimit", 5))
+
+        if not limit then
+            return nil
+        end
+
+        local center = limit:GetBoundingBox().Position
+        local low, high = {}, {}
+
+        for _, part in ipairs(limit:GetChildren()) do
+            if part:IsA("BasePart") and part.CanCollide then
+                local size, position = part.Size, part.Position
+                local axis
+
+                if size.X <= 4 and size.Y > 20 and size.Z > 20 then
+                    axis = "X"
+                elseif size.Y <= 4 and size.X > 20 and size.Z > 20 then
+                    axis = "Y"
+                elseif size.Z <= 4 and size.X > 20 and size.Y > 20 then
+                    axis = "Z"
+                end
+
+                if axis then
+                    local half = size[axis] / 2
+
+                    if position[axis] < center[axis] then
+                        low[axis] = math.max(low[axis] or -math.huge, position[axis] + half)
+                    else
+                        high[axis] = math.min(high[axis] or math.huge, position[axis] - half)
+                    end
+                end
+            end
+        end
+
+        for _, axis in ipairs({ "X", "Y", "Z" }) do
+            if not (low[axis] and high[axis]) then
+                return nil
+            end
+        end
+
+        return {
+            Min = Vector3.new(low.X, low.Y, low.Z),
+            Max = Vector3.new(high.X, high.Y, high.Z),
+            VoidY = low.Y + config.VoidHeight,
+        }
+    end
+
+    local function refreshBounds(token)
+        local success, bounds = pcall(measureMapBounds)
+
+        if guard.Token ~= token then
+            return
+        end
+
+        if success and bounds then
+            guard.Bounds = bounds
+        else
+            guard.Bounds = nil
+            notifyGuard("Error", "Could not find the map limits, so only the wall check and the void floor are active.", true)
+        end
+    end
+
+    local function isInsideSolid(position)
+        for _, part in ipairs(workspace:GetPartBoundsInBox(CFrame.new(position), config.SolidBox, overlapParams)) do
+            -- Another player's character (or anything with a Humanoid) is not a wall.
+            local model = part:FindFirstAncestorOfClass("Model")
+
+            if not (model and model:FindFirstChildOfClass("Humanoid")) then
+                return true
+            end
+        end
+
+        return false
+    end
+
+    local function hasGroundBelow(position)
+        return workspace:Raycast(position, Vector3.new(0, -config.GroundRay, 0), rayParams) ~= nil
+    end
+
+    function guard.hullContains(hull, position)
+        local slider = options.outOfBoundsGuardMargin_Slider
+        local margin = math.clamp(slider and slider.Value or config.HullMargin.Default, config.HullMargin.Min, config.HullMargin.Max)
+        local surfaceY = hull.SurfaceY
+
+        if surfaceY and position.Y >= surfaceY then
+            if position.Y > hull.SurfaceTop + config.HullSurfaceAirHeight then
+                return false
+            end
+
+            -- A cell counts when its box is within the margin along every axis.
+            local cell = config.HullCoarseCell
+            local range = margin * config.HullSurfaceScale
+            local reach = math.ceil(range / cell)
+            local px, pz = position.X, position.Z
+            local cx, cz = math.floor(px / cell), math.floor(pz / cell)
+            local coarse = hull.Coarse
+
+            for x = cx - reach, cx + reach do
+                if math.max(x * cell - px, px - (x + 1) * cell, 0) <= range then
+                    for z = cz - reach, cz + reach do
+                        if coarse[(x + 256) + 1024 * (z + 256)] and math.max(z * cell - pz, pz - (z + 1) * cell, 0) <= range then
+                            return true
+                        end
+                    end
+                end
+            end
+
+            return false
+        end
+
+        local cell = config.HullFineCell
+        local reach = math.ceil(margin / cell)
+        local px, py, pz = position.X, position.Y, position.Z
+        local cx, cy, cz = math.floor(px / cell), math.floor(py / cell), math.floor(pz / cell)
+        local fine = hull.Fine
+
+        for x = cx - reach, cx + reach do
+            if math.max(x * cell - px, px - (x + 1) * cell, 0) <= margin then
+                for y = cy - reach, cy + reach do
+                    if math.max(y * cell - py, py - (y + 1) * cell, 0) <= margin then
+                        for z = cz - reach, cz + reach do
+                            if fine[(x + 256) + 1024 * ((z + 256) + 1024 * (y + 256))] and math.max(z * cell - pz, pz - (z + 1) * cell, 0) <= margin then
+                                return true
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        return false
+    end
+
+    -- Voxelizes the real map once. Runs in slices so it never hitches a frame, and is replaced by newer
+    -- builds (respawn) or cancelled by stopping the guard.
+    function guard.buildHull(token)
+        guard.HullBuild = guard.HullBuild + 1
+
+        local build = guard.HullBuild
+        local area = workspace:FindFirstChild("AREA51") or workspace:WaitForChild("AREA51", 5)
+
+        if not area then
+            return
+        end
+
+        local limit = area:FindFirstChild("MapLimit")
+        local outside = area:FindFirstChild("Outside")
+        local ground = outside and outside:FindFirstChild("GroundOutside")
+        local fineCell, coarseCell = config.HullFineCell, config.HullCoarseCell
+        local fine, coarse = {}, {}
+        local surfaceY, surfaceTop = nil, -math.huge
+
+        local function extents(part)
+            local cframe, size = part.CFrame, part.Size
+            local right, up, look = cframe.RightVector, cframe.UpVector, cframe.LookVector
+
+            return cframe.Position, Vector3.new(
+                (math.abs(right.X) * size.X + math.abs(up.X) * size.Y + math.abs(look.X) * size.Z) / 2,
+                (math.abs(right.Y) * size.X + math.abs(up.Y) * size.Y + math.abs(look.Y) * size.Z) / 2,
+                (math.abs(right.Z) * size.X + math.abs(up.Z) * size.Y + math.abs(look.Z) * size.Z) / 2
+            )
+        end
+
+        if ground then
+            local top = -math.huge
+
+            for _, part in ipairs(ground:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    local center, half = extents(part)
+                    top = math.max(top, center.Y + half.Y)
+                end
+            end
+
+            if top > -math.huge then
+                surfaceY = top - 3 -- the character's root part hovers above the ground, so "surface" starts a little below its top face
+            end
+        end
+
+        local roots = { area }
+
+        for _, name in ipairs({ "Doors", "Spawns", "PACKAPUNCH", "Top10" }) do
+            local root = workspace:FindFirstChild(name)
+
+            if root then
+                table.insert(roots, root)
+            end
+        end
+
+        local sliceStart = os.clock()
+
+        for _, root in ipairs(roots) do
+            for _, part in ipairs(root:GetDescendants()) do
+                if part:IsA("BasePart") and part.CanCollide and not (limit and part:IsDescendantOf(limit)) and not (ground and part:IsDescendantOf(ground)) then
+                    local center, half = extents(part)
+                    local x0, x1 = math.floor((center.X - half.X) / fineCell), math.floor((center.X + half.X) / fineCell)
+                    local y0, y1 = math.floor((center.Y - half.Y) / fineCell), math.floor((center.Y + half.Y) / fineCell)
+                    local z0, z1 = math.floor((center.Z - half.Z) / fineCell), math.floor((center.Z + half.Z) / fineCell)
+
+                    if (x1 - x0 + 1) * (y1 - y0 + 1) * (z1 - z0 + 1) <= config.HullMaxPartCells then
+                        for x = x0, x1 do
+                            for y = y0, y1 do
+                                for z = z0, z1 do
+                                    fine[(x + 256) + 1024 * ((z + 256) + 1024 * (y + 256))] = true
+                                end
+                            end
+                        end
+                    end
+
+                    -- Surface footprint: only parts that stand on or above the ground (a shaft's centre is far below it).
+                    if surfaceY and center.Y >= surfaceY - 1 then
+                        local cx0, cx1 = math.floor((center.X - half.X) / coarseCell), math.floor((center.X + half.X) / coarseCell)
+                        local cz0, cz1 = math.floor((center.Z - half.Z) / coarseCell), math.floor((center.Z + half.Z) / coarseCell)
+
+                        if (cx1 - cx0 + 1) * (cz1 - cz0 + 1) <= config.HullMaxPartCells then
+                            surfaceTop = math.max(surfaceTop, center.Y + half.Y)
+
+                            for x = cx0, cx1 do
+                                for z = cz0, cz1 do
+                                    coarse[(x + 256) + 1024 * (z + 256)] = true
+                                end
+                            end
+                        end
+                    end
+                end
+
+                if os.clock() - sliceStart > config.HullSliceBudget then
+                    task.wait()
+
+                    if guard.Token ~= token or guard.HullBuild ~= build then
+                        return
+                    end
+
+                    sliceStart = os.clock()
+                end
+            end
+        end
+
+        if guard.Token ~= token or guard.HullBuild ~= build then
+            return
+        end
+
+        local hull = { Fine = fine, Coarse = coarse, SurfaceY = surfaceY, SurfaceTop = surfaceTop }
+        local hrp = getHRP()
+
+        -- Only trust a hull your character is inside right now. If it is not, using it would just teleport you around, so it stays off.
+        if hrp and isAlive() and not guard.hullContains(hull, hrp.Position) then
+            guard.Hull = nil
+            guard.HullRejected = true
+            notifyGuard("Error", "Your character is outside the real map right now, so the map edge check is off. Switch the guard off and on again while you are inside the map.", true)
+            return
+        end
+
+        guard.Hull = hull
+        guard.HullRejected = false
+    end
+
+    -- Inside the MapLimit box
+    function guard.insideBox(position)
+        local bounds = guard.Bounds
+
+        if not bounds then
+            return true
+        end
+
+        local inset = config.EdgeInset
+
+        return position.X >= bounds.Min.X + inset and position.X <= bounds.Max.X - inset
+            and position.Z >= bounds.Min.Z + inset and position.Z <= bounds.Max.Z - inset
+            and position.Y <= bounds.Max.Y - config.CeilingInset
+    end
+
+    -- A remembered spot is only a valid rescue target if it is still inside the map with the CURRENT settings
+    function guard.isSafeTarget(cframe)
+        local position = cframe.Position
+        local hull = guard.Hull
+
+        return guard.insideBox(position) and not (hull and not guard.hullContains(hull, position))
+    end
+
+    local function returnToSafety(hrp, reason)
+        local target = guard.LastSafe
+
+        -- A safe spot in mid-air over nothing would just drop you out of bounds again.
+        if not target or not guard.isSafeTarget(target) or not hasGroundBelow(target.Position) then
+            target = guard.LastGrounded
+        end
+
+        if target and not guard.isSafeTarget(target) then
+            target = nil
+        end
+
+        -- Last resort: the spawn platform.
+        if not target then
+            local spawns = workspace:FindFirstChild("Spawns")
+
+            if spawns then
+                target = spawns:GetPivot() + Vector3.new(0, 5, 0)
+            end
+        end
+
+        if not target then
+            notifyGuard("Error", "You are " .. reason .. " but there is nowhere safe to move you back to.", true)
+            return
+        end
+
+        hrp.AssemblyLinearVelocity = Vector3.zero
+        hrp.AssemblyAngularVelocity = Vector3.zero
+        entityLib.teleport(target)
+        guard.LastRescue = os.clock()
+
+        notifyGuard("Info", "Moved you back to a safe position (" .. reason .. ").")
+    end
+
+    local function guardTick(runSolid)
+        local hrp = getHRP()
+
+        if not hrp or not isAlive() then
+            guard.UnsafeSince = nil
+            guard.InsideSolid = false
+            return
+        end
+
+        local character = localplayer.Character
+
+        if not guard.FiltersReady or guard.FilteredCharacter ~= character then
+            refreshFilters(character)
+            runSolid = true
+        end
+
+        local position = hrp.Position
+        local bounds = guard.Bounds
+        local reason
+
+        if bounds then
+            -- Below the void line with nothing under you: immediate, because falling accelerates and the MapLimit floor hurts.
+            if position.Y < bounds.VoidY and not hasGroundBelow(position) then
+                reason = "falling out of the map"
+            else
+                if not guard.insideBox(position) then
+                    reason = "outside the map"
+                end
+            end
+        elseif position.Y < workspace.FallenPartsDestroyHeight + 150 then
+            reason = "falling out of the map"
+        end
+
+        -- The real map is far smaller than the MapLimit box checked above, so this is what actually catches flying or noclipping
+        -- through the map's walls and out into the empty space around it.
+        local hull = guard.Hull
+
+        if hull and not reason then
+            if guard.hullContains(hull, position) then
+                guard.LastInHull = position
+            else
+                -- Outside the real map: the grace-time rescue below teleports you back to your last safe position..
+                reason = "outside the map"
+            end
+        end
+
+        if runSolid then
+            guard.InsideSolid = not reason and isInsideSolid(position)
+        end
+
+        if not reason and guard.InsideSolid then
+            reason = "inside a wall"
+        end
+
+        if not reason then
+            guard.UnsafeSince = nil
+
+            -- Only trust a position that has just passed the solid check, not one carried over from an earlier frame.
+            if runSolid then
+                -- Only keep spots with ground under them
+                if hasGroundBelow(position) then
+                    guard.LastSafe = hrp.CFrame
+                end
+
+                local humanoid = getHumanoid()
+
+                if humanoid and humanoid.FloorMaterial ~= Enum.Material.Air then
+                    guard.LastGrounded = hrp.CFrame
+                end
+            end
+
+            return
+        end
+
+        local now = os.clock()
+        guard.UnsafeSince = guard.UnsafeSince or now
+
+        local slider = options.outOfBoundsGuardGrace_Slider
+        local grace = math.clamp(slider and slider.Value or 0.8, config.MinGrace, config.MaxGrace)
+
+        -- Fly or noclip that keeps pushing you straight back into the wall: do not give it the full grace time again.
+        if now - guard.LastRescue < config.RepeatWindow then
+            grace = config.MinGrace
+        end
+
+        if reason == "falling out of the map" or now - guard.UnsafeSince >= grace then
+            guard.UnsafeSince = nil
+            guard.InsideSolid = false
+            returnToSafety(hrp, reason)
+        end
+    end
+
+    local function stopGuard()
+        guard.Token = guard.Token + 1
+
+        if guard.Heartbeat then
+            guard.Heartbeat:Disconnect()
+            guard.Heartbeat = nil
+        end
+
+        if guard.CharacterAdded then
+            guard.CharacterAdded:Disconnect()
+            guard.CharacterAdded = nil
+        end
+
+        guard.Bounds = nil
+        guard.Hull = nil
+        guard.HullRejected = false
+        guard.LastInHull = nil
+        guard.LastSafe = nil
+        guard.LastGrounded = nil
+        guard.UnsafeSince = nil
+        guard.InsideSolid = false
+        guard.LastRescue = -math.huge
+        guard.FilteredCharacter = nil
+        guard.FiltersReady = false
+        guard.SolidElapsed = 0
+    end
+
+    local function startGuard()
+        stopGuard()
+
+        -- Measure the map; until it finishes only the void line and the wall check are active.
+        task.spawn(refreshBounds, guard.Token)
+        task.spawn(guard.buildHull, guard.Token)
+
+        guard.CharacterAdded = localplayer.CharacterAdded:Connect(function()
+            -- Positions from the last life mean nothing in the new one, and the map may have been rebuilt for the new round.
+            guard.LastSafe = nil
+            guard.LastGrounded = nil
+            guard.LastInHull = nil
+            guard.UnsafeSince = nil
+            guard.InsideSolid = false
+            guard.FiltersReady = false
+
+            task.spawn(refreshBounds, guard.Token)
+            task.spawn(guard.buildHull, guard.Token)
+        end)
+
+        guard.Heartbeat = runService.Heartbeat:Connect(function(deltaTime)
+            guard.SolidElapsed = guard.SolidElapsed + deltaTime
+
+            local runSolid = guard.SolidElapsed >= config.SolidInterval
+
+            if runSolid then
+                guard.SolidElapsed = 0
+            end
+
+            local success, tickError = pcall(guardTick, runSolid)
+
+            if not success then
+                warn("[Out-of-Bounds Guard] " .. tostring(tickError))
+            end
+        end)
+    end
+
+    -- Apply a changed slider immediately: forget the pending timer and the "just rescued" shortening, so the very next check uses the new value.
+    options.outOfBoundsGuardGrace_Slider:OnChanged(function()
+        guard.UnsafeSince = nil
+        guard.LastRescue = -math.huge
+    end)
+
+    options.outOfBoundsGuardMargin_Slider:OnChanged(function()
+        guard.UnsafeSince = nil
+        guard.LastRescue = -math.huge
+
+        -- If the map hull was dropped because you were outside it at the old margin, try again with the new one.
+        if guard.Heartbeat and guard.HullRejected then
+            task.spawn(guard.buildHull, guard.Token)
+        end
+    end)
+
+    toggles.outOfBoundsGuard_Toggle:OnChanged(function(enabled)
+        if enabled then
+            startGuard()
+        else
+            stopGuard()
+        end
+    end)
+
+    -- Runs from unloadModules() after every toggle has been switched off; this is the safety net.
+    table.insert(teardownTasks, stopGuard)
+end
+
 -- [Player / Freecam] Controls and camera lifecycle
 
 othersGroup3:AddToggle("freecam_Toggle", { Text = "Freecam", Tooltip = false, Default = false })
@@ -1347,16 +2308,23 @@ localplayer.CharacterAdded:Connect(function(char)
     toggles.autoBacktrack_Toggle:SetDisabled(false)
 end)
 
-toggles.freecam_Toggle:OnChanged(function(enabled)
-    camLib.Freecam:updateSpeed(freecamSpeedSlider.Value)
-    camLib.Freecam:updatePanSpeed(freecamPanSpeedSlider.Value)
+do
+    -- Calling disable() then make the camera library restore a camera state it never saved (CameraType = nil), so only disable what was actually enabled.
+    local freecamActive = false
 
-    if enabled then
-        camLib.Freecam:enable()
-    else
-        camLib.Freecam:disable()
-    end
-end)
+    toggles.freecam_Toggle:OnChanged(function(enabled)
+        camLib.Freecam:updateSpeed(freecamSpeedSlider.Value)
+        camLib.Freecam:updatePanSpeed(freecamPanSpeedSlider.Value)
+
+        if enabled and not freecamActive then
+            freecamActive = true
+            camLib.Freecam:enable()
+        elseif not enabled and freecamActive then
+            freecamActive = false
+            camLib.Freecam:disable()
+        end
+    end)
+end
 
 options.freecamSpeedSlider:OnChanged(function(val)
     camLib.Freecam:updateSpeed(freecamSpeedSlider.Value)
@@ -1377,13 +2345,6 @@ local killersGroup = tabs.exploits:AddRightGroupbox("Killers")
 
 -- [Exploits / Pack-a-Punch] Single-weapon teleporter workflow
 local function singlePAP(weaponName)
-    local busy = teleporterInUse()
-
-    if busy then
-        notify("Error", "Teleport currently unavilable", "The teleporter is currently in use. Please try again in a minute.", 8)
-        return
-    end
-
     -- Validate selected weapon
 
     if not entityLib.getTool("Specific", weaponName) then
@@ -1403,39 +2364,40 @@ local function singlePAP(weaponName)
         return false
     end
 
-    local hrp = getHRP()
-
-    -- Teleport to control panel
+    -- Teleport to the control panel, activate the teleporter (with retries) and validate the punch room
 
     freeze(true)
-    entityLib.teleport(CFrame.new(110.864708, 313.499969, 72.9767151))
-    repeat task.wait(0.09) until entityLib.checkCFrame(hrp, CFrame.new(110.86470794677734, 313.4999694824219, 72.97671508789062), 5)
 
-    -- Fire teleport prompt
+    local teleported, teleportResult = utils.runPAPTeleport(weaponName)
 
-    utils.fireProxPrompt(area51.TeleporterRoom.Teleporter["Control Panels"].Middle.Teleport)
-    notify("Info", "Working..", "Teleporting in progress...\nPack a punching the " .. weaponName .. "...", 11)
+    if not teleported then
+        local failReason = teleportResult
 
-    -- Confirm teleport has started
+        -- On death the humanoid is replaced, so there is nothing to unfreeze
+        if failReason ~= "died" then
+            freeze(false)
+        end
 
-    local displayLabel = area51.TeleporterRoom.Teleporter["Control Panels"].Middle.Displayer.SurfaceGui.Frame.TextLabel
-    repeat task.wait() until string.find(displayLabel.Text, "Teleporting" )
-    notify("Info", "Working..", "Correct teleport.\nPack a punching the " .. weaponName .. "...", 12)
+        if failReason == "retries" then
+            notify("Error", "Teleporter unresponsive", "The teleporter did not respond after several attempts. Please try again.", 8)
+        elseif failReason == "busy" then
+            notify("Error", "Teleporter busy", "The teleporter stayed in use by another player. Please try again later.", 8)
+        elseif failReason == "arrival" then
+            notify("Error", "Teleport failed", "You did not reach the punch room. Please try again.", 8)
+        elseif failReason == "error" then
+            notify("Error", "Teleport failed", "Something went wrong while using the teleporter.", 6)
+        end
 
-    -- Teleport inside teleporter
-
-    local inside = area51.TeleporterRoom.Teleporter.Teleporter.Inside
-    inside.CanCollide = false
-    entityLib.teleport(CFrame.new(111.216148, 315.700012, 41.9078827))
-
-    local punchRoomCFrame = CFrame.new(109.300003, 335.499969, 62)
-    repeat task.wait() until entityLib.checkCFrame(hrp, punchRoomCFrame, 5)
-    notify("Info", "Working..", "Teleport finished.\nPack a punching the " .. weaponName .. "...", 9)
+        return false
+    end
 
     -- PAP weapon
 
     game:GetService("Workspace").PACKAPUNCH.PAPStarted:FireServer(weaponName)
     game:GetService("Workspace").PACKAPUNCH.PAPFinished:FireServer()
+
+    -- "Teleport finished" has done its job once the weapon is being pack a punched
+    utils.dismissNotify(teleportResult)
     notify("Success", "Success", weaponName .. " has been pack a punched!", 7)
 
     freeze(false)
@@ -1506,12 +2468,15 @@ exploitsGroup:AddButton({ Text = "Complete Area 51 Personnel",
 
         -- Pack A Punch a weapon
         repeat task.wait() until entityLib.getTool("Specific", "MP5k")
-        singlePAP("MP5k")
+        local punched = singlePAP("MP5k")
 
         local returnCFrame = CFrame.new(219.199997, 323.500061, 845.900024)
 
-        -- Wait until you're at the return cframe/in the gun room place BEFORE breaking
-        repeat task.wait() until entityLib.checkCFrame(hrp, returnCFrame, 5)
+        -- Wait until you're at the return cframe/in the gun room place BEFORE breaking (gives up after 30s)
+        if punched then
+            local waitStart = os.clock()
+            repeat task.wait() until entityLib.checkCFrame(getHRP() or hrp, returnCFrame, 5) or os.clock() - waitStart > 30
+        end
 
         entityLib.restoreData(hrp, "CFrame")
         entityLib.clearData(hrp, "CFrame")
@@ -1522,8 +2487,6 @@ aimbotDepbox:SetupDependencies({ { toggles.enableAimbot_Toggle, true } })
 silentAimDepbox:SetupDependencies({ { toggles.enableSilentAim_Toggle, true } })
 
 -- [Exploits / Silent Aim] Settings, target resolution, and weapon hooks
--- Ported from the provided standalone script and wired into ScriptHub's controls.
--- [Exploits / Silent Aim] Target filters and hook state
 local silentAimBlacklistedNames = {
     Jane = true,
     Giant = true,
@@ -1560,7 +2523,7 @@ local function isValidSilentAimTarget(model)
 end
 
 local function isSilentAimTargetVisible(targetPart, character)
-    -- Keep the supplied script's behavior: Wallbang bypasses the visibility check.
+    -- Wallbang bypasses the visibility check
     if not toggles.silentAimWallCheck_Toggle.Value or toggles.silentAimWallBang_Toggle.Value then
         return true
     end
@@ -1742,7 +2705,7 @@ local function scanSilentAimWeaponTables()
         return false
     end
 
-    -- Fast path: let the executor filter the heap natively instead of handing back ~570k objects to walk in Lua.
+    -- Let the executor filter the heap natively instead of handing back ~570k objects to search in Lua
     if type(filtergc) == "function" then
         local filtered, matches = pcall(filtergc, "table", { Keys = { "screen_to_target" } }, false)
 
@@ -1834,10 +2797,6 @@ do
 end
 
 -- [Exploits / Silent Aim] On-demand weapon table scanning
--- The weapon tables used to be re-scanned every 5 seconds for as long as the script was loaded, even with Silent Aim
--- switched off. Every scan walks the whole Lua heap (~570k objects) inside one frame, which is what caused a stutter
--- every few seconds from execution until unload. A scan now only runs when Silent Aim is enabled AND a new weapon
--- table can actually exist: when the toggle is switched on, when a tool is added / equipped, and after a respawn.
 local silentAimScanQueued = false
 local silentAimScanOwed = true
 local silentAimConnections = {}
@@ -1903,7 +2862,7 @@ toggles.enableSilentAim_Toggle:OnChanged(function(enabled)
     end
 end)
 
--- Safety net: Silent Aim is on but no weapon table has been hooked yet (e.g. the weapon scripts loaded late).
+-- Silent Aim is on but no weapon table has been hooked yet (e.g. the weapon scripts loaded late)
 task.spawn(function()
     while not library.Unloaded do
         task.wait(15)
@@ -2143,11 +3102,6 @@ local collectibles = {
 local autoCollectRunning = false
 
 -- [Exploits / Collection] Touch helper
--- utils.fireTouchEvent() sends touch-begin, yields a frame, then sends touch-end. A dropped ingredient is usually
--- collected (destroyed) by the server during that yield, so the touch-end hit a part that had already left the
--- physics world and threw "new overlap in different world". The collection below sends the begin/end pair itself,
--- re-checks both parts right before the touch-end (after the yield), and wraps every call in pcall so an ingredient
--- that vanishes mid-touch can never raise an error. It also yields once per sweep instead of once per ingredient.
 local autoCollectInFlight = setmetatable({}, { __mode = "k" })
 
 local function collectIngredients(hrp)
@@ -2212,49 +3166,673 @@ disableKillersDepbox:AddDivider()
 
 -- [Exploits / Killer Controls] Defensive toggles
 
-killersGroup:AddToggle("killerGodmode_Toggle", { Text = "Killer Godmode", Tooltip = "Makes you invincible to the killers by blocking killer interactions." })
+killersGroup:AddToggle("killerGodmode_Toggle", { Text = "Killer Godmode", Tooltip = "Makes you invincible to the killers by blocking killer interactions.." })
 
 local killerGodmodeDepbox = killersGroup:AddDependencyBox()
 killerGodmodeDepbox:AddToggle("antiPinhead_Toggle", { Text = "Anti Pinhead", Tooltip = "Disables (mostly) Pinhead's spikes that he expels upon death." })
-killerGodmodeDepbox:AddLabel("Most melee attacks and ranged attacks can be disabled while some killers can not be disabled due damage being serversided. These killers include: Alien, Fishface, Robot, Chucky, Eyeless Jack, etc.", true)
+killerGodmodeDepbox:AddLabel("Covers what your client reports or detects itself: touch hitboxes, Freddy's nightmare (snakes, bugs and the hole), Chucky's jump attack and Pinhead's spikes. Attacks the server checks on its own, like Alien's arm and Yeti's ice slam, can not be blocked from the client. Use Disable Aura against those.", true)
 killerGodmodeDepbox:AddDivider()
 
 killersGroup:AddToggle("antiSlendermanJumpscare_Toggle", { Text = "Anti Slenderman Jumpscare", Tooltip = false })
 
+-- [Exploits / Killer Controls] Slenderman teleport check
+do
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = Enum.RaycastFilterType.Include
+
+    utils.slendermanCanTeleportBehind = function(position, lookVector)
+        -- His checks only see the facility and its doors
+        local filter = {}
+
+        for _, name in ipairs({ "AREA51", "Doors" }) do
+            local instance = workspace:FindFirstChild(name)
+
+            if instance then
+                table.insert(filter, instance)
+            end
+        end
+
+        raycastParams.FilterDescendantsInstances = filter
+
+        local behind = position - lookVector * Vector3.new(1, 0, 1) * 15 + Vector3.new(0, 1.5, 0)
+
+        if workspace:Raycast(position, behind - position, raycastParams) then
+            return false
+        end
+
+        local floor = workspace:Raycast(behind, Vector3.new(0, -10, 0), raycastParams)
+
+        if not (floor and floor.Instance.CanCollide) then
+            return false
+        end
+
+        return workspace:Raycast(behind, Vector3.new(0, 2.5, 0), raycastParams) == nil
+    end
+end
+
+-- [Exploits / Killer Controls] Slenderman Safe Facing
+do
+    killersGroup:AddToggle("slendermanSafeFacing_Toggle", { Text = "Slenderman Safe Facing", Tooltip = "While Slenderman is near, keeps you facing a direction where he cannot teleport behind you (a wall or no floor behind you). Your character stops turning on its own while this holds a facing. Does nothing where no such direction exists." })
+
+    local safeFacingDepbox = killersGroup:AddDependencyBox()
+    safeFacingDepbox:AddSlider("slendermanSafeFacingDistance_Slider", { Text = "Minimum Distance", Tooltip = "Safe Facing only takes over your facing while Slenderman is closer to you than this. He starts targeting players from 200 studs away, so the maximum covers everything he can do. Lower it to keep control of your character until he gets close.", Default = 200, Min = 50, Max = 200, Suffix = " Studs", Rounding = 0 })
+    safeFacingDepbox:AddDivider()
+    safeFacingDepbox:SetupDependencies({ { toggles.slendermanSafeFacing_Toggle, true } })
+
+    -- The margin covers him closing in between two checks, it is added on top of the slider
+    local distanceMargin = 50
+
+    local facing = {
+        connection = nil,
+        humanoid = nil,     -- the humanoid whose AutoRotate was switched off by this feature
+        autoRotate = nil,   -- the AutoRotate value to give back
+        lastError = nil,
+    }
+
+    local function release()
+        local humanoid = facing.humanoid
+
+        if humanoid and humanoid.Parent and facing.autoRotate ~= nil then
+            humanoid.AutoRotate = facing.autoRotate
+        end
+
+        facing.humanoid = nil
+        facing.autoRotate = nil
+    end
+
+    local function hold(humanoid)
+        if facing.humanoid ~= humanoid then
+            release()
+            facing.humanoid = humanoid
+            facing.autoRotate = humanoid.AutoRotate
+        end
+
+        humanoid.AutoRotate = false
+    end
+
+    local function getSlendermanRoot()
+        local folder = workspace:FindFirstChild("Killers")
+        local model = folder and folder:FindFirstChild("Slenderman")
+        local root = model and model:FindFirstChild("HumanoidRootPart")
+
+        if model and root and isKillerAlive(model) then
+            return root
+        end
+
+        return nil
+    end
+
+    local function step()
+        local hrp = getHRP()
+        local humanoid = getHumanoid()
+        local slendermanRoot = getSlendermanRoot()
+
+        if not (hrp and humanoid and humanoid.Health > 0 and slendermanRoot and (slendermanRoot.Position - hrp.Position).Magnitude <= options.slendermanSafeFacingDistance_Slider.Value + distanceMargin) then
+            release()
+            return
+        end
+
+        local look = hrp.CFrame.LookVector
+        local currentLook = Vector3.new(look.X, 0, look.Z)
+
+        if currentLook.Magnitude < 0.001 then
+            return
+        end
+
+        currentLook = currentLook.Unit
+
+        -- Already facing a direction he cannot use: keep it
+        if not utils.slendermanCanTeleportBehind(hrp.Position, currentLook) then
+            hold(humanoid)
+            return
+        end
+
+        -- Otherwise turn to the blocked direction that is closest to where you are facing
+        local bestLook, bestAngle = nil, math.huge
+
+        for i = 0, 35 do
+            local angle = math.rad(i * 10)
+            local candidate = Vector3.new(math.sin(angle), 0, math.cos(angle))
+
+            if not utils.slendermanCanTeleportBehind(hrp.Position, candidate) then
+                local difference = math.acos(math.clamp(candidate:Dot(currentLook), -1, 1))
+
+                if difference < bestAngle then
+                    bestLook, bestAngle = candidate, difference
+                end
+            end
+        end
+
+        if not bestLook then
+            -- Open ground in every direction: there is nothing to turn to
+            release()
+            return
+        end
+
+        hold(humanoid)
+        hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + bestLook)
+        hrp.AssemblyAngularVelocity = Vector3.zero
+    end
+
+    local function stop()
+        if facing.connection then
+            facing.connection:Disconnect()
+            facing.connection = nil
+        end
+
+        release()
+    end
+
+    toggles.slendermanSafeFacing_Toggle:OnChanged(function(enabled)
+        stop()
+
+        if not enabled then
+            return
+        end
+
+        -- Every frame: the facing can be checked by the server at any moment, so the gap between corrections has to be as small as possible
+        facing.connection = runService.Heartbeat:Connect(function()
+            if library.Unloaded or not toggles.slendermanSafeFacing_Toggle.Value then
+                stop()
+                return
+            end
+
+            local ok, err = pcall(step)
+
+            if not ok and err ~= facing.lastError then
+                facing.lastError = err
+                warn("[Slenderman Safe Facing] " .. tostring(err))
+            end
+        end)
+    end)
+end
+
 killerGodmodeDepbox:SetupDependencies({ { toggles.killerGodmode_Toggle, true } })
 disableKillersDepbox:SetupDependencies({ { toggles.disableAllKillers_Toggle, true } })
+
+-- [Exploits / Killer Controls] Auto Safe Spot
+do
+    killersGroup:AddToggle("autoSafeSpot_Toggle", { Text = "Auto Safe Spot", Tooltip = "Teleports you to the nearest safe spot when your health is low and a killer is close, then returns you once your original position is safe again." })
+
+    local autoSafeSpotDepbox = killersGroup:AddDependencyBox()
+    autoSafeSpotDepbox:AddSlider("autoSafeSpotHealth_Slider", { Text = "Health Threshold", Tooltip = "You are teleported to a safe spot once your health is at or below this while a killer is within the safe radius.", Default = 60, Min = 30, Max = 100, Suffix = " HP", Rounding = 0 })
+    autoSafeSpotDepbox:AddSlider("autoSafeSpotRadius_Slider", { Text = "Safe Radius", Tooltip = "A killer has to be at least this far away for a safe spot (or your original position) to count as safe.", Default = 50, Min = 20, Max = 200, Suffix = " Studs", Rounding = 0 })
+    autoSafeSpotDepbox:AddToggle("autoSafeSpotSpectate_Toggle", { Text = "Spectate Killer", Tooltip = "While hiding, spectates the killer you are avoiding so you can see what it is doing." })
+    local settings = toggles.autoSafeSpotSpectate_Toggle:AddSettings({
+        Width = 220,
+    })
+
+    settings:AddSlider("AimbotFOV", {
+        Text = "FOV",
+        Default = 90,
+        Min = 10,
+        Max = 360,
+        Rounding = 0,
+    })
+
+    autoSafeSpotDepbox:AddToggle("autoSafeSpotSlenderman_Toggle", { Text = "Flee Slenderman", Tooltip = "Hides as soon as Slenderman is chasing you and within the minimum distance, no matter your health. He can teleport behind you from up to 200 studs away, so waiting for low health is too late." })
+
+    local slendermanDepbox = autoSafeSpotDepbox:AddDependencyBox()
+    slendermanDepbox:AddSlider("autoSafeSpotSlendermanDistance_Slider", { Text = "Minimum Distance", Tooltip = "Slenderman has to be at least this far from you for you to be safe: you flee once he is chasing you from closer than this, and only return once he is this far from your original position.", Default = 50, Min = 50, Max = 200, Suffix = " Studs", Rounding = 0 })
+    slendermanDepbox:SetupDependencies({ { toggles.autoSafeSpotSlenderman_Toggle, true } })
+
+    autoSafeSpotDepbox:AddDivider()
+    autoSafeSpotDepbox:SetupDependencies({ { toggles.autoSafeSpot_Toggle, true } })
+
+    -- Predefined spots where no killers spawn.
+    local safeSpots = {
+        { name = "Bedroom", position = Vector3.new(109.70925903320312, 335.4999694824219, 62.200706481933594) },
+        { name = "Surface", position = Vector3.new(326.0870666503906, 511.6999816894531, 392.97576904296875) },
+        { name = "Execution Room", position = Vector3.new(20.30820083618164, 313.50030517578125, 202.9387969970703) },
+        { name = "Isolation Vault", position = Vector3.new(301.66265869140625, 271.7003173828125, 143.39537048339844) },
+        { name = "Vent 1", position = Vector3.new(195.15359497070312, 343.4999694824219, 113.28348541259766) },
+        { name = "Vent 2", position = Vector3.new(204.2087860107422, 337.3002014160156, 290.872314453125) },
+        { name = "Bunker", position = Vector3.new(161.3929901123047, 239.70028686523438, 427.53143310546875) },
+        { name = "Cleaner Two", position = Vector3.new(180.0406494140625, 271.7001953125, 94.63085174560547) },
+        { name = "Vault", position = Vector3.new(27.61656951904297, 291.5000915527344, 240.07852172851562) },
+        { name = "Helpful Killers Room", position = Vector3.new(119.75243377685547, 325.4999694824219, 370.15093994140625) },
+    }
+
+    -- Extra distance Slenderman has to be from your original position before you return, so you do not flee, return and flee again
+    local slendermanReturnBuffer = 15
+
+    local state = {
+        loopId = 0,           -- bumped on every toggle change so an old loop can never keep running next to a new one
+        hiding = false,
+        character = nil,      -- the character the hide started on (a different one means you died or respawned)
+        origin = nil,         -- CFrame from before the first teleport, where you return to
+        spot = nil,           -- the safe spot you are currently at
+        spectateSubject = nil, -- what the camera was pointed at by this feature (so it only hands back what it took)
+        notification = nil,
+        shownKiller = nil,    -- what the notification currently shows, so it is only touched when something changed
+        shownText = nil,
+        lastUpdate = 0,
+        lastError = nil,
+        proofCache = {},      -- spot -> { proof, time }: whether Slenderman can teleport behind you at that spot at all
+    }
+
+    -- Living killers with the position of their root part
+    local function getAliveKillers()
+        local list = {}
+        local folder = workspace:FindFirstChild("Killers")
+
+        if not folder then
+            return list
+        end
+
+        for _, model in ipairs(folder:GetChildren()) do
+            if model:IsA("Model") and isKillerAlive(model) then
+                local root = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
+
+                if root then
+                    table.insert(list, { name = model.Name, position = root.Position, model = model })
+                end
+            end
+        end
+
+        return list
+    end
+
+    -- Closest killer to a position and how far away it is (nil and math.huge when no killer is alive)
+    local function getNearestKiller(position, killers)
+        local nearest, nearestDistance = nil, math.huge
+
+        for _, killer in ipairs(killers) do
+            local distance = (killer.position - position).Magnitude
+
+            if distance < nearestDistance then
+                nearest, nearestDistance = killer, distance
+            end
+        end
+
+        return nearest, nearestDistance
+    end
+
+    -- True when no direction at this spot lets Slenderman teleport behind you (checked on 36 facings, cached because spots do not move)
+    local function isTeleportProof(spot)
+        local canTeleport = utils.slendermanCanTeleportBehind
+
+        if not canTeleport then
+            return false
+        end
+
+        local now = os.clock()
+        local cached = state.proofCache[spot]
+
+        if cached and now - cached.time < 10 then
+            return cached.proof
+        end
+
+        local proof = true
+
+        for i = 0, 35 do
+            local angle = math.rad(i * 10)
+
+            if canTeleport(spot.position, Vector3.new(math.sin(angle), 0, math.cos(angle))) then
+                proof = false
+                break
+            end
+        end
+
+        state.proofCache[spot] = { proof = proof, time = now }
+
+        return proof
+    end
+
+    -- How far Slenderman has to be. spot is the safe spot in question, or nil for your own position; forReturn adds the return buffer.
+    local function getSlendermanRequired(radius, spot, forReturn)
+        if not toggles.autoSafeSpotSlenderman_Toggle.Value then
+            return radius
+        end
+
+        -- Walled in on every side he cannot teleport onto you, he has to walk, so the normal radius is enough
+        if spot and isTeleportProof(spot) then
+            return radius
+        end
+
+        local minimum = options.autoSafeSpotSlendermanDistance_Slider.Value + (forReturn and slendermanReturnBuffer or 0)
+
+        return math.max(radius, minimum)
+    end
+
+    -- How much room you have at a position: the smallest of (distance to a killer - distance that killer has to keep). Negative means unsafe.
+    -- Also returns the killer that limits it and the distance that killer has to keep.
+    local function getMargin(position, killers, radius, slendermanRequired)
+        local margin, limiting, limitingRequired = math.huge, nil, radius
+
+        for _, killer in ipairs(killers) do
+            local required = killer.name == "Slenderman" and slendermanRequired or radius
+            local killerMargin = (killer.position - position).Magnitude - required
+
+            if killerMargin < margin then
+                margin, limiting, limitingRequired = killerMargin, killer, required
+            end
+        end
+
+        return margin, limiting, limitingRequired
+    end
+
+    -- Returns spot, isSafe, margin. Prefers the safe spot nearest to you; when none is safe it falls back to the spot with the most room.
+    local function pickSafeSpot(fromPosition, killers, radius)
+        local bestSafe, bestSafeDistance = nil, math.huge
+        local bestFallback, bestFallbackMargin = nil, -math.huge
+
+        for _, spot in ipairs(safeSpots) do
+            local margin = getMargin(spot.position, killers, radius, getSlendermanRequired(radius, spot, false))
+
+            if margin >= 0 then
+                local distance = (spot.position - fromPosition).Magnitude
+
+                if distance < bestSafeDistance then
+                    bestSafe, bestSafeDistance = spot, distance
+                end
+            elseif margin > bestFallbackMargin then
+                bestFallback, bestFallbackMargin = spot, margin
+            end
+        end
+
+        if bestSafe then
+            return bestSafe, true, math.huge
+        end
+
+        return bestFallback, false, bestFallbackMargin
+    end
+
+    -- Slenderman chasing you from closer than the minimum distance (FollowingTorso is the root part of the player he is going after)
+    local function getChasingSlenderman(hrp, killers)
+        if not toggles.autoSafeSpotSlenderman_Toggle.Value then
+            return nil
+        end
+
+        local minimum = options.autoSafeSpotSlendermanDistance_Slider.Value
+
+        for _, killer in ipairs(killers) do
+            if killer.name == "Slenderman" then
+                local following = killer.model:FindFirstChild("FollowingTorso")
+                local distance = (killer.position - hrp.Position).Magnitude
+
+                if following and following.Value == hrp and distance <= minimum then
+                    return killer, distance
+                end
+            end
+        end
+
+        return nil
+    end
+
+    local function teleportTo(cframe)
+        local hrp = getHRP()
+
+        if not hrp then
+            return
+        end
+
+        entityLib.teleport(cframe)
+
+        -- Do not carry momentum from before the teleport into the new spot
+        hrp.AssemblyLinearVelocity = Vector3.zero
+        hrp.AssemblyAngularVelocity = Vector3.zero
+    end
+
+    -- Points the camera at a killer (an entry from getAliveKillers), or gives it back to your own character when passed nil.
+    -- It only returns the camera back if it is still on what this set, so a feature that took the camera since is not overridden.
+    local function setSpectating(killer)
+        local subject = killer and (killer.model:FindFirstChildOfClass("Humanoid") or killer.model:FindFirstChild("HumanoidRootPart"))
+
+        if subject then
+            if camera.CameraSubject ~= subject then
+                camera.CameraSubject = subject
+            end
+
+            state.spectateSubject = subject
+        elseif state.spectateSubject then
+            local humanoid = getHumanoid()
+
+            if humanoid and camera.CameraSubject == state.spectateSubject then
+                camera.CameraSubject = humanoid
+            end
+
+            state.spectateSubject = nil
+        end
+    end
+
+    local function buildDescription(spotName, spotIsSafe, killerName, killerDistance, required)
+        return string.format(
+            "Hiding at %s%s. Returning once %s is %d studs away from your original position (currently %d).",
+            spotName,
+            spotIsSafe and "" or " (no fully safe spot, this is the least dangerous)",
+            killerName,
+            math.floor(required),
+            math.floor(killerDistance)
+        )
+    end
+
+    local function updateNotification(killerName, killerDistance, required, spotIsSafe)
+        local notification = state.notification
+
+        -- Dismissing the notification by hand does not stop the hide, it just stops updating
+        if not notification or notification.Destroyed then
+            return
+        end
+
+        local now = os.clock()
+
+        if now - state.lastUpdate < 0.25 then
+            return
+        end
+
+        state.lastUpdate = now
+
+        if killerName ~= state.shownKiller then
+            notification:ChangeTitle("Avoiding " .. killerName)
+            state.shownKiller = killerName
+        end
+
+        local description = buildDescription(state.spot.name, spotIsSafe, killerName, killerDistance, required)
+
+        if description ~= state.shownText then
+            notification:ChangeDescription(description)
+            state.shownText = description
+        end
+    end
+
+    -- Ends the hide. returnToOrigin is false when you died, respawned or turned the feature off.
+    local function stopHiding(returnToOrigin)
+        setSpectating(nil)
+        utils.dismissNotify(state.notification)
+
+        if returnToOrigin and state.origin then
+            teleportTo(state.origin)
+        end
+
+        state.hiding = false
+        state.character = nil
+        state.origin = nil
+        state.spot = nil
+        state.notification = nil
+        state.shownKiller = nil
+        state.shownText = nil
+    end
+
+    local function beginHiding(hrp, killers, killer, killerDistance, radius)
+        local spot, isSafe, margin = pickSafeSpot(hrp.Position, killers, radius)
+
+        if not spot then
+            return
+        end
+
+        -- No fully safe spot and none that beats where you are standing: moving would not help
+        if not isSafe then
+            local currentMargin = getMargin(hrp.Position, killers, radius, getSlendermanRequired(radius, nil, false))
+
+            if margin <= currentMargin then
+                return
+            end
+        end
+
+        state.hiding = true
+        state.character = localplayer.Character
+        state.origin = hrp.CFrame
+        state.spot = spot
+
+        teleportTo(CFrame.new(spot.position))
+
+        local required = killer.name == "Slenderman" and getSlendermanRequired(radius, nil, true) or radius
+        local description = buildDescription(spot.name, isSafe, killer.name, killerDistance, required)
+
+        state.shownKiller = killer.name
+        state.shownText = description
+        state.lastUpdate = os.clock()
+        state.notification = notify("Info", "Avoiding " .. killer.name, description, 5, true)
+    end
+
+    local function step()
+        local character = localplayer.Character
+        local humanoid = getHumanoid()
+        local hrp = getHRP()
+
+        -- Died or respawned while hiding: the original position belongs to a character that no longer exists
+        if state.hiding and (character ~= state.character or not humanoid or not hrp or humanoid.Health <= 0) then
+            stopHiding(false)
+            return
+        end
+
+        if not humanoid or not hrp or humanoid.Health <= 0 then
+            return
+        end
+
+        local radius = options.autoSafeSpotRadius_Slider.Value
+        local killers = getAliveKillers()
+
+        if not state.hiding then
+            -- Slenderman teleports behind you from far away, so this does not wait for low health
+            local slenderman, slendermanDistance = getChasingSlenderman(hrp, killers)
+
+            if slenderman then
+                beginHiding(hrp, killers, slenderman, slendermanDistance, radius)
+
+                if state.hiding then
+                    return
+                end
+            end
+
+            if humanoid.Health > options.autoSafeSpotHealth_Slider.Value then
+                return
+            end
+
+            local nearest, distance = getNearestKiller(hrp.Position, killers)
+
+            if nearest and distance <= radius then
+                beginHiding(hrp, killers, nearest, distance, radius)
+            end
+
+            return
+        end
+
+        -- Hiding: first check whether the original position is clear again
+        local originMargin, avoided, avoidedRequired = getMargin(state.origin.Position, killers, radius, getSlendermanRequired(radius, nil, true))
+
+        if originMargin >= 0 then
+            stopHiding(true)
+            return
+        end
+
+        local avoidedDistance = (avoided.position - state.origin.Position).Magnitude
+
+        -- The spot itself can become unsafe as killers move, so move on to another one
+        local currentMargin = getMargin(hrp.Position, killers, radius, getSlendermanRequired(radius, state.spot, false))
+        local spotIsSafe = currentMargin >= 0
+
+        if not spotIsSafe then
+            local spot, isSafe, margin = pickSafeSpot(hrp.Position, killers, radius)
+
+            -- The margin keeps two equally bad spots from bouncing you back and forth
+            if spot and spot ~= state.spot and (isSafe or margin > currentMargin + 5) then
+                state.spot = spot
+                spotIsSafe = isSafe
+                teleportTo(CFrame.new(spot.position))
+            end
+        end
+
+        setSpectating(toggles.autoSafeSpotSpectate_Toggle.Value and avoided or nil)
+        updateNotification(avoided.name, avoidedDistance, avoidedRequired, spotIsSafe)
+    end
+
+    toggles.autoSafeSpot_Toggle:OnChanged(function(enabled)
+        state.loopId += 1
+        local loopId = state.loopId
+
+        if not enabled then
+            -- Turned off mid-hide: you stay where you are (going back could put you in front of the killer)
+            stopHiding(false)
+            return
+        end
+
+        task.spawn(function()
+            while toggles.autoSafeSpot_Toggle.Value and state.loopId == loopId and not library.Unloaded do
+                local ok, err = pcall(step)
+
+                if not ok and err ~= state.lastError then
+                    state.lastError = err
+                    warn("[Auto Safe Spot] " .. tostring(err))
+                end
+
+                task.wait(0.05)
+            end
+
+            if library.Unloaded then
+                stopHiding(false)
+            end
+        end)
+    end)
+end
 
 local affectedKillers = {}
 local proximityRange = options.disableKillersDistance_Slider.Value
 
+-- Gives a killer its movement back and stops tracking it
+local function releaseKiller(hum)
+    if affectedKillers[hum] == "Disable Movement" then
+        pcall(function()
+            entityLib.restoreData(hum, "WalkSpeed")
+            entityLib.restoreData(hum, "JumpPower")
+            entityLib.clearData(hum, "WalkSpeed")
+            entityLib.clearData(hum, "JumpPower")
+        end)
+    end
+
+    affectedKillers[hum] = nil
+end
+
 local function updateKiller(hum, model, method, inRange)
-    -- restore if leaving range
+    if hum.Health <= 0 then
+        if affectedKillers[hum] then
+            releaseKiller(hum)
+        end
+
+        return
+    end
+
+    -- Restore if leaving range
     if not inRange and affectedKillers[hum] == "Disable Movement" then
-        entityLib.restoreData(hum, "WalkSpeed")
-        entityLib.restoreData(hum, "JumpPower")
-        entityLib.clearData(hum, "WalkSpeed")
-        entityLib.clearData(hum, "JumpPower")
-        affectedKillers[hum] = nil
+        releaseKiller(hum)
         if toggles.disableAuraDebugNotifs_Toggle.Value then
             notify("Info", "Successful restore", "Restored " .. model.Name .. "'s movement.", 3)
         end
     end
 
-    -- skip if not in range
+    -- Skip if not in range
     if not inRange then return end
 
-    -- skip if method already applied
+    -- Skip if method already applied
     if affectedKillers[hum] == method then return end
 
-    -- restore previous movement if switching methods
+    -- Restore previous movement if switching methods
     if affectedKillers[hum] == "Disable Movement" then
-        entityLib.restoreData(hum, "WalkSpeed")
-        entityLib.restoreData(hum, "JumpPower")
-        entityLib.clearData(hum, "WalkSpeed")
-        entityLib.clearData(hum, "JumpPower")
+        releaseKiller(hum)
     end
 
-    -- apply new method
+    -- Apply new method
     if method == "Kill" then
         hum.Health = 0
         if toggles.disableAuraDebugNotifs_Toggle.Value then
@@ -2295,6 +3873,13 @@ toggles.disableAllKillers_Toggle:OnChanged(function(enabled)
                 local method = tostring(options.disableAuraMethod_Dropdown.Value)
                 local range = proximityRange or 30
 
+                -- Forget killers that are gone (removed corpses, destroyed humanoids)
+                for trackedHum in pairs(affectedKillers) do
+                    if not trackedHum:IsDescendantOf(killersFolder) then
+                        releaseKiller(trackedHum)
+                    end
+                end
+
                 for _, model in ipairs(killersFolder:GetChildren()) do
                     if not model:IsA("Model") then
                         continue
@@ -2312,7 +3897,7 @@ toggles.disableAllKillers_Toggle:OnChanged(function(enabled)
             end
         end)
     else
-        -- restore movement for all affected killers when toggled off
+        -- Restore movement for all affected killers when toggled off
         for hum, method in pairs(affectedKillers) do
             if hum and method == "Disable Movement" then
                 entityLib.restoreData(hum, "WalkSpeed")
@@ -2329,24 +3914,148 @@ options.disableKillersDistance_Slider:OnChanged(function(val)
     proximityRange = val
 end)
 
-toggles.killerGodmode_Toggle:OnChanged(function(enabled)
-    if enabled then
+-- [Exploits / Killer Controls] Killer Godmode
+do
+    -- Remotes fired from your client that report damage, and when a call counts as a hit
+    local blockedReports = {
+        DreamDamage = function()
+            return true
+        end,
+        TargetAttack = function(target)
+            -- Called with no target when the jump simply ends, which the server still needs to hear about
+            return target ~= nil
+        end,
+    }
+
+    local godmode = {
+        active = false,
+        hookInstalled = false,
+        warned = false,
+        loopId = 0,
+        connections = {},
+    }
+
+    local function shouldBlock(remote, ...)
+        if typeof(remote) ~= "Instance" or remote.ClassName ~= "RemoteEvent" then
+            return false
+        end
+
+        local rule = blockedReports[remote.Name]
+
+        if not rule then
+            return false
+        end
+
+        -- Only remotes of killers that are not you: when you play a killer these are your own attacks
+        local killer = remote.Parent
+
+        if not killer or killer.Parent ~= killersFolder or killer == localplayer.Character then
+            return false
+        end
+
+        return rule(...)
+    end
+
+    -- One permanent __namecall hook, inert whenever Killer Godmode is off or the script is unloaded
+    local function installReportBlocker()
+        if godmode.hookInstalled then
+            return true
+        end
+
+        if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" then
+            return false
+        end
+
+        local wrap = type(newcclosure) == "function" and newcclosure or function(callback)
+            return callback
+        end
+
+        local original
+        original = hookmetamethod(game, "__namecall", wrap(function(self, ...)
+            if godmode.active and not library.Unloaded and getnamecallmethod() == "FireServer" then
+                local ok, blocked = pcall(shouldBlock, self, ...)
+
+                if ok and blocked then
+                    return nil
+                end
+            end
+
+            return original(self, ...)
+        end))
+
+        godmode.hookInstalled = true
+
+        return true
+    end
+
+    local function isOwnCharacter(instance)
+        local character = localplayer.Character
+
+        return character ~= nil and instance:IsDescendantOf(character)
+    end
+
+    local function stripKillerHitbox(instance)
+        if instance:IsA("TouchTransmitter") and not isOwnCharacter(instance) then
+            pcall(instance.Destroy, instance)
+        end
+    end
+
+    local function disconnectAll()
+        for _, connection in ipairs(godmode.connections) do
+            connection:Disconnect()
+        end
+
+        table.clear(godmode.connections)
+    end
+
+    toggles.killerGodmode_Toggle:OnChanged(function(enabled)
+        godmode.active = enabled
+        godmode.loopId += 1
+        disconnectAll()
+
+        if not enabled then
+            return
+        end
+
+        local blockerReady = installReportBlocker()
+
+        if not blockerReady and not godmode.warned then
+            godmode.warned = true
+            notify("Error", "Killer Godmode", "This executor can not hook __namecall, so damage reports can not be blocked. Only hitboxes are removed.", 6)
+        end
+
+        -- Hitboxes: removed the moment they appear instead of waiting for the next sweep
+        table.insert(godmode.connections, killersFolder.DescendantAdded:Connect(stripKillerHitbox))
+
+        -- Freddy's nightmare hazards only ever exist on the client. The hole pulls your character with a LineForce, so it goes as well
+        table.insert(godmode.connections, workspace.ChildAdded:Connect(function(child)
+            if child.Name == "HolePart" or child.Name == "FreddyNightmare" then
+                task.defer(pcall, child.Destroy, child)
+            end
+        end))
+
+        local loopId = godmode.loopId
+
         task.spawn(function()
-            while toggles.killerGodmode_Toggle.Value do
-                for _, model in pairs(killersFolder:GetChildren()) do
-                    if model:IsA("Model") then
+            while godmode.loopId == loopId and toggles.killerGodmode_Toggle.Value and not library.Unloaded do
+                for _, model in ipairs(killersFolder:GetChildren()) do
+                    if model:IsA("Model") and model ~= localplayer.Character then
                         for _, descendant in ipairs(model:GetDescendants()) do
-                            if descendant:IsA("TouchTransmitter") then
-                                descendant:Destroy()
+                            stripKillerHitbox(descendant)
+
+                            -- Without the hook the best that can be done is to take away the remote the damage goes through
+                            if not blockerReady and descendant.Name == "DreamDamage" and descendant:IsA("RemoteEvent") then
+                                pcall(descendant.Destroy, descendant)
                             end
                         end
                     end
                 end
+
                 task.wait(0.5)
             end
         end)
-    end
-end)
+    end)
+end
 
 local pinheadConnection
 toggles.antiPinhead_Toggle:OnChanged(function(enabled)
@@ -2485,12 +4194,12 @@ toggles.removeFog_Toggle:OnChanged(function(enabled)
     end
 end)
 
-local excludedKillers = { Giant = true, Jane = true, Tinsel = true, Chipper = true, Yeti = true, Keeps = true, Destroido = true }
+local excludedKillers = { Giant = true, Jane = true }
 
 local defaultTextSize = 15
 
 -- [Visuals / Killer ESP] Drawing library rendering
--- Each killer gets an unfilled 2D box or a 3D wireframe box, an optional health bar and an optional name tag.
+-- Each killer gets an unfilled 2D box or a 3D wireframe box with an optional health bar and an optional name tag.
 do
     local killerESPToggle = toggles.killerESP_Toggle
     local killerESPRangeSlider = options.killerESPDistance_Slider
@@ -2520,10 +4229,7 @@ do
         { 1, 5 }, { 2, 6 }, { 3, 7 }, { 4, 8 }, -- along X
     }
 
-    -- A killer's box is measured ONCE from its humanoid body parts and then never changes. Extra moving parts
-    -- (Slenderman's tentacles, tails, capes, held items, ...) are ignored, which is what used to make the box resize
-    -- every frame when it was built from Model:GetBoundingBox(). Arms are skipped because they swing around; legs
-    -- only contribute their height. Works for R15 and R6 rigs.
+    -- A killer's box is measured ONCE from its humanoid body parts and then never changes. Extra moving parts are ignored.
     local boxCoreParts = { HumanoidRootPart = true, Head = true, UpperTorso = true, LowerTorso = true, Torso = true }
     local boxLegParts = {
         LeftUpperLeg = true, LeftLowerLeg = true, LeftFoot = true,
@@ -2532,7 +4238,7 @@ do
     }
 
     -- boxCache[killer] = { size = Vector3, offset = Vector3 }. size is the fixed box size, offset is the box center
-    -- relative to the killer's HumanoidRootPart (so the box moves and turns with the killer without ever resizing).
+    -- relative to the killer's HumanoidRootPart.
     local boxCache: { [Instance]: any } = setmetatable({}, { __mode = "k" })
 
     local function destroyDrawing(drawing: any)
@@ -3055,7 +4761,7 @@ toggles.removeBearTraps_Toggle:OnChanged(function(enabled)
 end)
 
 toggles.disableRadioactiveZone_Toggle:OnChanged(function(enabled)
-    -- disable damage
+    -- Disable damage
 
     for _, obj in ipairs(area51.RadioactiveArea:GetChildren()) do
         if obj.Name == "Entrance" and obj:IsA("BasePart") then
@@ -3063,7 +4769,7 @@ toggles.disableRadioactiveZone_Toggle:OnChanged(function(enabled)
         end
     end
 
-    -- disable color change
+    -- Disable color change
 
     if enabled then
         local script = area51.RadioactiveArea.RadioactiveDrop.Drops:FindFirstChild("Color change")
@@ -3278,13 +4984,6 @@ for _, weapon in ipairs(game:GetService("Workspace").Weapons:GetChildren()) do
     table.insert(weaponNames, weapon.Name)
 end
 
-local extraWeapons = { "Crossbow", "MG42", "FreezeGun" }
-for _, name in ipairs(extraWeapons) do
-    if not table.find(weaponNames, name) then
-        table.insert(weaponNames, name)
-    end
-end
-
 weaponsGroup:AddDropdown("weaponsList_Dropdown", { Text = "Obtain Weapon(s)", Tooltip = false, Values = weaponNames, Default = nil, Multi = true, Searchable = true,
     Callback = function(val)
         local selectedNames = {}
@@ -3417,40 +5116,47 @@ local function pap(weaponName, selectedWeapons, currentIndex)
         return false
     end
 
-    local hrp = getHRP()
-
-    -- Teleport to control panel
+    -- Teleport to the control panel, activate the teleporter (with retries) and validate the punch room (bedroom)
 
     freeze(true)
-    entityLib.teleport(CFrame.new(110.864708, 313.499969, 72.9767151))
-    repeat task.wait(0.09) until entityLib.checkCFrame(hrp, CFrame.new(110.86470794677734, 313.4999694824219, 72.97671508789062), 5)
 
-    -- Fire teleport prompt
+    local teleported, teleportResult = utils.runPAPTeleport(weaponName, function() return cancelPAPQueue end)
 
-    utils.fireProxPrompt(area51.TeleporterRoom.Teleporter["Control Panels"].Middle.Teleport)
-    notify("Info", "Working..", "Teleporting in progress...\nPack a punching the " .. weaponName .. "...", 11)
+    if not teleported then
+        local failReason = teleportResult
 
-    -- Confirm teleport has started
+        -- On death the humanoid is replaced, so there is nothing to unfreeze
+        if failReason ~= "died" then
+            freeze(false)
+        end
 
-    local displayLabel = area51.TeleporterRoom.Teleporter["Control Panels"].Middle.Displayer.SurfaceGui.Frame.TextLabel
-    repeat task.wait() until string.find(displayLabel.Text, "Teleporting" )
-    notify("Info", "Working..", "Correct teleport.\nPack a punching the " .. weaponName .. "...", 12)
+        if failReason == "retries" then
+            notify("Error", "Teleporter unresponsive", "The teleporter did not respond after several attempts. Please try again.", 8)
+        elseif failReason == "busy" then
+            notify("Error", "Teleporter busy", "The teleporter stayed in use by another player. Please try again later.", 8)
+        elseif failReason == "arrival" then
+            notify("Error", "Teleport failed", "You did not reach the punch room. Please try again.", 8)
+        elseif failReason == "error" then
+            notify("Error", "Teleport failed", "Something went wrong while using the teleporter.", 6)
+        end
 
-    -- Teleport inside teleporter
-
-    local inside = area51.TeleporterRoom.Teleporter.Teleporter.Inside
-    inside.CanCollide = false
-    entityLib.teleport(CFrame.new(111.216148, 315.700012, 41.9078827))
-
-    local punchRoomCFrame = CFrame.new(109.300003, 335.499969, 62)
-    repeat task.wait() until entityLib.checkCFrame(hrp, punchRoomCFrame, 5)
-    notify("Info", "Working..", "Teleport finished.\nPack a punching the " .. weaponName .. "...", 9)
+        return false
+    end
 
     -- PAP weapon
 
     game:GetService("Workspace").PACKAPUNCH.PAPStarted:FireServer(weaponName)
     game:GetService("Workspace").PACKAPUNCH.PAPFinished:FireServer()
-    notify("Success", "Success", weaponName .. " has been pack a punched!", 7)
+
+    -- "Teleport finished" has done its job once the weapon is being pack a punched
+    utils.dismissNotify(teleportResult)
+
+    -- The last weapon of a multi-weapon queue is announced by the queue-finished notification instead
+    local isLastInQueue = selectedWeapons ~= nil and currentIndex ~= nil and #selectedWeapons > 1 and currentIndex == #selectedWeapons
+
+    if not isLastInQueue then
+        notify("Success", "Success", weaponName .. " has been pack a punched!", 7)
+    end
 
     -- Notify remaining queue
 
@@ -3461,7 +5167,10 @@ local function pap(weaponName, selectedWeapons, currentIndex)
         end
 
         if #remaining > 0 then
-            notify("Info", "Queue updated", "Remaining in queue (" .. #remaining .. "): " .. table.concat(remaining, ", "), 26)
+            -- Stays up until the next queue update replaces it (or the queue is empty/cleared)
+            utils.setPAPQueueNote("Queue updated", "Remaining in queue (" .. #remaining .. "): " .. table.concat(remaining, ", "))
+        else
+            utils.clearPAPQueueNote()
         end
     end
 
@@ -3484,6 +5193,7 @@ papWeaponBtn = weaponsGroup:AddButton({ Text = "PAP Weapon",
         local died = false
         local deathConnection = humanoid.Died:Connect(function()
             died = true
+            utils.clearPAPQueueNote()
             notify("Error", "Process interrupted", "You died during Pack-a-Punch. Process stopped.", 7)
             papWeaponBtn:SetDisabled(false)
             papHeldBtn:SetDisabled(false)
@@ -3508,6 +5218,7 @@ papWeaponBtn = weaponsGroup:AddButton({ Text = "PAP Weapon",
             end
 
             local anyPunched = false
+            local punchedCount = 0
 
             for index, weaponName in ipairs(selectedWeapons) do
                 if died or cancelPAPQueue then break end
@@ -3522,6 +5233,8 @@ papWeaponBtn = weaponsGroup:AddButton({ Text = "PAP Weapon",
                     if kills < requiredKills then
                         notify("Error", "Insufficient kills", "Not enough kills to pack a punch " .. weaponName .. ". Need " .. (requiredKills - kills) .. " more kills.", 6)
                     else
+                        local waitNote = nil
+
                         repeat
                             if died or cancelPAPQueue then break end
 
@@ -3535,40 +5248,49 @@ papWeaponBtn = weaponsGroup:AddButton({ Text = "PAP Weapon",
                                     table.insert(pending, selectedWeapons[i])
                                 end
 
-                                notify("Info", "Waiting..", "Teleporter in use. Waiting to pack a punch: " .. table.concat(pending, ", "), 4)
+                                waitNote = utils.papNotify("Info", "Waiting..", "Teleporter in use. Waiting to pack a punch: " .. table.concat(pending, ", "))
 
                             elseif not busy and wasTeleporterBusy then
                                 wasTeleporterBusy = false
+                                utils.dismissNotify(waitNote)
+                                waitNote = nil
                                 notify("Info", "Teleporter available", "Teleporter is now available.", 3)
                             end
 
                             task.wait(0.2)
                         until not teleporterInUse() or died or cancelPAPQueue
 
+                        -- Covers leaving the wait through a cancel or death
+                        utils.dismissNotify(waitNote)
+
                         if cancelPAPQueue then
-                            notify("Info", "Queue canceled", "Pack-a-Punch queue canceled. Waiting to return...", 5)
+                            local cancelNote = utils.papNotify("Info", "Queue canceled", "Pack-a-Punch queue canceled. Waiting to return...")
 
                             local returnCFrame = CFrame.new(219.199997, 323.500061, 845.900024)
 
-                            -- 🔥 wait until you're at the return cframe/in the gun room place BEFORE breaking
+                            -- Wait until you're at the return cframe/in the gun room place BEFORE stopping
                             repeat
                                 task.wait()
                                 local currentHRP = getHRP()
                             until (currentHRP and entityLib.checkCFrame(currentHRP, returnCFrame, 5)) or died
 
+                            utils.dismissNotify(cancelNote)
                             break
                         end
 
                         local success = pap(weaponName, selectedWeapons, index)
                         if success then
                             anyPunched = true
+                            punchedCount += 1
                         else
-                            notify("Error", "Failed", "Failed to pack a punch " .. weaponName, 5)
+                            if not (cancelPAPQueue or died) then
+                                notify("Error", "Failed", "Failed to pack a punch " .. weaponName, 5)
+                            end
                             break
                         end
 
                         local returnCFrame = CFrame.new(219.199997, 323.500061, 845.900024)
-                        -- wait until ACTUAL current HRP reaches return position
+                        -- Wait until current HRP reaches return position
                         repeat
                             task.wait()
                             local currentHRP = getHRP()
@@ -3578,17 +5300,25 @@ papWeaponBtn = weaponsGroup:AddButton({ Text = "PAP Weapon",
                 end
             end
 
-            -- after ALL weapons processed
+            -- After ALL weapons have been processed
+            utils.clearPAPQueueNote()
+
             if not died then
                 local currentHRP = getHRP()
                 if currentHRP and origCFrame then
-                    currentHRP.CFrame = origCFrame
+                    entityLib.teleport(origCFrame)
                 end
             end
 
             if not died then
                 if anyPunched then
-                    notify("Success", "Successful pack-a-punch", "All selected weapons have been pack a punched!", 6)
+                    if #selectedWeapons > 1 then
+                        if punchedCount == #selectedWeapons then
+                            notify("Success", "Queue finished", "All weapons have been pack a punched!", 7)
+                        else
+                            notify("Success", "Queue finished", punchedCount .. " of " .. #selectedWeapons .. " weapons have been pack a punched.", 7)
+                        end
+                    end
                     if toggles.clearOnAction_Toggle.Value then
                         options.weaponsList_Dropdown:SetValue({})
                     end
@@ -3628,6 +5358,7 @@ papHeldBtn = papWeaponBtn:AddButton({ Text = "PAP Held Weapon",
         local died = false
         local deathConnection = humanoid.Died:Connect(function()
             died = true
+            utils.clearPAPQueueNote()
             notify("Error", "Process canceled", "You died during the pack-a-punch process and it has been stopped.", 7)
             papWeaponBtn:SetDisabled(false)
             papHeldBtn:SetDisabled(false)
@@ -3640,7 +5371,7 @@ papHeldBtn = papWeaponBtn:AddButton({ Text = "PAP Held Weapon",
             if success and not died then
                 local returnCFrame = CFrame.new(219.199997, 323.500061, 845.900024)
 
-                -- wait for REAL current HRP to reach return position
+                -- Wait for current HRP to reach return position
                 repeat
                     task.wait()
                     local currentHRP = getHRP()
@@ -3650,7 +5381,7 @@ papHeldBtn = papWeaponBtn:AddButton({ Text = "PAP Held Weapon",
                 if not died then
                     local currentHRP = getHRP()
                     if currentHRP and origCFrame then
-                        currentHRP.CFrame = origCFrame
+                        entityLib.teleport(origCFrame)
                     end
 
                     notify("Success", "Success", heldWeapon .. " has been pack a punched!", 6)
@@ -3695,6 +5426,7 @@ weaponsGroup:AddButton({ Text = "Clear Selection",
 weaponsGroup:AddButton({ Text = "Clear Queue", Tooltip = "Stops and clears the Pack a Punch queue.",
     Func = function()
         cancelPAPQueue = true
+        utils.clearPAPQueueNote()
 
         notify("Success", "Cleared queue", "Pack a Punch queue has been cleared and canceled.", 5)
     end,
@@ -3737,12 +5469,8 @@ defenseGroup:AddToggle("obtainHelmet_Toggle", { Text = "Obtain Helmet", Tooltip 
 
 zombieMorphDepbox:SetupDependencies({ { toggles.zombieMorph_Toggle, true } })
 
--- Scoped in a do-block: the main chunk is close to Luau's 200 local variable limit,
--- so these helpers must not stay alive as top-level locals.
 do
-    -- Zombie morph appearance: the morph hides your normal R15 body and shows green zombie parts on top of it
-    -- (the zombie head also carries the red eyes decal). These helpers swap which of the two sets is visible.
-    -- Visual only, the morph itself stays worn.
+    -- Zombie morph appearance
     local zombieSkinModels = { "Chest", "LeftArm", "RightArm", "LeftLeg", "RightLeg" }
     local normalBodyLookup = {}
     for _, name in ipairs({
@@ -3846,6 +5574,9 @@ do
             if hrp then
                 utils.fireTouchEvent(hrp, area51.Outside.Hangar.Right["Zombie Morph"].TheButton)
                 refreshMorphAppearance(localplayer.Character)
+
+                -- The morph can't be taken off, so lock the toggle until the next respawn
+                toggles.zombieMorph_Toggle:SetDisabled(true)
             else
                 notify("Error", "Unavailable root", "Could not find HumanoidRootPart.", 10)
                 toggles.zombieMorph_Toggle:SetValue(false)
@@ -3854,7 +5585,12 @@ do
     end)
 
     toggles.disableSelfGlow_Toggle:OnChanged(function(enabled)
-        local glow = localplayer.Character.Chest.Torso:FindFirstChildOfClass("PointLight")
+        -- OnChanged fires once at load, and Chest only exists while the zombie morph is worn,
+        -- so every step of the lookup has to handle a missing instance.
+        local char = localplayer.Character
+        local chest = char and char:FindFirstChild("Chest")
+        local torso = chest and chest:FindFirstChild("Torso")
+        local glow = torso and torso:FindFirstChildOfClass("PointLight")
 
         if glow then
             glow.Enabled = not enabled
@@ -3865,6 +5601,9 @@ do
         if enabled then
             local hrp = getHRP()
             utils.fireTouchEvent(hrp, area51.Amory2Room.Armory.Giver)
+
+            -- The armor can't be taken off, so lock the toggle until the next respawn
+            toggles.obtainArmor_Toggle:SetDisabled(true)
         end
     end)
 
@@ -3873,18 +5612,49 @@ do
 
             local hrp = getHRP()
             utils.fireTouchEvent(hrp, area51.ComputersRoom.Helmet)
+
+            -- The helmet can't be taken off, so lock the toggle until the next respawn
+            toggles.obtainHelmet_Toggle:SetDisabled(true)
         end
     end)
 
+    -- The morph, armor and helmet are gone once you die, so the toggles unlock for the respawn screen.
+    local function unlockWornToggles()
+        toggles.zombieMorph_Toggle:SetDisabled(false)
+        toggles.obtainArmor_Toggle:SetDisabled(false)
+
+        -- The helmet toggle is only usable in Extreme mode, so don't unlock it in other modes
+        if getMode() == "Extreme" then
+            toggles.obtainHelmet_Toggle:SetDisabled(false)
+        end
+    end
+
+    local function watchDeath(char)
+        task.spawn(function()
+            local humanoid = char:WaitForChild("Humanoid", 10)
+            if humanoid then
+                humanoid.Died:Connect(unlockWornToggles)
+            end
+        end)
+    end
+
+    if localplayer.Character then
+        watchDeath(localplayer.Character)
+    end
+
     localplayer.CharacterAdded:Connect(function(char)
-        local hrp = getHRP()
+        watchDeath(char)
+        unlockWornToggles()
+
         task.wait(0.5)
+        local hrp = getHRP()
 
         if toggles.zombieMorph_Toggle.Value then
             local disableSelfGlowEnabled = toggles.disableSelfGlow_Toggle.Value
 
             utils.fireTouchEvent(hrp, area51.Outside.Hangar.Right["Zombie Morph"].TheButton)
             refreshMorphAppearance(char)
+            toggles.zombieMorph_Toggle:SetDisabled(true)
 
             if disableSelfGlowEnabled then
                 local chest
@@ -3911,10 +5681,12 @@ do
 
         if toggles.obtainArmor_Toggle.Value then
             utils.fireTouchEvent(hrp, area51.Amory2Room.Armory.Giver)
+            toggles.obtainArmor_Toggle:SetDisabled(true)
         end
 
         if toggles.obtainHelmet_Toggle.Value then
             utils.fireTouchEvent(hrp, area51.ComputersRoom.Helmet)
+            toggles.obtainHelmet_Toggle:SetDisabled(true)
         end
     end)
 end
@@ -3970,28 +5742,9 @@ toggles.autoReloadWeapons_Toggle:OnChanged(function(enabled)
 end)
 
 -- [Weapons / Gun Mods] Non-destructive weapon modifiers
---
--- How this works (and why it is built this way):
---   * Only live weapon objects are modified: tables that hold a Tool in `.instance`. The game keeps each weapon's stat
---     template (`get_stats`) as a constant table that ALSO has an `ammo` key. Overwriting those templates destroys the
---     source values permanently, and every weapon built afterwards copies them (max_ammo / max_stored become math.huge).
---     Templates and class tables are never touched.
---   * Before a field is overwritten, its raw value is saved per weapon (nil when the weapon inherits it from its class).
---     Turning a mod off writes that value back, so inherited fields go back to being inherited.
---   * Every mod is described by the fields it wants (getDesiredGunMods) and a single reconcile pass applies or undoes
---     them. Fields shared by several mods (is_auto: Fully Automatic + Rapid Fire) stay overridden until all are off.
---   * max_ammo / max_stored (the real capacities used by reload and the ammo box) are never written.
---   * Disable Sniper Bolt (bolt_fire), No Recoil (move_camera: recoil_camera() routes every shot through it, and it is used for
---     nothing else), No Spread (inaccuracy) and Fast Reload (reload_wait: play_animation() yields on it between reload/bolt
---     frames) are plain per-weapon field overrides handled by the same snapshot/reconcile pass. Perks such as Deadshot Daiquiri and
---     Speed Cola write move_camera / reload_wait themselves; the "only undo what is still ours" rule keeps the two from fighting.
---   * Flamethrower heat is NOT a stat field: it is runtime state that the weapon increments on every fire tick, so a one-off
---     write cannot hold it down. "No Overheat" instead wraps two methods on the live Flamethrower object only
---     (update_ammo_gui, called right after every heat increment, and stop_fire) and puts the raw values back when switched off.
-
 local GUN_MOD_FIELDS = { "ammo", "stored_ammo", "is_auto", "shoot_wait", "bullet_count", "inaccuracy", "bolt_fire", "move_camera", "reload_wait" }
 
--- Replacement methods. They are created once so their identity is stable for the "is this still ours?" comparison.
+-- Replacement methods: They are created once so their identity is stable for the "is this still ours?" comparison.
 local GUN_MOD_FAST_RELOAD_SCALE = 0.1 -- reload/bolt animation waits are multiplied by this (lower = faster)
 
 local function gunModNoRecoilMoveCamera()
@@ -4072,7 +5825,7 @@ local function getDesiredGunMods(): { [string]: any }
         desired.reload_wait = gunModFastReloadWait
     end
 
-    -- 1 is the slider's neutral position, so it leaves weapons untouched (some natively fire more than one bullet).
+    -- 1 is the slider's neutral position, so it leaves weapons untouched.
     local bulletCount = options.bulletCountGunMod_Slider.Value
     if type(bulletCount) == "number" and bulletCount > 1 then
         desired.bullet_count = bulletCount
@@ -4110,9 +5863,6 @@ local function restoreGunModField(weapon: any, field: string, original: any): bo
 end
 
 -- [Weapons / Gun Mods] Flamethrower: No Overheat
---   The Flamethrower only fires while `heat < max_heat`. Every tick does `heat += 1; update_ammo_gui()`, hitting max_heat locks it
---   out (with a 5 second cooldown before heat drains), and stop_fire() stamps `flaming_stop_moment` which button1down() uses to
---   ignore presses for 1 second. Keeping heat at 0 and clearing that stamp removes both delays.
 local gunModHeatHooks = setmetatable({}, { __mode = "k" }) -- weapon -> { RawUpdate, RawStop, HookedUpdate, HookedStop }
 
 local function isNoOverheatDesired()
@@ -4300,7 +6050,7 @@ local gunModCharacterConnection = localplayer.CharacterAdded:Connect(function()
     task.defer(setupBackpackListener)
 end)
 
--- Runs from unloadModules() after every toggle has been switched off; the final reconcile is a safety net.
+-- Runs from unloadModules() after every toggle has been switched off; the final reconcile is for safety.
 table.insert(teardownTasks, function()
     gunModsUnloaded = true
 
@@ -4318,8 +6068,6 @@ end)
 -- [Weapons / Skin Changer] Client-side weapon skins
 -- ============================================================================
 -- Recolors weapons locally through the game's own Utilities:apply_skin, using the skins from Constants.Skins.SKINS.
--- Only you see the result and nothing is sent to the server (the skin remotes are never fired from here).
--- Each tool's original AppliedSkin attribute is stored before it is touched, so "Reset Skins" restores the real look.
 
 task.spawn(function()
     local skinGroup = tabs.weapons:AddLeftGroupbox("Skin Changer")
@@ -4490,7 +6238,7 @@ task.spawn(function()
             return
         end
 
-        -- Forget weapons the game has destroyed (it rebuilds tools on respawn) so records don't pile up.
+        -- Forget weapons the game has destroyed so records don't pile up.
         for tool in pairs(touched) do
             if not tool.Parent then
                 touched[tool] = nil
@@ -4573,7 +6321,7 @@ task.spawn(function()
         hookSources()
         reapplyAll()
 
-        -- Safety net for anything the events miss; only re-applies when the look has actually changed.
+        -- Safety for anything the events miss; only re-applies when the look has actually changed.
         local token = autoToken
         task.spawn(function()
             while state.auto and not unloaded and token == autoToken do
@@ -4671,8 +6419,6 @@ task.spawn(function()
             end
         end,
     })
-
-    skinGroup:AddLabel("Client-side only: other players still see the skin you actually have equipped.", true)
 
     -- Pick up whatever the dropdowns / toggles loaded with (saved configs may set them before the callbacks run).
     state.skin = options.skinChangerSkin_Dropdown.Value
@@ -4775,10 +6521,13 @@ end)
 
 localplayer.CharacterAdded:Connect(function(char)
     if toggles.weaponSpam_Toggle.Value then
-        if not utils.fetchOwnership("Gamepass", 1243865) --[[ vip gamepass ]] then
+        --[[
+        -- VIP gamepass
+        if not utils.fetchOwnership("Gamepass", 1243865) then
             toggles.weaponSpam_Toggle:SetValue(false)
             return
         end
+        ]]
 
         task.spawn(function()
             while toggles.weaponSpam_Toggle.Value do
@@ -4855,7 +6604,7 @@ menuGroup:AddLabel("Menu bind"):AddKeyPicker("menuKeybind_KeyPicker", { Text = "
 -- [UI Settings / Teardown] Disable active features and clear shared state
 local function unloadModules()
     -- Switch off every toggle (rather than a hand-maintained list) so each OnChanged handler can stop its own
-    -- loops, connections and hooks. Menu-only toggles are skipped.
+    -- loops, connections and hooks.
     for name, toggle in pairs(toggles) do
         if type(toggle) == "table" and toggle.Value == true and type(toggle.SetValue) == "function"
             and name ~= "KeybindMenuOpen" and name ~= "autoResetColor_Toggle" and name ~= "notifSound_Toggle" then
@@ -4869,7 +6618,7 @@ local function unloadModules()
         end
     end
 
-    -- Rainbow loops index options[...] every frame, so stop them explicitly.
+    -- Rainbow loops index options[...] every frame, so stop them directly.
     for _, connection in pairs(rainbowConnections) do
         if typeof(connection) == "RBXScriptConnection" then
             connection:Disconnect()
