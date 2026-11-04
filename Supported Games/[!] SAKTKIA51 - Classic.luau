@@ -58,7 +58,8 @@ local camera = game:GetService("Workspace").CurrentCamera
 -- Default colors used when rainbow cycling is reset.
 local defaults = {
     killerESPColor_ColorPicker = Color3.fromRGB(255, 0, 0),
-    killerNameTagColor_ColorPicker = Color3.fromRGB(255, 255, 255)
+    killerNameTagColor_ColorPicker = Color3.fromRGB(255, 255, 255),
+    silentAimFOVColor_ColorPicker = Color3.fromRGB(0, 229, 255)
 }
 
 -- Names used by the target-exclusion dropdowns.
@@ -2452,12 +2453,18 @@ exploitsGroup:AddToggle("enableSilentAim_Toggle", { Text = "Enable Silent Aim", 
 local silentAimDepbox = exploitsGroup:AddDependencyBox()
 silentAimDepbox:AddSlider("FOV_Slider", { Text = "FOV", Tooltip = "The screen-space radius in which targets can be selected.", Default = 150, Min = 0, Max = 1000, Suffix = " px", Rounding = 0 })
 silentAimDepbox:AddToggle("silentAimWallCheck_Toggle", { Text = "Wall Check", Tooltip = "Only target Killers that are visible. Wallbang takes priority when enabled.", Default = true })
-silentAimDepbox:AddToggle("silentAimWallBang_Toggle", { Text = "Wallbang", Tooltip = "Use the supplied weapon hooks to allow valid Killer hits through obstructions.", Default = true })
-silentAimDepbox:AddDropdown("silentAimHitPart_Dropdown", { Text = "Hit Part", Tooltip = false, Values = { "Head", "HumanoidRootPart" }, Default = 1, Multi = false })
+silentAimDepbox:AddToggle("silentAimWallBang_Toggle", { Text = "Wallbang", Tooltip = "Bullets fired at a locked Killer fly through walls and other obstructions. Shots with no Killer inside the FOV behave normally.", Default = true })
+silentAimDepbox:AddToggle("silentAimNoSpread_Toggle", { Text = "No Spread", Tooltip = "Removes weapon inaccuracy and shotgun pellet spread while a Killer is locked, so every bullet follows the aimed line.", Default = true })
+silentAimDepbox:AddDropdown("silentAimHitPart_Dropdown", { Text = "Hit Part", Tooltip = "Auto aims at the Head while a Killer is close and standing still, and at the larger HumanoidRootPart when it is moving or far away.", Values = { "Auto", "Head", "HumanoidRootPart" }, Default = 1, Multi = false })
 silentAimDepbox:AddToggle("silentAimPrediction_Toggle", { Text = "Prediction", Tooltip = "Lead moving Killers based on their velocity and projectile travel time.", Default = true })
 silentAimDepbox:AddSlider("silentAimProjectileSpeed_Slider", { Text = "Projectile Speed", Tooltip = "Used to estimate projectile travel time for prediction.", Default = 150, Min = 25, Max = 1000, Suffix = " studs/s", Rounding = 0 })
 silentAimDepbox:AddSlider("silentAimPredictionFactor_Slider", { Text = "Prediction Factor", Tooltip = "Scales how far ahead the predicted position is.", Default = 1, Min = 0, Max = 2, Rounding = 1 })
 silentAimDepbox:AddToggle("silentAimShowFOV_Toggle", { Text = "Show FOV", Tooltip = "Display the silent-aim target radius when Silent Aim is enabled.", Default = true })
+
+local silentAimFOVColorDepbox = silentAimDepbox:AddDependencyBox()
+
+silentAimFOVColorDepbox:AddLabel("FOV Color"):AddColorPicker("silentAimFOVColor_ColorPicker", { Title = "FOV Color", Default = Color3.fromRGB(0, 229, 255), Transparency = nil })
+silentAimFOVColorDepbox:AddCheckbox("rainbowSilentAimFOVColor_Toggle", { Text = "Rainbow FOV Color" })
 
 silentAimDepbox:AddDivider()
 
@@ -2516,15 +2523,10 @@ exploitsGroup:AddButton({ Text = "Complete Area 51 Personnel",
 
 aimbotDepbox:SetupDependencies({ { toggles.enableAimbot_Toggle, true } })
 silentAimDepbox:SetupDependencies({ { toggles.enableSilentAim_Toggle, true } })
+silentAimFOVColorDepbox:SetupDependencies({ { toggles.silentAimShowFOV_Toggle, true } })
 
 -- [Exploits / Silent Aim] Settings, target resolution, and weapon hooks
-local silentAimBlacklistedNames = {
-    Jane = true,
-    Giant = true,
-}
-
 local silentAimHookRecords = {}
-local silentAimHookedObjects = setmetatable({}, { __mode = "k" })
 
 local function isSilentAimEnabled()
     if library.Unloaded then
@@ -2535,264 +2537,515 @@ local function isSilentAimEnabled()
     return silentAimToggle ~= nil and silentAimToggle.Value == true
 end
 
-local function isValidSilentAimTarget(model)
-    if not model or not model:IsA("Model") or silentAimBlacklistedNames[model.Name] then
-        return false
-    end
+-- Assigned inside the block below; the scanner further down calls it.
+local scanSilentAimWeaponTables
 
-    local humanoid = model:FindFirstChildOfClass("Humanoid")
-    if not humanoid or humanoid.Health <= 0 then
-        return false
-    end
+do
+    local silentAimBlacklistedNames = {
+        Jane = true,
+        Giant = true,
+    }
 
-    if model == localplayer.Character then
-        return false
-    end
+    -- A shot's aim lookup, its spread rolls and its bullets all happen in the same frame, so a lock this young belongs to the current shot.
+    local SILENT_AIM_LOCK_LIFETIME = 0.15
+    -- Never lead a target by more than this many seconds of bullet travel time.
+    local SILENT_AIM_MAX_LEAD_TIME = 1.5
+    -- A Killer reported faster than this is teleporting or glitching; leading on that velocity would throw the shot away.
+    local SILENT_AIM_MAX_TARGET_SPEED = 80
 
-    local currentKillersFolder = workspace:FindFirstChild("Killers")
-    return currentKillersFolder ~= nil and model:IsDescendantOf(currentKillersFolder)
-end
+    local silentAimHookedObjects = setmetatable({}, { __mode = "k" })
 
-local function isSilentAimTargetVisible(targetPart, character)
-    -- Wallbang bypasses the visibility check
-    if not toggles.silentAimWallCheck_Toggle.Value or toggles.silentAimWallBang_Toggle.Value then
-        return true
-    end
+    -- The Killer the latest shot was aimed at ({ model, time }). Cleared when a shot finds nothing inside the FOV.
+    local silentAimLock = nil
+    -- Every bullet remembers the Killer it was fired at, so Wallbang only ever applies to bullets that have a target.
+    local silentAimMissileLocks = setmetatable({}, { __mode = "k" })
 
-    local currentCamera = workspace.CurrentCamera or camera
-    if not currentCamera then
-        return false
-    end
-
-    local origin = currentCamera.CFrame.Position
-    local direction = targetPart.Position - origin
-    local raycastParams = RaycastParams.new()
-    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-    raycastParams.FilterDescendantsInstances = { localplayer.Character, character }
-    raycastParams.IgnoreWater = true
-
-    local result = workspace:Raycast(origin, direction, raycastParams)
-    return result == nil or result.Instance:IsDescendantOf(character)
-end
-
-local function getClosestSilentAimTarget()
-    if not isSilentAimEnabled() then
-        return nil, nil
-    end
-
-    local currentCamera = workspace.CurrentCamera or camera
-    if not currentCamera then
-        return nil, nil
-    end
-
-    local fov = math.max(0, tonumber(options.FOV_Slider.Value) or 150)
-    local mousePosition = uis:GetMouseLocation()
-    local selectedPartName = options.silentAimHitPart_Dropdown.Value
-    local closestTargetPart, closestPredictedPosition
-    local shortestScreenDistance = fov
-
-    local function evaluateKiller(model)
-        if not isValidSilentAimTarget(model) then
-            return
+    local function isValidSilentAimTarget(model)
+        if not model or not model:IsA("Model") or silentAimBlacklistedNames[model.Name] then
+            return false
         end
 
-        local targetPart = model:FindFirstChild(selectedPartName, true)
-        if not targetPart or not targetPart:IsA("BasePart") then
-            targetPart = model:FindFirstChild("Head", true)
-        end
-        if not targetPart or not targetPart:IsA("BasePart") then
-            return
+        local humanoid = model:FindFirstChildOfClass("Humanoid")
+        if not humanoid or humanoid.Health <= 0 then
+            return false
         end
 
-        local rootPart = model:FindFirstChild("HumanoidRootPart", true)
-            or model:FindFirstChild("Torso", true)
-        local predictedPosition = targetPart.Position
-
-        if toggles.silentAimPrediction_Toggle.Value and rootPart and rootPart:IsA("BasePart") then
-            local projectileSpeed = tonumber(options.silentAimProjectileSpeed_Slider.Value) or 150
-            if projectileSpeed > 0 then
-                local distance = (currentCamera.CFrame.Position - targetPart.Position).Magnitude
-                local travelTime = distance / projectileSpeed
-                local predictionFactor = tonumber(options.silentAimPredictionFactor_Slider.Value) or 1
-                predictedPosition += rootPart.AssemblyLinearVelocity * travelTime * predictionFactor
-            end
+        if model == localplayer.Character then
+            return false
         end
 
-        local screenPosition, onScreen = currentCamera:WorldToViewportPoint(predictedPosition)
-        if not onScreen then
-            return
-        end
-
-        local screenDistance = (Vector2.new(screenPosition.X, screenPosition.Y) - mousePosition).Magnitude
-        if screenDistance < shortestScreenDistance and isSilentAimTargetVisible(targetPart, model) then
-            shortestScreenDistance = screenDistance
-            closestTargetPart = targetPart
-            closestPredictedPosition = predictedPosition
-        end
+        local currentKillersFolder = workspace:FindFirstChild("Killers")
+        return currentKillersFolder ~= nil and model:IsDescendantOf(currentKillersFolder)
     end
 
-    local currentKillersFolder = workspace:FindFirstChild("Killers")
-    if currentKillersFolder then
-        for _, model in ipairs(currentKillersFolder:GetChildren()) do
-            evaluateKiller(model)
+    local function getFreshSilentAimLock()
+        local lock = silentAimLock
+
+        if lock and os.clock() - lock.time <= SILENT_AIM_LOCK_LIFETIME and isValidSilentAimTarget(lock.model) then
+            return lock
         end
-    end
 
-    return closestTargetPart, closestPredictedPosition
-end
-
-local function findSilentAimTargetModelFromPart(part)
-    if typeof(part) ~= "Instance" then
         return nil
     end
 
-    local current = part
-    while current and current ~= workspace do
-        if current:IsA("Model") and isValidSilentAimTarget(current) then
-            return current
-        end
-        current = current.Parent
-    end
-
-    return nil
-end
-
-local function hookSilentAimWeaponTable(object)
-    if library.Unloaded or type(object) ~= "table" or silentAimHookedObjects[object] then
-        return
-    end
-
-    local originalScreenToTarget = rawget(object, "screen_to_target")
-    if type(originalScreenToTarget) ~= "function" then
-        return
-    end
-
-    local originalRayCallback = rawget(object, "target_ray_callback")
-    local originalMissileHit = rawget(object, "missile_hit")
-    local record = {
-        Object = object,
-        OriginalScreenToTarget = originalScreenToTarget,
-        OriginalRayCallback = originalRayCallback,
-        OriginalMissileHit = originalMissileHit,
-    }
-
-    local success, hookError = pcall(function()
-        record.HookedScreenToTarget = function(self, inputFunction, ...)
-            if isSilentAimEnabled() then
-                local _, predictedPosition = getClosestSilentAimTarget()
-                if predictedPosition then
-                    return predictedPosition
-                end
-            end
-
-            return originalScreenToTarget(self, inputFunction, ...)
-        end
-        object.screen_to_target = record.HookedScreenToTarget
-
-        if type(originalRayCallback) == "function" then
-            record.HookedRayCallback = function(raycastResult, ...)
-                if isSilentAimEnabled()
-                    and toggles.silentAimWallBang_Toggle.Value
-                    and raycastResult
-                    and raycastResult.Instance
-                then
-                    return findSilentAimTargetModelFromPart(raycastResult.Instance) ~= nil
-                end
-
-                return originalRayCallback(raycastResult, ...)
-            end
-            object.target_ray_callback = record.HookedRayCallback
-        end
-
-        if type(originalMissileHit) == "function" then
-            record.HookedMissileHit = function(self, missile, moment, hitPart, missilePosition, ...)
-                if isSilentAimEnabled()
-                    and toggles.silentAimWallBang_Toggle.Value
-                    and typeof(hitPart) == "Instance"
-                    and hitPart:IsA("BasePart")
-                    and hitPart.CanCollide
-                    and not findSilentAimTargetModelFromPart(hitPart)
-                then
-                    return
-                end
-
-                return originalMissileHit(self, missile, moment, hitPart, missilePosition, ...)
-            end
-            object.missile_hit = record.HookedMissileHit
-        end
-    end)
-
-    if success then
-        silentAimHookedObjects[object] = true
-        table.insert(silentAimHookRecords, record)
-    else
-        warn("[Silent Aim] Could not hook a weapon table: " .. tostring(hookError))
-    end
-end
-
-local function scanSilentAimWeaponTables()
-    if type(getgc) ~= "function" then
-        warn("[Silent Aim] This executor does not provide getgc(true); weapon hooks cannot be installed.")
-        return false
-    end
-
-    -- Let the executor filter the heap natively instead of handing back ~570k objects to search in Lua
-    if type(filtergc) == "function" then
-        local filtered, matches = pcall(filtergc, "table", { Keys = { "screen_to_target" } }, false)
-
-        if filtered and type(matches) == "table" then
-            for _, object in ipairs(matches) do
-                hookSilentAimWeaponTable(object)
-            end
+    local function isSilentAimTargetVisible(targetPart, character)
+        -- Wallbang bypasses the visibility check
+        if not toggles.silentAimWallCheck_Toggle.Value or toggles.silentAimWallBang_Toggle.Value then
             return true
         end
+
+        local currentCamera = workspace.CurrentCamera or camera
+        if not currentCamera then
+            return false
+        end
+
+        local origin = currentCamera.CFrame.Position
+        local direction = targetPart.Position - origin
+        local raycastParams = RaycastParams.new()
+        raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+        raycastParams.FilterDescendantsInstances = { localplayer.Character, character }
+        raycastParams.IgnoreWater = true
+
+        local result = workspace:Raycast(origin, direction, raycastParams)
+        return result == nil or result.Instance:IsDescendantOf(character)
     end
 
-    local success, objects = pcall(getgc, true)
-    if not success or type(objects) ~= "table" then
-        warn("[Silent Aim] getgc(true) failed: " .. tostring(objects))
-        return true
+    local function findSilentAimTargetModelFromPart(part)
+        if typeof(part) ~= "Instance" then
+            return nil
+        end
+
+        local current = part
+        while current and current ~= workspace do
+            if current:IsA("Model") and isValidSilentAimTarget(current) then
+                return current
+            end
+            current = current.Parent
+        end
+
+        return nil
     end
 
-    -- Walk the heap in slices so the scan is spread over several frames instead of one long one.
-    for index = 1, #objects do
-        hookSilentAimWeaponTable(objects[index])
+    -- Where bullets actually leave the weapon (Weapon.fire uses the Flash part, or the Aim part while scoped).
+    local function getSilentAimMuzzlePosition(weapon)
+        local success, position = pcall(function()
+            local tool = weapon.instance
+            if typeof(tool) ~= "Instance" then
+                return nil
+            end
 
-        if index % 15000 == 0 then
-            task.wait()
+            local muzzle = tool:FindFirstChild("Flash")
+            if weapon.aiming and weapon.has_scope then
+                muzzle = tool:FindFirstChild("Aim") or muzzle
+            end
 
-            if library.Unloaded then
+            if muzzle and muzzle:IsA("BasePart") then
+                return muzzle.Position
+            end
+
+            return nil
+        end)
+
+        return success and position or nil
+    end
+
+    local function getSilentAimRootPart(model)
+        local rootPart = model:FindFirstChild("HumanoidRootPart", true)
+            or model:FindFirstChild("Torso", true)
+            or model:FindFirstChild("UpperTorso", true)
+
+        if rootPart and rootPart:IsA("BasePart") then
+            return rootPart
+        end
+
+        return model.PrimaryPart
+    end
+
+    local function resolveSilentAimPart(model, rootPart, horizontalSpeed, distance)
+        local mode = options.silentAimHitPart_Dropdown.Value
+        local part
+
+        if mode == "Auto" then
+            -- The Head is only worth aiming at while the Killer is close and nearly still. Otherwise the bigger
+            -- center-mass part forgives the prediction error that moving Killers always have.
+            if horizontalSpeed < 4 and distance < 80 then
+                part = model:FindFirstChild("Head", true)
+            else
+                part = rootPart
+            end
+        else
+            part = model:FindFirstChild(mode, true)
+        end
+
+        if not part or not part:IsA("BasePart") then
+            part = model:FindFirstChild("Head", true)
+        end
+        if not part or not part:IsA("BasePart") then
+            part = rootPart
+        end
+
+        return part
+    end
+
+    -- Time t at which a bullet leaving `origin` at `projectileSpeed` meets a target moving at `velocity`:
+    -- |relative + velocity * t| = projectileSpeed * t, solved as a quadratic instead of guessing from the straight-line distance.
+    local function solveSilentAimLeadTime(origin, targetPosition, velocity, projectileSpeed)
+        local relative = targetPosition - origin
+        local a = velocity:Dot(velocity) - projectileSpeed * projectileSpeed
+        local b = 2 * relative:Dot(velocity)
+        local c = relative:Dot(relative)
+        local leadTime
+
+        if math.abs(a) < 1e-6 then
+            if math.abs(b) > 1e-6 then
+                leadTime = -c / b
+            end
+        else
+            local discriminant = b * b - 4 * a * c
+
+            if discriminant >= 0 then
+                local root = math.sqrt(discriminant)
+                local first = (-b - root) / (2 * a)
+                local second = (-b + root) / (2 * a)
+
+                leadTime = math.huge
+                if first > 0 then
+                    leadTime = first
+                end
+                if second > 0 and second < leadTime then
+                    leadTime = second
+                end
+                if leadTime == math.huge then
+                    leadTime = nil
+                end
+            end
+        end
+
+        if not leadTime or leadTime <= 0 then
+            leadTime = relative.Magnitude / projectileSpeed
+        end
+
+        return math.min(leadTime, SILENT_AIM_MAX_LEAD_TIME)
+    end
+
+    local function predictSilentAimPosition(origin, targetPart, rootPart)
+        local position = targetPart.Position
+
+        if not toggles.silentAimPrediction_Toggle.Value or not rootPart then
+            return position
+        end
+
+        local projectileSpeed = tonumber(options.silentAimProjectileSpeed_Slider.Value) or 150
+        if projectileSpeed <= 0 then
+            return position
+        end
+
+        -- Only horizontal movement is led. Measured on this game's Killers, adding the vertical velocity made the guess
+        -- worse (idle physics jitter and falls spike it to +-40 studs/s) and horizontal-only cut the average miss by about a third.
+        local velocity = rootPart.AssemblyLinearVelocity
+        velocity = Vector3.new(velocity.X, 0, velocity.Z)
+
+        if velocity.Magnitude > SILENT_AIM_MAX_TARGET_SPEED then
+            return position
+        end
+
+        local predictionFactor = tonumber(options.silentAimPredictionFactor_Slider.Value) or 1
+        local leadTime = solveSilentAimLeadTime(origin, position, velocity, projectileSpeed)
+
+        return position + velocity * leadTime * predictionFactor
+    end
+
+    -- Returns the Killer model and the position to shoot at, or nil when nothing is inside the FOV.
+    local function getClosestSilentAimTarget(muzzlePosition)
+        if not isSilentAimEnabled() then
+            return nil, nil
+        end
+
+        local currentCamera = workspace.CurrentCamera or camera
+        if not currentCamera then
+            return nil, nil
+        end
+
+        local origin = muzzlePosition or currentCamera.CFrame.Position
+        local fov = math.max(0, tonumber(options.FOV_Slider.Value) or 150)
+        local mousePosition = uis:GetMouseLocation()
+        local closestModel, closestPosition
+        local shortestScreenDistance = fov
+
+        local function evaluateKiller(model)
+            if not isValidSilentAimTarget(model) then
+                return
+            end
+
+            local rootPart = getSilentAimRootPart(model)
+            if not rootPart then
+                return
+            end
+
+            local velocity = rootPart.AssemblyLinearVelocity
+            local horizontalSpeed = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
+            local distance = (rootPart.Position - origin).Magnitude
+            local targetPart = resolveSilentAimPart(model, rootPart, horizontalSpeed, distance)
+            if not targetPart then
+                return
+            end
+
+            -- The FOV circle is judged on where the Killer is on screen right now, not where it is about to be,
+            -- so what is inside the circle is what gets locked.
+            local screenPosition, onScreen = currentCamera:WorldToViewportPoint(targetPart.Position)
+            if not onScreen then
+                return
+            end
+
+            local screenDistance = (Vector2.new(screenPosition.X, screenPosition.Y) - mousePosition).Magnitude
+            if screenDistance < shortestScreenDistance and isSilentAimTargetVisible(targetPart, model) then
+                shortestScreenDistance = screenDistance
+                closestModel = model
+                closestPosition = predictSilentAimPosition(origin, targetPart, rootPart)
+            end
+        end
+
+        local currentKillersFolder = workspace:FindFirstChild("Killers")
+        if currentKillersFolder then
+            for _, model in ipairs(currentKillersFolder:GetChildren()) do
+                evaluateKiller(model)
+            end
+        end
+
+        return closestModel, closestPosition
+    end
+
+    -- Weapon.screen_to_target: where the shot goes. Also decides which Killer (if any) this shot is locked on.
+    local function createScreenToTargetHook(original)
+        return function(self, ...)
+            if isSilentAimEnabled() then
+                local model, predictedPosition = getClosestSilentAimTarget(getSilentAimMuzzlePosition(self))
+
+                if model and predictedPosition then
+                    silentAimLock = { model = model, time = os.clock() }
+                    return predictedPosition
+                end
+
+                silentAimLock = nil
+            end
+
+            return original(self, ...)
+        end
+    end
+
+    -- Weapon.target_ray_callback: which things the game's short muzzle ray counts as hits.
+    local function createRayCallbackHook(original)
+        return function(raycastResult, ...)
+            if toggles.silentAimWallBang_Toggle.Value
+                and isSilentAimEnabled()
+                and raycastResult
+                and raycastResult.Instance
+                and getFreshSilentAimLock()
+            then
+                return findSilentAimTargetModelFromPart(raycastResult.Instance) ~= nil
+            end
+
+            return original(raycastResult, ...)
+        end
+    end
+
+    -- Weapon.compute_inaccuracy: spread of every bullet / pellet. Zero while a Killer is locked.
+    local function createInaccuracyHook(original)
+        return function(self, ...)
+            if isSilentAimEnabled() and toggles.silentAimNoSpread_Toggle.Value and getFreshSilentAimLock() then
+                return 0
+            end
+
+            return original(self, ...)
+        end
+    end
+
+    -- Weapon.set_missile: runs once for every bullet right after it is created. Remember who it was fired at.
+    local function createSetMissileHook(original)
+        return function(self, missile, ...)
+            if typeof(missile) == "Instance" and isSilentAimEnabled() then
+                local lock = getFreshSilentAimLock()
+
+                if lock then
+                    silentAimMissileLocks[missile] = lock.model
+                end
+            end
+
+            return original(self, missile, ...)
+        end
+    end
+
+    -- Weapon.missile_hit: a bullet touched something. Bullets that were fired at a Killer ignore solid parts that
+    -- are not Killers, so they fly through walls and reach the target. Bullets without a target behave normally.
+    local function createMissileHitHook(original)
+        return function(self, missile, moment, hitPart, ...)
+            local lockedModel = missile ~= nil and silentAimMissileLocks[missile]
+
+            if lockedModel
+                and isSilentAimEnabled()
+                and toggles.silentAimWallBang_Toggle.Value
+                and isValidSilentAimTarget(lockedModel)
+                and typeof(hitPart) == "Instance"
+                and hitPart:IsA("BasePart")
+                and hitPart.CanCollide
+                and not findSilentAimTargetModelFromPart(hitPart)
+            then
+                return
+            end
+
+            return original(self, missile, moment, hitPart, ...)
+        end
+    end
+
+    local function installSilentAimHook(record, object, key, createHook)
+        local original = rawget(object, key)
+        if type(original) ~= "function" then
+            return
+        end
+
+        local hooked = createHook(original)
+        object[key] = hooked
+        table.insert(record.Hooks, { Key = key, Original = original, Hooked = hooked })
+    end
+
+    local function restoreSilentAimRecord(record)
+        local object = record.Object
+
+        for _, hook in ipairs(record.Hooks) do
+            pcall(function()
+                if rawget(object, hook.Key) == hook.Hooked then
+                    object[hook.Key] = hook.Original
+                end
+            end)
+        end
+
+        table.clear(record.Hooks)
+    end
+
+    local function hookSilentAimWeaponTable(object)
+        if library.Unloaded or type(object) ~= "table" or silentAimHookedObjects[object] then
+            return
+        end
+
+        -- The base weapon class owns screen_to_target. A subclass set_missile shadows the base one, so it must be hooked as well or those
+        -- bullets are never tied to the Killer they were fired at and Wallbang silently does nothing for them.
+        local isWeaponBase = type(rawget(object, "screen_to_target")) == "function"
+        local isMissileSubclass = type(rawget(object, "set_missile")) == "function"
+            or type(rawget(object, "missile_hit")) == "function"
+
+        if not isWeaponBase and not isMissileSubclass then
+            return
+        end
+
+        local record = { Object = object, Hooks = {} }
+
+        local success, hookError = pcall(function()
+            if isWeaponBase then
+                installSilentAimHook(record, object, "screen_to_target", createScreenToTargetHook)
+                installSilentAimHook(record, object, "target_ray_callback", createRayCallbackHook)
+                installSilentAimHook(record, object, "compute_inaccuracy", createInaccuracyHook)
+            end
+
+            installSilentAimHook(record, object, "set_missile", createSetMissileHook)
+            installSilentAimHook(record, object, "missile_hit", createMissileHitHook)
+        end)
+
+        if success and #record.Hooks > 0 then
+            silentAimHookedObjects[object] = true
+            table.insert(silentAimHookRecords, record)
+        else
+            restoreSilentAimRecord(record)
+
+            if not success then
+                warn("[Silent Aim] Could not hook a weapon table: " .. tostring(hookError))
+            end
+        end
+    end
+
+    scanSilentAimWeaponTables = function()
+        if type(getgc) ~= "function" then
+            warn("[Silent Aim] This executor does not provide getgc(true); weapon hooks cannot be installed.")
+            return false
+        end
+
+        -- Let the executor filter the huge amount of instances instead of handing back a million objects to search in Lua
+        if type(filtergc) == "function" then
+            local scanned = false
+
+            -- The base weapon class first, then every subclass that overrides set_missile or missile_hit by itself.
+            for _, keys in ipairs({ { "screen_to_target" }, { "set_missile" }, { "missile_hit" } }) do
+                local filtered, matches = pcall(filtergc, "table", { Keys = keys }, false)
+
+                if filtered and type(matches) == "table" then
+                    scanned = true
+
+                    for _, object in ipairs(matches) do
+                        hookSilentAimWeaponTable(object)
+                    end
+                end
+            end
+
+            if scanned then
                 return true
             end
         end
-    end
-    return true
-end
 
--- Optional FOV drawing; Silent Aim remains usable if Drawing is unavailable.
-local silentAimFOVCircle
-if type(Drawing) == "table" and type(Drawing.new) == "function" then
-    local success, circle = pcall(Drawing.new, "Circle")
-    if success then
-        silentAimFOVCircle = circle
-        silentAimFOVCircle.Visible = false
-        silentAimFOVCircle.Transparency = 0.8
-        silentAimFOVCircle.Color = Color3.fromRGB(0, 229, 255)
-        silentAimFOVCircle.Thickness = 1
-        silentAimFOVCircle.Filled = false
-        silentAimFOVCircle.Radius = options.FOV_Slider.Value
-    end
-end
+        local success, objects = pcall(getgc, true)
+        if not success or type(objects) ~= "table" then
+            warn("[Silent Aim] getgc(true) failed: " .. tostring(objects))
+            return true
+        end
 
-do
+        -- Walk the heap in slices so the scan is spread over several frames instead of one long one.
+        for index = 1, #objects do
+            hookSilentAimWeaponTable(objects[index])
+
+            if index % 15000 == 0 then
+                task.wait()
+
+                if library.Unloaded then
+                    return true
+                end
+            end
+        end
+        return true
+    end
+
+    -- Optional FOV drawing; Silent Aim remains usable if Drawing is unavailable.
+    local silentAimFOVCircle
+    local fovColorPicker = options.silentAimFOVColor_ColorPicker
+
+    if type(Drawing) == "table" and type(Drawing.new) == "function" then
+        local success, circle = pcall(Drawing.new, "Circle")
+        if success then
+            silentAimFOVCircle = circle
+            silentAimFOVCircle.Visible = false
+            silentAimFOVCircle.Transparency = 0.8
+            silentAimFOVCircle.Color = fovColorPicker.Value
+            silentAimFOVCircle.Thickness = 1
+            silentAimFOVCircle.Filled = false
+            silentAimFOVCircle.Radius = options.FOV_Slider.Value
+        end
+    end
+
+    -- The rainbow loop writes into the color picker, so the circle only has to follow the picker.
+    toggles.rainbowSilentAimFOVColor_Toggle:OnChanged(function(enabled)
+        toggleRainbow(enabled, "silentAimFOVColor_ColorPicker")
+    end)
+
     local silentAimFOVConnection = runService.RenderStepped:Connect(function()
         if not silentAimFOVCircle then
             return
         end
 
-        silentAimFOVCircle.Visible = isSilentAimEnabled() and toggles.silentAimShowFOV_Toggle.Value
-        silentAimFOVCircle.Radius = tonumber(options.FOV_Slider.Value) or 150
-        silentAimFOVCircle.Position = uis:GetMouseLocation()
+        local visible = isSilentAimEnabled() and toggles.silentAimShowFOV_Toggle.Value
+        silentAimFOVCircle.Visible = visible
+
+        if visible then
+            silentAimFOVCircle.Color = fovColorPicker.Value
+            silentAimFOVCircle.Radius = tonumber(options.FOV_Slider.Value) or 150
+            silentAimFOVCircle.Position = uis:GetMouseLocation()
+        end
     end)
 
     -- On unload: stop drawing, put the game's original weapon functions back, and remove the FOV circle.
@@ -2800,25 +3053,13 @@ do
         silentAimFOVConnection:Disconnect()
 
         for _, record in ipairs(silentAimHookRecords) do
-            pcall(function()
-                local object = record.Object
-
-                if rawget(object, "screen_to_target") == record.HookedScreenToTarget then
-                    object.screen_to_target = record.OriginalScreenToTarget
-                end
-
-                if record.HookedRayCallback and rawget(object, "target_ray_callback") == record.HookedRayCallback then
-                    object.target_ray_callback = record.OriginalRayCallback
-                end
-
-                if record.HookedMissileHit and rawget(object, "missile_hit") == record.HookedMissileHit then
-                    object.missile_hit = record.OriginalMissileHit
-                end
-            end)
+            restoreSilentAimRecord(record)
         end
 
         table.clear(silentAimHookRecords)
         table.clear(silentAimHookedObjects)
+        table.clear(silentAimMissileLocks)
+        silentAimLock = nil
 
         if silentAimFOVCircle then
             pcall(function() silentAimFOVCircle:Remove() end)
