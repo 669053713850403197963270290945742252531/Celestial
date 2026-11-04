@@ -16,7 +16,7 @@
     12. World: environmental settings and alien / kill-part controls
     13. Weapons: inventory, Pack-a-Punch queue, defense, gun options, and skin changer
     14. Miscellaneous: utility actions and weapon spam
-    15. UI settings, teardown, and configuration persistence
+    15. UI settings, Session Info overlay, teardown, and configuration persistence
 
     MAINTENANCE NOTES
     - Keep feature controls near the callbacks that handle them.
@@ -6425,6 +6425,133 @@ autoReloadDepbox:AddSlider("autoReloadDelay_Slider", { Text = "Delay", Tooltip =
     end
 })
 
+-- [Weapons / Other] Auto Pickup Weapons
+do
+    local pickupAllowed = getMode() == "Hard" or getMode() == "Extreme"
+    local pickupRunning = false
+    local pickupConnection: RBXScriptConnection? = nil
+    local pickupTracked = setmetatable({}, { __mode = "k" })
+
+    othersGroup:AddToggle("autoPickupWeapons_Toggle", { Text = "Auto Pickup Weapons", Tooltip = "Automatically picks your weapon back up when the Alien's arm steals it. Only your own weapons are picked up.", Default = false, Disabled = not pickupAllowed, DisabledTooltip = "This feature is not available in this mode." })
+
+    -- ToolOwner holds the Player the weapon was stolen from (a plain name string is accepted as well)
+    local function isOwnStolenWeapon(model)
+        local owner = model:FindFirstChild("ToolOwner")
+
+        if not (owner and owner:IsA("ValueBase")) then
+            return false
+        end
+
+        local value = (owner :: any).Value
+
+        if typeof(value) == "string" then
+            return value == localplayer.Name
+        end
+
+        return typeof(value) == "Instance" and (value == localplayer or value.Name == localplayer.Name)
+    end
+
+    local function pickupStolenWeapon(model)
+        if pickupTracked[model] then
+            return
+        end
+
+        pickupTracked[model] = true
+
+        task.spawn(function()
+            local function stillWanted()
+                return pickupRunning and not library.Unloaded and model:IsDescendantOf(workspace)
+            end
+
+            -- The model can be applied before the server has filled in its owner and Hitbox, so give it a moment
+            local waitStart = os.clock()
+
+            while stillWanted() and os.clock() - waitStart < 3 do
+                local owner = model:FindFirstChild("ToolOwner")
+
+                if owner and (owner :: any).Value ~= nil and model:FindFirstChild("Hitbox") then
+                    break
+                end
+
+                task.wait(0.05)
+            end
+
+            if stillWanted() and isOwnStolenWeapon(model) then
+                local reference = model:FindFirstChild("ToolReference")
+                local referencedTool = reference and reference:IsA("ObjectValue") and reference.Value
+                local weaponName = referencedTool and referencedTool.Name or "weapon"
+                local fired = false
+
+                -- Keep touching until the model is gone: the first touch is not always accepted
+                while stillWanted() do
+                    local hrp = getHRP()
+                    local hitbox = model:FindFirstChild("Hitbox")
+
+                    if hrp and hitbox and isAlive() and hrp:IsDescendantOf(workspace) and hitbox:IsDescendantOf(workspace) then
+                        -- Touch-begin. Skipped silently when a part is not in the physics world yet; the next pass retries it.
+                        if pcall(firetouchinterest, hrp, hitbox, 0) then
+                            fired = true
+                            task.wait()
+
+                            -- Touch-end only if both parts survived the yield
+                            if hrp:IsDescendantOf(workspace) and hitbox:IsDescendantOf(workspace) then
+                                pcall(firetouchinterest, hrp, hitbox, 1)
+                            end
+                        end
+                    end
+
+                    task.wait(0.25)
+                end
+
+                -- The loop ended with the feature still on, so the model is gone and the weapon is back with you
+                if fired and pickupRunning and not library.Unloaded then
+                    notify("Success", "Picked up weapon", "Your " .. weaponName .. " was stolen and has been picked back up.", 5)
+                end
+            end
+
+            pickupTracked[model] = nil
+        end)
+    end
+
+    local function stopAutoPickup()
+        pickupRunning = false
+
+        if pickupConnection then
+            pickupConnection:Disconnect()
+            pickupConnection = nil
+        end
+    end
+
+    local function startAutoPickup()
+        pickupRunning = true
+
+        pickupConnection = workspace.ChildAdded:Connect(function(child)
+            if child.Name == "StolenWeapon" and child:IsA("Model") then
+                pickupStolenWeapon(child)
+            end
+        end)
+
+        -- A weapon may already be lying around from before the toggle was switched on
+        for _, child in ipairs(workspace:GetChildren()) do
+            if child.Name == "StolenWeapon" and child:IsA("Model") then
+                pickupStolenWeapon(child)
+            end
+        end
+    end
+
+    toggles.autoPickupWeapons_Toggle:OnChanged(function(state)
+        if state and pickupAllowed then
+            if not pickupRunning then
+                startAutoPickup()
+            end
+        else
+            stopAutoPickup()
+        end
+    end)
+
+    table.insert(teardownTasks, stopAutoPickup)
+end
+
 othersGroup:AddToggle("enableGunMods_Toggle", { Text = "Enable Gun Mods", Tooltip = "Usage of any gun mods has a high chance of resulting in a permanent game ban.", Risky = true })
 
 local gunModsDepbox = othersGroup:AddDependencyBox()
@@ -7383,6 +7510,607 @@ menuGroup:AddDropdown("DPIDropdown", { Text = "DPI Scale", Values = { "50%", "75
 
 local rainbowSpeed_Slider = menuGroup:AddSlider("rainbowSpeed_Slider", { Text = "Rainbow Speed", Tooltip = false, Default = window.rainbowSpeed, Min = 0.1, Max = 1, Rounding = 1 })
 menuGroup:AddLabel("Menu bind"):AddKeyPicker("menuKeybind_KeyPicker", { Text = "Menu keybind", Default = "RightControl", NoUI = true })
+
+-- [UI Settings / Session Info] Draggable overlay with live stats for the current session
+do
+    local function buildSessionInfoOverlay()
+        local sessionInfoGroup = tabs.uiSettings:AddRightGroupbox("Overlay")
+
+        sessionInfoGroup:AddToggle("sessionInfo_Toggle", { Text = "Session Info", Tooltip = "Shows a draggable overlay with live stats for this session. Only the lines you enable below are tracked.", Default = false })
+
+        local sessionInfoDepbox = sessionInfoGroup:AddDependencyBox()
+
+        sessionInfoDepbox:AddToggle("sessionInfoCompact_Toggle", { Text = "Compact Mode", Tooltip = "Shows everything on a single line, split up by the separator, instead of one line per stat.", Default = false })
+
+        local sessionInfoSeparatorDepbox = sessionInfoDepbox:AddDependencyBox()
+
+        sessionInfoSeparatorDepbox:AddDropdown("sessionInfoSeparator_Dropdown", { Text = "Separator", Tooltip = "What goes between each stat in Compact Mode.", Values = {
+            "•  | Bullet point",
+            "■  | Black square",
+            "- | Hyphen",
+            "►  | Black Pointer",
+            "→  | Rightwards Arrow",
+        }, Default = 1, Multi = false })
+
+        sessionInfoDepbox:AddDropdown("sessionInfoIconPosition_Dropdown", { Text = "Icon Position", Tooltip = false, Values = { "Left", "Right" }, Default = 1, Multi = false })
+        sessionInfoDepbox:AddDivider()
+        sessionInfoDepbox:AddLabel("Displayed information")
+
+        local sessionInfo = {
+            startTime = os.clock(), -- Elapsed Time counts from when the script loaded
+            label = nil,
+            loopToken = nil,
+            lastText = nil,
+            needs = {},
+
+            -- Trackers
+            renderConnection = nil,
+            characterTracker = nil,
+            characterSignature = nil,
+            bulletTracker = nil,
+
+            -- FPS
+            frames = 0,
+            frameStamp = os.clock(),
+            fps = 0,
+
+            -- Session stats
+            kills = 0,
+            killStat = nil,
+            killBaseline = nil,
+            killsAvailable = true,
+            deaths = 0,
+            bullets = 0,
+            bulletsAvailable = true,
+            damage = 0,
+            mostDamage = 0,
+            lifeStart = nil,
+
+            -- Killer scan results (refreshed every update while a killer line is shown)
+            scan = { nearestName = nil, nearestDistance = nil, owned = nil },
+        }
+
+        -- Only the units that are not zero are shown, e.g. "36s", "12m, 36s" or "1h, 5s".
+        local function formatSessionTime(totalSeconds)
+            totalSeconds = math.max(0, math.floor(totalSeconds))
+
+            local hours = totalSeconds // 3600
+            local minutes = (totalSeconds % 3600) // 60
+            local seconds = totalSeconds % 60
+            local parts = {}
+
+            if hours > 0 then
+                table.insert(parts, hours .. "h")
+            end
+
+            if minutes > 0 then
+                table.insert(parts, minutes .. "m")
+            end
+
+            if seconds > 0 then
+                table.insert(parts, seconds .. "s")
+            end
+
+            if #parts == 0 then
+                return "0s"
+            end
+
+            return table.concat(parts, ", ")
+        end
+
+        local function roundSessionNumber(value)
+            return tostring(math.floor(value + 0.5))
+        end
+
+        -- Order here is the order the lines appear in. "needs" lists the trackers a line depends on.
+        local sessionInfoItems = {
+            { id = "Elapsed", text = "Elapsed Time", default = true, tooltip = "How long the script has been running.",
+                value = function() return formatSessionTime(os.clock() - sessionInfo.startTime) end },
+
+            { id = "Kills", text = "Kills", default = true, needs = { "kills" }, tooltip = "Killers you killed this session (not your lifetime Killers Killed).",
+                value = function() return sessionInfo.killsAvailable and tostring(sessionInfo.kills) or "N/A" end },
+
+            { id = "Deaths", text = "Deaths", default = true, needs = { "deaths" }, tooltip = "Times you died this session.",
+                value = function() return tostring(sessionInfo.deaths) end },
+
+            { id = "KD", text = "K/D Ratio", default = false, needs = { "kills", "deaths" }, tooltip = "Session kills divided by session deaths.",
+                value = function()
+                    if not sessionInfo.killsAvailable then
+                        return "N/A"
+                    end
+
+                    return string.format("%.2f", sessionInfo.kills / math.max(sessionInfo.deaths, 1))
+                end },
+
+            { id = "Bullets", text = "Bullets Fired", default = false, needs = { "bullets" }, tooltip = "Bullets you fired this session. Every pellet of a shotgun blast counts.",
+                value = function() return sessionInfo.bulletsAvailable and tostring(sessionInfo.bullets) or "N/A" end },
+
+            { id = "Damage", text = "Damage Taken", default = false, needs = { "damage" }, tooltip = "Total health you lost this session.",
+                value = function() return roundSessionNumber(sessionInfo.damage) end },
+
+            { id = "MostDamage", text = "Most Damage Taken", default = false, needs = { "damage" }, tooltip = "The most health you lost in a single hit this session.",
+                value = function() return roundSessionNumber(sessionInfo.mostDamage) end },
+
+            { id = "Survival", text = "Survival Time", default = false, needs = { "survival" }, tooltip = "How long you have been alive since your last death.",
+                value = function() return formatSessionTime(sessionInfo.lifeStart and (os.clock() - sessionInfo.lifeStart) or 0) end },
+
+            { id = "Health", text = "Health", default = false, tooltip = "Your current health out of your max health.",
+                value = function()
+                    local character = localplayer.Character
+                    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+
+                    if not humanoid then
+                        return "N/A"
+                    end
+
+                    return roundSessionNumber(humanoid.Health) .. "/" .. roundSessionNumber(humanoid.MaxHealth)
+                end },
+
+            { id = "NearestKiller", text = "Nearest Killer", default = false, needs = { "nearest" }, tooltip = "The closest living killer and how far away it is.",
+                value = function()
+                    local scan = sessionInfo.scan
+
+                    if not scan.nearestName then
+                        return "None"
+                    end
+
+                    return scan.nearestName .. " (" .. roundSessionNumber(scan.nearestDistance) .. " studs)"
+                end },
+
+            { id = "SimulatedKillers", text = "Simulated Killers", default = false, needs = { "owned" }, tooltip = "How many living killers your client owns the physics of. Those are the ones your client can control.",
+                value = function() return sessionInfo.scan.owned ~= nil and tostring(sessionInfo.scan.owned) or "N/A" end },
+
+            { id = "FPS", text = "FPS", default = true, needs = { "fps" }, tooltip = false,
+                value = function() return sessionInfo.fps > 0 and roundSessionNumber(sessionInfo.fps) or "..." end },
+
+            { id = "Ping", text = "Ping", default = true, tooltip = "Round-trip time to the server in milliseconds.",
+                value = function() return roundSessionNumber(localplayer:GetNetworkPing() * 1000) end },
+        }
+
+        for _, item in ipairs(sessionInfoItems) do
+            item.toggleId = "sessionInfo" .. item.id .. "_Toggle"
+            sessionInfoDepbox:AddToggle(item.toggleId, { Text = item.text, Tooltip = item.tooltip, Default = item.default })
+        end
+
+        sessionInfoDepbox:SetupDependencies({ { toggles.sessionInfo_Toggle, true } })
+        sessionInfoSeparatorDepbox:SetupDependencies({ { toggles.sessionInfoCompact_Toggle, true } })
+
+        local function isSessionInfoItemEnabled(item)
+            local toggle = toggles[item.toggleId]
+
+            return toggle ~= nil and toggle.Value == true
+        end
+
+        local function getSessionInfoNeeds()
+            local needs = {}
+
+            for _, item in ipairs(sessionInfoItems) do
+                if item.needs and isSessionInfoItemEnabled(item) then
+                    for _, need in ipairs(item.needs) do
+                        needs[need] = true
+                    end
+                end
+            end
+
+            return needs
+        end
+
+        -- [Session Info / Trackers]
+
+        -- FPS and kills share one RenderStepped connection, and each only does its work while its line is shown.
+        local function sessionInfoRenderStep()
+            if sessionInfo.needs.fps then
+                local now = os.clock()
+                sessionInfo.frames += 1
+
+                local elapsed = now - sessionInfo.frameStamp
+
+                if elapsed >= 1 then
+                    sessionInfo.fps = sessionInfo.frames / elapsed
+                    sessionInfo.frames = 0
+                    sessionInfo.frameStamp = now
+                end
+            end
+
+            if sessionInfo.needs.kills then
+                local killStat = sessionInfo.killStat
+
+                if not killStat or not killStat.Parent then
+                    local leaderstats = localplayer:FindFirstChild("leaderstats")
+                    killStat = leaderstats and leaderstats:FindFirstChild("Killers Killed")
+                    sessionInfo.killStat = killStat
+                end
+
+                if killStat then
+                    local total = killStat.Value
+                    local baseline = sessionInfo.killBaseline
+                    sessionInfo.killsAvailable = true
+
+                    -- Only the increase since tracking started counts, so the lifetime total is never shown.
+                    if baseline == nil or total < baseline then
+                        sessionInfo.killBaseline = total
+                    elseif total > baseline then
+                        sessionInfo.kills += total - baseline
+                        sessionInfo.killBaseline = total
+                    end
+                else
+                    sessionInfo.killsAvailable = false
+                end
+            end
+        end
+
+        local function stopSessionInfoCharacterTracker()
+            local tracker = sessionInfo.characterTracker
+
+            if tracker then
+                for _, connection in ipairs(tracker.connections) do
+                    connection:Disconnect()
+                end
+
+                for _, connection in ipairs(tracker.humanoidConnections) do
+                    connection:Disconnect()
+                end
+
+                sessionInfo.characterTracker = nil
+            end
+
+            sessionInfo.characterSignature = nil
+        end
+
+        -- Deaths, damage and survival time all hang off the character, so they share one tracker that is rebuilt when the set changes.
+        local function startSessionInfoCharacterTracker(needs)
+            stopSessionInfoCharacterTracker()
+
+            local tracker = { connections = {}, humanoidConnections = {} }
+            sessionInfo.characterTracker = tracker
+            sessionInfo.characterSignature = (needs.deaths and "d" or "") .. (needs.damage and "a" or "") .. (needs.survival and "s" or "")
+
+            local function attach(character, newLife)
+                for _, connection in ipairs(tracker.humanoidConnections) do
+                    connection:Disconnect()
+                end
+
+                table.clear(tracker.humanoidConnections)
+
+                local humanoid = character:FindFirstChildOfClass("Humanoid") or character:WaitForChild("Humanoid", 10)
+
+                if not humanoid or sessionInfo.characterTracker ~= tracker then
+                    return
+                end
+
+                if needs.survival then
+                    if newLife or (not sessionInfo.lifeStart and humanoid.Health > 0) then
+                        sessionInfo.lifeStart = os.clock()
+                    end
+                end
+
+                if needs.damage then
+                    local lastHealth = humanoid.Health
+
+                    table.insert(tracker.humanoidConnections, humanoid.HealthChanged:Connect(function(health)
+                        local lost = lastHealth - health
+                        lastHealth = health
+
+                        if lost > 0 then
+                            sessionInfo.damage += lost
+
+                            if lost > sessionInfo.mostDamage then
+                                sessionInfo.mostDamage = lost
+                            end
+                        end
+                    end))
+                end
+
+                table.insert(tracker.humanoidConnections, humanoid.Died:Connect(function()
+                    if needs.deaths then
+                        sessionInfo.deaths += 1
+                    end
+
+                    sessionInfo.lifeStart = nil
+                end))
+            end
+
+            table.insert(tracker.connections, localplayer.CharacterAdded:Connect(function(character)
+                task.spawn(attach, character, true)
+            end))
+
+            if localplayer.Character then
+                task.spawn(attach, localplayer.Character, false)
+            end
+        end
+
+        local function stopSessionInfoBulletTracker()
+            local tracker = sessionInfo.bulletTracker
+
+            if tracker then
+                tracker.active = false
+
+                -- If something else wrapped the function after this did, leave it be; the inactive wrapper just passes calls through.
+                if rawget(tracker.channel, "send") == tracker.counted then
+                    rawset(tracker.channel, "send", tracker.original)
+                end
+
+                sessionInfo.bulletTracker = nil
+            end
+        end
+
+        -- Every bullet goes through the game's fire packet, so wrapping its send counts exactly the bullets this client fires.
+        local function startSessionInfoBulletTracker()
+            if sessionInfo.bulletTracker then
+                return
+            end
+
+            local weaponModule = game:GetService("ReplicatedStorage"):FindFirstChild("Weapon")
+            local loaded, weaponClass = pcall(function()
+                return weaponModule and require(weaponModule)
+            end)
+            local packets = loaded and type(weaponClass) == "table" and weaponClass.weapon_packets
+            local channel = type(packets) == "table" and packets.fire
+            local original = type(channel) == "table" and rawget(channel, "send")
+
+            if type(original) ~= "function" then
+                sessionInfo.bulletsAvailable = false
+                return
+            end
+
+            sessionInfo.bulletsAvailable = true
+
+            local tracker = { active = true, channel = channel, original = original }
+
+            tracker.counted = function(...)
+                if tracker.active then
+                    sessionInfo.bullets += 1
+                end
+
+                return original(...)
+            end
+
+            rawset(channel, "send", tracker.counted)
+            sessionInfo.bulletTracker = tracker
+        end
+
+        -- [Session Info / Killer scan] Nearest living killer and how many living killers this client owns
+        local function scanSessionInfoKillers(needNearest, needOwned)
+            local scan = sessionInfo.scan
+            scan.nearestName, scan.nearestDistance, scan.owned = nil, nil, nil
+
+            local folder = killersFolder
+
+            if not folder or not folder.Parent then
+                folder = workspace:FindFirstChild("Killers")
+            end
+
+            local character = localplayer.Character
+            local root = character and character:FindFirstChild("HumanoidRootPart")
+            local canCheckOwner = type(isnetworkowner) == "function"
+
+            if needOwned and canCheckOwner then
+                scan.owned = 0
+            end
+
+            if not folder then
+                return
+            end
+
+            for _, killer in ipairs(folder:GetChildren()) do
+                local humanoid = killer:FindFirstChildOfClass("Humanoid")
+                local killerRoot = killer:FindFirstChild("HumanoidRootPart") or killer.PrimaryPart
+
+                if humanoid and humanoid.Health > 0 and killerRoot then
+                    if needNearest and root then
+                        local distance = (killerRoot.Position - root.Position).Magnitude
+
+                        if not scan.nearestDistance or distance < scan.nearestDistance then
+                            scan.nearestName, scan.nearestDistance = killer.Name, distance
+                        end
+                    end
+
+                    if scan.owned then
+                        local success, owned = pcall(isnetworkowner, killerRoot)
+
+                        if success and owned then
+                            scan.owned += 1
+                        end
+                    end
+                end
+            end
+        end
+
+        -- [Session Info / Label]
+        local function getSessionInfoSeparator()
+            local dropdown = options.sessionInfoSeparator_Dropdown
+            local value = dropdown and tostring(dropdown.Value) or ""
+
+            return value:match("^(%S+)") or "•"
+        end
+
+        local function updateSessionInfoLabel()
+            local label = sessionInfo.label
+
+            if not label then
+                return
+            end
+
+            local needs = sessionInfo.needs
+
+            if needs.nearest or needs.owned then
+                scanSessionInfoKillers(needs.nearest, needs.owned)
+            end
+
+            local lines = {}
+
+            for _, item in ipairs(sessionInfoItems) do
+                if isSessionInfoItemEnabled(item) then
+                    local success, value = pcall(item.value)
+                    table.insert(lines, item.text .. ": " .. (success and value or "N/A"))
+                end
+            end
+
+            local text
+
+            if #lines == 0 then
+                text = "No information selected"
+            elseif toggles.sessionInfoCompact_Toggle.Value then
+                text = table.concat(lines, " " .. getSessionInfoSeparator() .. " ")
+            else
+                text = table.concat(lines, "\n")
+            end
+
+            if text ~= sessionInfo.lastText then
+                sessionInfo.lastText = text
+                label:SetText(text)
+            end
+        end
+
+        local function createSessionInfoLabel()
+            local iconPosition = options.sessionInfoIconPosition_Dropdown and options.sessionInfoIconPosition_Dropdown.Value or "Left"
+
+            local created, label = pcall(function()
+                return library:AddDraggableLabel({
+                    Text = "Session Info",
+                    Icon = assetLib.fetchAsset("Icons/Celestial.png"),
+                    IconPosition = iconPosition,
+                })
+            end)
+
+            if not created or not label then
+                -- The icon could not be loaded; the overlay still works without it.
+                created, label = pcall(function()
+                    return library:AddDraggableLabel({ Text = "Session Info", IconPosition = iconPosition })
+                end)
+            end
+
+            if created and label then
+                pcall(function()
+                    label.Label.TextXAlignment = Enum.TextXAlignment.Left
+                end)
+
+                sessionInfo.label = label
+                sessionInfo.lastText = nil
+            end
+        end
+
+        local function stopSessionInfo()
+            sessionInfo.loopToken = nil
+            sessionInfo.needs = {}
+
+            if sessionInfo.renderConnection then
+                sessionInfo.renderConnection:Disconnect()
+                sessionInfo.renderConnection = nil
+            end
+
+            stopSessionInfoCharacterTracker()
+            stopSessionInfoBulletTracker()
+
+            if sessionInfo.label then
+                pcall(function()
+                    sessionInfo.label:Destroy()
+                end)
+
+                sessionInfo.label = nil
+            end
+
+            sessionInfo.lastText = nil
+        end
+
+        -- Runs whenever the overlay or any of its lines is switched, and only keeps running what the shown lines need.
+        local function refreshSessionInfo()
+            local overlayToggle = toggles.sessionInfo_Toggle
+
+            if library.Unloaded or not overlayToggle or overlayToggle.Value ~= true then
+                stopSessionInfo()
+                return
+            end
+
+            if not sessionInfo.label then
+                createSessionInfoLabel()
+
+                if not sessionInfo.label then
+                    return
+                end
+            end
+
+            local previous = sessionInfo.needs
+            local needs = getSessionInfoNeeds()
+            sessionInfo.needs = needs
+
+            -- A tracker that was off starts from a clean baseline so nothing from the gap is counted.
+            if needs.kills and not previous.kills then
+                sessionInfo.killBaseline = nil
+            end
+
+            if needs.fps and not previous.fps then
+                sessionInfo.frames, sessionInfo.frameStamp, sessionInfo.fps = 0, os.clock(), 0
+            end
+
+            local needsRender = needs.fps or needs.kills
+
+            if needsRender and not sessionInfo.renderConnection then
+                sessionInfo.renderConnection = runService.RenderStepped:Connect(sessionInfoRenderStep)
+            elseif not needsRender and sessionInfo.renderConnection then
+                sessionInfo.renderConnection:Disconnect()
+                sessionInfo.renderConnection = nil
+            end
+
+            local needsCharacter = needs.deaths or needs.damage or needs.survival
+
+            if needsCharacter then
+                local signature = (needs.deaths and "d" or "") .. (needs.damage and "a" or "") .. (needs.survival and "s" or "")
+
+                if sessionInfo.characterSignature ~= signature then
+                    startSessionInfoCharacterTracker(needs)
+                end
+            else
+                stopSessionInfoCharacterTracker()
+            end
+
+            if needs.bullets then
+                startSessionInfoBulletTracker()
+            else
+                stopSessionInfoBulletTracker()
+            end
+
+            if not sessionInfo.loopToken then
+                local token = {}
+                sessionInfo.loopToken = token
+
+                task.spawn(function()
+                    while sessionInfo.loopToken == token and not library.Unloaded do
+                        pcall(updateSessionInfoLabel)
+                        task.wait(0.25)
+                    end
+                end)
+            end
+
+            pcall(updateSessionInfoLabel)
+        end
+
+        toggles.sessionInfo_Toggle:OnChanged(refreshSessionInfo)
+
+        for _, item in ipairs(sessionInfoItems) do
+            toggles[item.toggleId]:OnChanged(refreshSessionInfo)
+        end
+
+        -- Compact Mode and the separator are read on every update, so they only need the text rebuilt.
+        local function rebuildSessionInfoText()
+            sessionInfo.lastText = nil
+            pcall(updateSessionInfoLabel)
+        end
+
+        toggles.sessionInfoCompact_Toggle:OnChanged(rebuildSessionInfoText)
+        options.sessionInfoSeparator_Dropdown:OnChanged(rebuildSessionInfoText)
+
+        options.sessionInfoIconPosition_Dropdown:OnChanged(function(position)
+            if sessionInfo.label then
+                pcall(sessionInfo.label.SetIconPosition, sessionInfo.label, position)
+            end
+        end)
+
+        table.insert(teardownTasks, stopSessionInfo)
+    end
+
+    buildSessionInfoOverlay()
+end
 
 -- [UI Settings / Teardown] Disable active features and clear shared state
 local function unloadModules()
