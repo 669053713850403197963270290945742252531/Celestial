@@ -12,7 +12,7 @@
     08. Utility: teleport, healing, sounds, and interactions
     09. Player: movement, speed handling, freecam, and backtrack
     10. Exploits: Pack-a-Punch, aim controls, collection, and killer controls
-    11. Visuals: ESP, FOV, fog, and anti-effect handlers
+    11. Visuals: ESP, FOV, fog, anti-effect handlers, scope overlay removal, and grenade trajectory preview
     12. World: environmental settings and alien / kill-part controls
     13. Weapons: inventory, Pack-a-Punch queue, defense, gun options, and skin changer
     14. Miscellaneous: utility actions and weapon spam
@@ -637,14 +637,24 @@ local function teleport(destination, hrp)
     local cframeValues = {
         ["Surface"] = CFrame.new(326.087067, 511.699921, 392.975769, 0.999967098, 0, 0.00810976978, 0, 1, 0, -0.00810976978, 0, 0.999967098),
         ["Area 51"] = CFrame.new(327.146332, 313.499908, 369.922913, 0.0146765877, 0, 0.999892294, 0, 1, 0, -0.999892294, 0, 0.0146765877),
-        ["Teleporter"] = CFrame.new(110.864708, 313.499969, 72.9767151, 0.999984086, -2.85284294e-08, -0.00564495847, 2.80977517e-08, 1, -7.6373631e-08, 0.00564495847, 7.62138015e-08, 0.999984086),
+        ["Teleportation Zone"] = CFrame.new(110.864708, 313.499969, 72.9767151, 0.999984086, -2.85284294e-08, -0.00564495847, 2.80977517e-08, 1, -7.6373631e-08, 0.00564495847, 7.62138015e-08, 0.999984086),
         ["Alien"] = CFrame.new(237.99556, 337.799927, 472.399994, 4.34290196e-05, 1.17440393e-07, -1, 3.82457843e-09, 1, 1.17440564e-07, 1, -3.8296788e-09, 4.34290196e-05),
-        ["Alien Code Input"] = CFrame.new(137.72377, 333.499939, 525.566956, -0.999551415, 4.71232431e-09, 0.0299497657, 4.37261027e-09, 1, -1.14082894e-08, -0.0299497657, -1.12722134e-08, -0.999551415),
-        ["Armor"] = CFrame.new(-167.243805, 293.500214, 316.368713, -0.0163577069, -1.04670743e-08, 0.999866188, 6.23807708e-08, 1, 1.14890186e-08, -0.999866188, 6.25603604e-08, -0.0163577069),
-        ["Ammo Box"] = CFrame.new(184.26889, 314.102753, 437.041473, -0.999995649, 5.072752e-09, 0.00294528855, 5.24779331e-09, 1, 5.94231793e-08, -0.00294528855, 5.94383778e-08, -0.999995649),
-        ["Zombie Morpher"] = CFrame.new(402.278748, 512.499817, 399.379395, 0.999998093, -4.97486283e-08, 0.00196264265, 4.98476567e-08, 1, -5.0407067e-08, -0.00196264265, 5.05048021e-08, 0.999998093),
+        ["Keypad Room"] = CFrame.new(137.72377, 333.499939, 525.566956, -0.999551415, 4.71232431e-09, 0.0299497657, 4.37261027e-09, 1, -1.14082894e-08, -0.0299497657, -1.12722134e-08, -0.999551415),
+        ["Armory #1"] = CFrame.new(-134, 313.499817, 280.700012, 1, 4.96563608e-08, -1.20892841e-15, -4.96563608e-08, 1, -5.78394499e-10, 1.18020743e-15, 5.78394499e-10, 1),
+        ["Armory #2"] = CFrame.new(-167.243805, 293.500214, 316.368713, -0.0163577069, -1.04670743e-08, 0.999866188, 6.23807708e-08, 1, 1.14890186e-08, -0.999866188, 6.25603604e-08, -0.0163577069),
+        ["Ammunition Room"] = CFrame.new(184.26889, 314.102753, 437.041473, -0.999995649, 5.072752e-09, 0.00294528855, 5.24779331e-09, 1, 5.94231793e-08, -0.00294528855, 5.94383778e-08, -0.999995649),
         ["Radioactive Zone"] = CFrame.new(140.615601, 313.499969, 435.841766, -0.9997648, 3.54234375e-09, 0.0216868054, 6.39699493e-09, 1, 1.31561421e-07, -0.0216868054, 1.31669211e-07, -0.9997648),
-        ["Office"] = CFrame.new(-52.6837997, 313.500305, 292.096558, 1, 1.49757151e-09, -4.17306546e-05, -1.49720991e-09, 1, 8.6659675e-09, 4.17306546e-05, -8.66590533e-09, 1)
+        ["Checkpoint Office"] = CFrame.new(-52.6837997, 313.500305, 292.096558, 1, 1.49757151e-09, -4.17306546e-05, -1.49720991e-09, 1, 8.6659675e-09, 4.17306546e-05, -8.66590533e-09, 1),
+        ["UFO / Experimentation Room"] = CFrame.new(-9.31313705, 303.499725, 659.399963, 1, 2.64172648e-08, -8.89015791e-06, -2.64172684e-08, 1, -3.07409292e-10, 8.89015791e-06, 3.0764416e-10, 1),
+        ["Jail"] = CFrame.new(97.5999985, 291.5, 241.300003, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+        ["Hatch"] = CFrame.new(60.5999985, 313.5, 527.799988, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+        ["Cafeteria Back Room"] = CFrame.new(376.116302, 333.499939, 615.305908, -0.0125078484, 0, 0.999921799, 0, 1, 0, -0.999921799, 0, -0.0125078484),
+        ["Bunker"] = CFrame.new(165.600006, 239.699997, 428.299988, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+        ["Sub-Office Room"] = CFrame.new(-7, 293.499939, 291, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+        ["Computer Room"] = CFrame.new(-55.5999985, 292.499725, 736.599976, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+        ["Sewer"] = CFrame.new(62.4396858, 271.700226, 178.499451, 0.999994755, -6.60116868e-08, -0.00324202515, 6.62044073e-08, 1, 5.93380776e-08, 0.00324202515, -5.95524021e-08, 0.999994755),
+        ["Cafe"] = CFrame.new(177.5, 333.399994, 600, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+        ["Research Office"] = CFrame.new(-15.5787725, 303.499695, 339.084656, 1, -4.2062446e-08, 4.6596204e-14, 4.2062446e-08, 1, -3.00335863e-08, -4.53329153e-14, 3.00335863e-08, 1),
     }
 
     if not isAlive() then return end
@@ -826,13 +836,14 @@ local otherGroup2 = tabs.utils:AddRightGroupbox("Other")
 
 -- [Utility / Teleport] Location controls
 
-teleportGroup:AddDropdown("regularLocationsList_Dropdown", { Text = "Teleport", Tooltip = false, Values = {"Surface", "Area 51", "Teleporter", "Alien", "Alien Code Input",
-"Pack A Punch Machine", "Ammo Box", "Zombie Morpher", "Radioactive Zone"}, Default = 1 })
+teleportGroup:AddDropdown("locationsList_Dropdown", { Text = "Location", Tooltip = false, Values = {"Surface", "Area 51", "Teleportation Zone", "Alien", "Keypad Room",
+"Armory #1", "Armory #2", "Pack A Punch Machine", "Ammunition Room", "Radioactive Zone", "Checkpoint Office", "UFO / Experimentation Room", "Jail", "Hatch",
+"Cafeteria Back Room", "Bunker", "Sub-Office Room", "Computer Room", "Sewer", "Cafe", "Research Office" }, Default = 1 })
 teleportGroup:AddButton({ Text = "Teleport", Func = function()
         if not isAlive() then return end
         local hrp = getHRP()
 
-        local dropdown = options.regularLocationsList_Dropdown
+        local dropdown = options.locationsList_Dropdown
         teleport(dropdown.Value, hrp)
     end,
 })
@@ -842,7 +853,7 @@ teleportGroup:AddButton({ Text = "Office Teleport", Tooltip = "Teleports you to 
         if not isAlive() then return end
 
         local hrp = getHRP()
-        teleport("Office", hrp)
+        teleport("Checkpoint Office", hrp)
     end,
 }):AddKeyPicker("office_KeyPicker", {
     Default = "V",
@@ -5433,6 +5444,885 @@ toggles.antiTailsPopup_Toggle:OnChanged(function(enabled)
     end
 end)
 
+-- [Visuals / Scope Overlay]
+do
+    local function buildScopeOverlayRemoval()
+        visualsGroup:AddToggle("disableScopeOverlay_Toggle", { Text = "Disable Scope Overlay", Tooltip = "Removes the black overlay when aiming through a scope, on any weapon. The zoom is kept.", Default = false })
+
+        local scopeOverlayDepbox = visualsGroup:AddDependencyBox()
+
+        scopeOverlayDepbox:AddToggle("keepScopeCrosshair_Toggle", { Text = "Keep Crosshair", Tooltip = "Shows the normal crosshair while scoped, since the scope's own reticle goes away with the overlay.", Default = true })
+        scopeOverlayDepbox:AddDivider()
+
+        scopeOverlayDepbox:SetupDependencies({ { toggles.disableScopeOverlay_Toggle, true } })
+
+        local active = false
+        local originals = {} -- [instance] = transparency the game gave it
+        local connections = {}
+        local guiAddedConnection = nil
+        local reapplyQueued = false
+
+        local function getScopeGuis()
+            local mouseGui = localplayer.PlayerGui:FindFirstChild("Mouse")
+
+            if not mouseGui then
+                return nil, nil
+            end
+
+            return mouseGui:FindFirstChild("Scope"), mouseGui:FindFirstChild("Aim")
+        end
+
+        local function hideOverlay(scope)
+            if originals[scope] == nil then
+                originals[scope] = scope.ImageTransparency
+            end
+
+            scope.ImageTransparency = 1
+
+            for _, child in ipairs(scope:GetChildren()) do
+                if child:IsA("GuiObject") then
+                    if originals[child] == nil then
+                        originals[child] = child.BackgroundTransparency
+                    end
+
+                    child.BackgroundTransparency = 1
+                end
+            end
+        end
+
+        local function restoreOverlay()
+            for instance, value in pairs(originals) do
+                if instance.Parent then
+                    if instance:IsA("ImageLabel") then
+                        instance.ImageTransparency = value
+                    else
+                        instance.BackgroundTransparency = value
+                    end
+                end
+
+                originals[instance] = nil
+            end
+        end
+
+        local function disconnectScopeConnections()
+            for name, connection in pairs(connections) do
+                connection:Disconnect()
+                connections[name] = nil
+            end
+        end
+
+        -- The game hides the crosshair (Mouse.Aim) when aiming starts and shows the scope right after.
+        local function wantsCrosshair()
+            return active and toggles.keepScopeCrosshair_Toggle.Value
+        end
+
+        local function refreshCrosshair()
+            local scope, aim = getScopeGuis()
+
+            if scope and aim and scope.Visible then
+                aim.Visible = wantsCrosshair()
+            end
+        end
+
+        local function applyOverlayRemoval()
+            reapplyQueued = false
+
+            if not active then
+                return
+            end
+
+            local scope, aim = getScopeGuis()
+
+            if not scope then
+                return
+            end
+
+            hideOverlay(scope)
+            disconnectScopeConnections()
+
+            if aim then
+                connections.scopeVisible = scope:GetPropertyChangedSignal("Visible"):Connect(function()
+                    if scope.Visible and wantsCrosshair() then
+                        aim.Visible = true
+                    end
+                end)
+
+                connections.aimVisible = aim:GetPropertyChangedSignal("Visible"):Connect(function()
+                    if not aim.Visible and scope.Visible and wantsCrosshair() then
+                        aim.Visible = true
+                    end
+                end)
+            end
+
+            refreshCrosshair()
+        end
+
+        local function stopOverlayRemoval()
+            active = false
+            disconnectScopeConnections()
+            restoreOverlay()
+
+            if guiAddedConnection then
+                guiAddedConnection:Disconnect()
+                guiAddedConnection = nil
+            end
+
+            local scope, aim = getScopeGuis()
+
+            if scope and aim and scope.Visible then
+                aim.Visible = false -- back to what the game does while scoped
+            end
+        end
+
+        toggles.disableScopeOverlay_Toggle:OnChanged(function(enabled)
+            if not enabled then
+                stopOverlayRemoval()
+                return
+            end
+
+            active = true
+
+            -- The GUI is rebuilt if the player's GUI ever resets; queue a re-apply when a new Scope shows up.
+            if guiAddedConnection then
+                guiAddedConnection:Disconnect()
+            end
+
+            guiAddedConnection = localplayer.PlayerGui.DescendantAdded:Connect(function(descendant)
+                if active and not reapplyQueued and descendant.Name == "Scope" and descendant.Parent and descendant.Parent.Name == "Mouse" then
+                    reapplyQueued = true
+                    task.defer(applyOverlayRemoval)
+                end
+            end)
+
+            if not getScopeGuis() then
+                notify("Error", "Failed to locate", "Failed to find the scope overlay. It will be removed once it loads.", 8)
+            end
+
+            applyOverlayRemoval()
+        end)
+
+        toggles.keepScopeCrosshair_Toggle:OnChanged(function()
+            refreshCrosshair()
+        end)
+
+        table.insert(teardownTasks, stopOverlayRemoval)
+    end
+
+    buildScopeOverlayRemoval()
+end
+
+-- [Visuals / Grenade Trajectory] Flight path and landing preview for the M16A2's grenade launcher (M203)
+do
+    local function buildGrenadeTrajectory()
+        local trajectoryGroup = tabs.visuals:AddRightGroupbox("Grenade Trajectory")
+
+        trajectoryGroup:AddToggle("trajectoryPreview_Toggle", { Text = "Grenade Trajectory", Tooltip = "Draws the flight path and landing spot of the M16A2's grenade launcher (M203) while it is equipped in grenade mode.", Default = false })
+
+        local trajectoryDepbox = trajectoryGroup:AddDependencyBox()
+
+        trajectoryDepbox:AddLabel("Path Color"):AddColorPicker("trajectoryPathColor_ColorPicker", { Title = "Path Color", Default = Color3.fromRGB(0, 229, 255) })
+        trajectoryDepbox:AddLabel("Landing Color"):AddColorPicker("trajectoryLandingColor_ColorPicker", { Title = "Landing Color", Default = Color3.fromRGB(255, 170, 0) })
+        trajectoryDepbox:AddSlider("trajectoryThickness_Slider", { Text = "Line Thickness", Tooltip = false, Default = 2, Min = 1, Max = 5, Rounding = 0 })
+        trajectoryDepbox:AddSlider("trajectoryMarkerSize_Slider", { Text = "Landing Marker Size", Tooltip = "Radius of the ring drawn where the grenade lands. Only a visual size, not the explosion radius.", Default = 3, Min = 1, Max = 10, Suffix = " Studs", Rounding = 0 })
+        trajectoryDepbox:AddToggle("trajectoryShowInfo_Toggle", { Text = "Show Distance / Time", Tooltip = "Shows the flight distance and flight time next to the landing spot.", Default = true })
+        trajectoryDepbox:AddToggle("trajectoryKillerHighlight_Toggle", { Text = "Highlight Killer On Hit", Tooltip = "When the grenade is predicted to hit a killer, that killer and the path turn the hit color.", Default = true })
+
+        local trajectoryKillerDepbox = trajectoryDepbox:AddDependencyBox()
+
+        trajectoryKillerDepbox:AddLabel("Killer Hit Color"):AddColorPicker("trajectoryKillerColor_ColorPicker", { Title = "Killer Hit Color", Default = Color3.fromRGB(0, 255, 0) })
+
+        trajectoryDepbox:SetupDependencies({ { toggles.trajectoryPreview_Toggle, true } })
+        trajectoryKillerDepbox:SetupDependencies({ { toggles.trajectoryKillerHighlight_Toggle, true } })
+
+        local LAUNCHER_TOOL_NAME = "M16A2/M203"
+        local MUZZLE_SPEED = 150 -- Weapon.fire: Part.AssemblyLinearVelocity = Unit * 150
+        local LAUNCHER_UP_FORCE = 10 -- M16A2/M203 set_missile: BodyForce.Force = Vector3.new(0, 10, 0)
+        local MISSILE_RADIUS = 0.5 -- set_missile resizes the grenade to 1 x 1 x 1
+        local AIM_RAY_LENGTH = 200 -- Weapon.screen_to_target
+        local SOLID_TRANSPARENCY = 0.99 -- Weapon.hit_transparency_threshold
+        local NO_CLIP_GROUP = "SurvivorsKillersNoClip"
+        local UNHITTABLE_KILLERS = { Giant = true, Jane = true } -- Weapon.missile_check (Classic mode)
+
+        -- Simulation and drawing settings
+        local STEP_TIME = 0.05
+        local MAX_STEPS = 100
+        local MAX_RANGE = 800
+        local NEAR_PLANE = 0.1
+        local RING_SEGMENTS = 20
+        local RENDER_NAME = "CelestialGrenadeTrajectory"
+
+        local missileMass = nil
+        local launcherCache = { object = nil, scanning = false, nextScan = 0 }
+        local hasSpherecast = pcall(function() return workspace.Spherecast end)
+
+        local aimParams = RaycastParams.new()
+        aimParams.FilterType = Enum.RaycastFilterType.Exclude
+        aimParams.IgnoreWater = true
+
+        local missileParams = RaycastParams.new()
+        missileParams.FilterType = Enum.RaycastFilterType.Exclude
+        missileParams.IgnoreWater = true
+
+        local pathLines = {}
+        local ringLines = {}
+        local infoLabel = nil
+        local highlights = {}
+        local highlightContainer = nil
+        local grenadeIcon = nil
+        local running = false
+        local lastErrorTime = 0
+
+        -- [Grenade Trajectory / Physics] Mass of the grenade (a 1 x 1 x 1 ball with default density)
+        local function getMissileMass()
+            if not missileMass then
+                local probe = Instance.new("Part")
+                probe.Shape = Enum.PartType.Ball
+                probe.Size = Vector3.new(1, 1, 1)
+                missileMass = probe.Mass
+                probe:Destroy()
+            end
+
+            return missileMass
+        end
+
+        -- [Grenade Trajectory / Game rules] Weapon.find_humanoid and the Killer checks used for aiming and for hits
+        local function findHumanoid(part)
+            local parent = part.Parent
+
+            if not parent then
+                return nil
+            end
+
+            local humanoid = parent:FindFirstChildOfClass("Humanoid")
+
+            if not humanoid and parent.Parent then
+                humanoid = parent.Parent:FindFirstChildOfClass("Humanoid")
+            end
+
+            if humanoid then
+                local heldTool = humanoid.Parent and humanoid.Parent:FindFirstChildOfClass("Tool")
+
+                if not (heldTool and part:IsDescendantOf(heldTool)) then
+                    return humanoid
+                end
+            end
+
+            return nil
+        end
+
+        local function asKillerHumanoid(humanoid, killers)
+            if humanoid and (humanoid.Name == "Zombie" or (killers and humanoid:IsDescendantOf(killers))) then
+                return humanoid
+            end
+
+            return nil
+        end
+
+        -- Weapon.target_ray_callback (Classic mode): what the aim ray stops at
+        local function isAimBlocker(result, killers)
+            local part = result.Instance
+            local humanoid = asKillerHumanoid(findHumanoid(part), killers)
+
+            if humanoid then
+                return humanoid.Health > 0
+            end
+
+            return part.Transparency < SOLID_TRANSPARENCY and part.CanCollide and part.CollisionGroup ~= NO_CLIP_GROUP
+        end
+
+        -- Weapon.missile_hit + missile_check (Classic mode): what makes the grenade explode. Returns the kind of hit
+        -- ("killer", "object" or "solid") and, for a killer, its humanoid; nil when the grenade flies straight through.
+        local function classifyMissileHit(part, killers)
+            if not part.CanTouch then
+                return nil
+            end
+
+            if part:FindFirstChild("BulletHitEvent") then
+                return "object", nil
+            end
+
+            local humanoid = asKillerHumanoid(findHumanoid(part), killers)
+
+            if humanoid and UNHITTABLE_KILLERS[humanoid.Parent.Name] then
+                humanoid = nil
+            end
+
+            if humanoid then
+                if humanoid.Health > 0 then
+                    return "killer", humanoid
+                end
+
+                return nil
+            end
+
+            if part.CanCollide and part.Transparency < SOLID_TRANSPARENCY then
+                return "solid", nil
+            end
+
+            return nil
+        end
+
+        -- [Grenade Trajectory / Weapon state] Is the M203 equipped, and is the player scoped in?
+        -- The game keeps a Lua object per fire mode (M16A2 and M203) with equipped / aiming flags. It is found once through
+        -- the garbage collector (same approach as Silent Aim) and only read afterwards.
+        local function scanForLauncherObject(tool)
+            local found = nil
+
+            local function consider(object)
+                if not found and type(object) == "table"
+                    and rawget(object, "instance") == tool
+                    and rawget(object, "is_grenade") == true
+                then
+                    found = object
+                end
+            end
+
+            if type(filtergc) == "function" then
+                local success, matches = pcall(filtergc, "table", { Keys = { "instance", "is_grenade" } }, false)
+
+                if success and type(matches) == "table" then
+                    for _, object in ipairs(matches) do
+                        consider(object)
+                    end
+                end
+            end
+
+            if not found and type(getgc) == "function" then
+                local success, objects = pcall(getgc, true)
+
+                if success and type(objects) == "table" then
+                    for index = 1, #objects do
+                        consider(objects[index])
+
+                        if found then
+                            break
+                        end
+
+                        if index % 20000 == 0 then
+                            task.wait()
+
+                            if library.Unloaded then
+                                return nil
+                            end
+                        end
+                    end
+                end
+            end
+
+            return found
+        end
+
+        local function requestLauncherScan(tool)
+            if launcherCache.scanning or os.clock() < launcherCache.nextScan then
+                return
+            end
+
+            launcherCache.scanning = true
+            launcherCache.nextScan = os.clock() + 2
+
+            task.spawn(function()
+                local object = scanForLauncherObject(tool)
+
+                if object then
+                    launcherCache.object = object
+                end
+
+                launcherCache.scanning = false
+            end)
+        end
+
+        -- Fallback when the weapon object cannot be found: the crosshair shows a grenade icon in grenade mode.
+        local function getGrenadeIcon()
+            if grenadeIcon and grenadeIcon.Parent then
+                return grenadeIcon
+            end
+
+            local mouseGui = localplayer.PlayerGui:FindFirstChild("Mouse")
+            grenadeIcon = mouseGui and mouseGui:FindFirstChild("Grenade", true) or nil
+
+            return grenadeIcon
+        end
+
+        -- Returns the equipped M16A2/M203 tool and whether the player is scoped in, or nil when grenade mode is not active.
+        local function getActiveLauncher(character)
+            local tool = character:FindFirstChildWhichIsA("Tool")
+
+            if not tool or not string.find(tool.Name, LAUNCHER_TOOL_NAME, 1, true) then
+                return nil
+            end
+
+            local object = launcherCache.object
+
+            if object and rawget(object, "instance") ~= tool then
+                object = nil
+                launcherCache.object = nil
+            end
+
+            if object then
+                if object.equipped ~= true then
+                    return nil
+                end
+
+                return tool, object.aiming == true and object.has_scope == true
+            end
+
+            requestLauncherScan(tool)
+
+            local icon = getGrenadeIcon()
+
+            if icon and icon.Visible then
+                return tool, false
+            end
+
+            return nil
+        end
+
+        -- Weapon.fire: the grenade leaves from the Aim part while scoped (if the tool has one), otherwise from Flash.
+        local function getMuzzlePart(tool, scoped)
+            local flash = tool:FindFirstChild("Flash")
+
+            if scoped then
+                return tool:FindFirstChild("Aim") or flash
+            end
+
+            return flash
+        end
+
+        -- [Grenade Trajectory / Aim] Weapon.screen_to_target: where the cursor ray ends, up to 200 studs out
+        local function findAimPoint(rayOrigin, rayDirection, charactersFolder, killers)
+            local ignored = {}
+
+            if charactersFolder then
+                ignored[1] = charactersFolder
+            end
+
+            aimParams.FilterDescendantsInstances = ignored
+
+            for _ = 1, 12 do
+                local result = workspace:Raycast(rayOrigin, rayDirection, aimParams)
+
+                if not result then
+                    break
+                end
+
+                if isAimBlocker(result, killers) then
+                    return result.Position
+                end
+
+                ignored[#ignored + 1] = result.Instance
+                aimParams.FilterDescendantsInstances = ignored
+            end
+
+            return rayOrigin + rayDirection
+        end
+
+        -- [Grenade Trajectory / Simulation] Steps the grenade along its parabola and finds where it explodes.
+        -- Returns { points = { Vector3... }, impact = { position, normal, kind, humanoid, time } | nil }.
+        -- Parts that do not stop the grenade are skipped for the rest of the simulation (that never changes mid-flight).
+        local function simulateMissile(origin, velocity, accelY, charactersFolder, killers)
+            local ignored = {}
+
+            if charactersFolder then
+                ignored[1] = charactersFolder
+            end
+
+            missileParams.FilterDescendantsInstances = ignored
+
+            local points = { origin }
+            local position = origin
+            local floorY = workspace.FallenPartsDestroyHeight
+            local radius = MISSILE_RADIUS
+
+            for step = 1, MAX_STEPS do
+                local time = step * STEP_TIME
+                local nextPosition = origin + velocity * time - Vector3.new(0, 0.5 * accelY * time * time, 0)
+                local delta = nextPosition - position
+                local distance = delta.Magnitude
+
+                if distance > 1e-4 then
+                    for _ = 1, 16 do
+                        local result
+
+                        if hasSpherecast then
+                            result = workspace:Spherecast(position, radius, delta, missileParams)
+                        else
+                            result = workspace:Raycast(position, delta, missileParams)
+                        end
+
+                        if not result then
+                            break
+                        end
+
+                        local kind, humanoid = classifyMissileHit(result.Instance, killers)
+
+                        if kind then
+                            local fraction = math.clamp(result.Distance / distance, 0, 1)
+                            points[#points + 1] = position + delta * fraction
+
+                            return {
+                                points = points,
+                                impact = {
+                                    position = result.Position,
+                                    normal = result.Normal,
+                                    kind = kind,
+                                    humanoid = humanoid,
+                                    time = (step - 1 + fraction) * STEP_TIME,
+                                },
+                            }
+                        end
+
+                        ignored[#ignored + 1] = result.Instance
+                        missileParams.FilterDescendantsInstances = ignored
+                    end
+                end
+
+                points[#points + 1] = nextPosition
+                position = nextPosition
+
+                if nextPosition.Y < floorY or (nextPosition - origin).Magnitude > MAX_RANGE then
+                    break
+                end
+            end
+
+            return { points = points }
+        end
+
+        -- [Grenade Trajectory / Drawing] Line pools, near-plane clipping and the info label
+        local function destroyDrawing(drawing)
+            pcall(function()
+                if drawing.Remove then
+                    drawing:Remove()
+                else
+                    drawing:Destroy()
+                end
+            end)
+        end
+
+        local function getLine(pool, index)
+            local line = pool[index]
+
+            if not line then
+                line = Drawing.new("Line")
+                line.Transparency = 1
+                line.ZIndex = 5
+                line.Visible = false
+                pool[index] = line
+            end
+
+            return line
+        end
+
+        local function hidePool(pool, fromIndex)
+            for index = fromIndex, #pool do
+                pool[index].Visible = false
+            end
+        end
+
+        local function getInfoLabel()
+            if not infoLabel then
+                infoLabel = Drawing.new("Text")
+                infoLabel.Center = true
+                infoLabel.Outline = true
+                infoLabel.OutlineColor = Color3.new(0, 0, 0)
+                infoLabel.Color = Color3.new(1, 1, 1)
+                infoLabel.Size = 16
+                infoLabel.Transparency = 1
+                infoLabel.ZIndex = 6
+                infoLabel.Visible = false
+            end
+
+            return infoLabel
+        end
+
+        -- Projects a world-space segment to the screen, clipping the part that is behind the camera.
+        local function projectSegment(cam, camPosition, camLook, from, to)
+            local fromDepth = camLook:Dot(from - camPosition)
+            local toDepth = camLook:Dot(to - camPosition)
+
+            if fromDepth < NEAR_PLANE and toDepth < NEAR_PLANE then
+                return nil, nil
+            end
+
+            if fromDepth < NEAR_PLANE then
+                from = from + (to - from) * ((NEAR_PLANE - fromDepth) / (toDepth - fromDepth))
+            elseif toDepth < NEAR_PLANE then
+                to = from + (to - from) * ((NEAR_PLANE - fromDepth) / (toDepth - fromDepth))
+            end
+
+            local fromScreen = cam:WorldToViewportPoint(from)
+            local toScreen = cam:WorldToViewportPoint(to)
+
+            return Vector2.new(fromScreen.X, fromScreen.Y), Vector2.new(toScreen.X, toScreen.Y)
+        end
+
+        -- [Grenade Trajectory / Killer highlight] One Highlight on the killer the grenade is predicted to hit
+        local function getHighlightContainer()
+            if highlightContainer and highlightContainer.Parent then
+                return highlightContainer
+            end
+
+            highlightContainer = Instance.new("Folder")
+            highlightContainer.Name = "GrenadeTrajectoryHighlights"
+
+            local success = type(gethui) == "function" and pcall(function()
+                highlightContainer.Parent = gethui()
+            end)
+
+            if not success or not highlightContainer.Parent then
+                highlightContainer.Parent = game:GetService("CoreGui")
+            end
+
+            return highlightContainer
+        end
+
+        local function clearHighlights()
+            for model, highlight in pairs(highlights) do
+                pcall(function() highlight:Destroy() end)
+                highlights[model] = nil
+            end
+        end
+
+        local function setHighlightTarget(model, color)
+            for existing, highlight in pairs(highlights) do
+                if existing ~= model or not highlight.Parent then
+                    pcall(function() highlight:Destroy() end)
+                    highlights[existing] = nil
+                end
+            end
+
+            if not model then
+                return
+            end
+
+            local highlight = highlights[model]
+
+            if not highlight then
+                highlight = Instance.new("Highlight")
+                highlight.Name = "GrenadeTrajectoryHit"
+                highlight.Adornee = model
+                highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                highlight.FillTransparency = 0.5
+                highlight.OutlineTransparency = 0
+                highlight.Parent = getHighlightContainer()
+                highlights[model] = highlight
+            end
+
+            highlight.FillColor = color
+            highlight.OutlineColor = color
+        end
+
+        local function hideVisuals()
+            hidePool(pathLines, 1)
+            hidePool(ringLines, 1)
+
+            if infoLabel then
+                infoLabel.Visible = false
+            end
+
+            setHighlightTarget(nil)
+        end
+
+        -- [Grenade Trajectory / Frame update]
+        local function updatePreview()
+            if library.Unloaded then
+                return
+            end
+
+            local cam = workspace.CurrentCamera
+            local character = localplayer.Character
+            local tool, scoped
+
+            if cam and character then
+                tool, scoped = getActiveLauncher(character)
+            end
+
+            local muzzlePart = tool and getMuzzlePart(tool, scoped)
+
+            if not muzzlePart then
+                hideVisuals()
+                return
+            end
+
+            local charactersFolder = workspace:FindFirstChild("Characters to kill")
+            local killers = workspace:FindFirstChild("Killers")
+            local origin = muzzlePart.Position
+
+            local mouse = uis:GetMouseLocation()
+            local ray = cam:ViewportPointToRay(mouse.X, mouse.Y)
+            local aimPoint = findAimPoint(ray.Origin, ray.Direction * AIM_RAY_LENGTH, charactersFolder, killers)
+            local aimVector = aimPoint - origin
+
+            if aimVector.Magnitude < 1e-3 then
+                hideVisuals()
+                return
+            end
+
+            local velocity = aimVector.Unit * MUZZLE_SPEED
+            local accelY = workspace.Gravity - LAUNCHER_UP_FORCE / getMissileMass()
+            local path = simulateMissile(origin, velocity, accelY, charactersFolder, killers)
+            local impact = path.impact
+
+            local killerHit = impact ~= nil and impact.kind == "killer" and toggles.trajectoryKillerHighlight_Toggle.Value
+            local killerColor = options.trajectoryKillerColor_ColorPicker.Value
+            local pathColor = killerHit and killerColor or options.trajectoryPathColor_ColorPicker.Value
+            local landingColor = killerHit and killerColor or options.trajectoryLandingColor_ColorPicker.Value
+            local thickness = options.trajectoryThickness_Slider.Value
+
+            local camPosition = cam.CFrame.Position
+            local camLook = cam.CFrame.LookVector
+
+            -- Flight path
+            local points = path.points
+            local lineCount = 0
+
+            for index = 1, #points - 1 do
+                local from, to = projectSegment(cam, camPosition, camLook, points[index], points[index + 1])
+
+                if from then
+                    lineCount += 1
+
+                    local line = getLine(pathLines, lineCount)
+                    line.From = from
+                    line.To = to
+                    line.Color = pathColor
+                    line.Thickness = thickness
+                    line.Visible = true
+                end
+            end
+
+            hidePool(pathLines, lineCount + 1)
+
+            -- Landing ring, lying on the surface that was hit
+            local ringCount = 0
+
+            if impact then
+                local radius = options.trajectoryMarkerSize_Slider.Value
+                local normal = impact.normal
+                local reference = math.abs(normal.Y) < 0.99 and Vector3.yAxis or Vector3.xAxis
+                local tangent = normal:Cross(reference).Unit
+                local bitangent = normal:Cross(tangent)
+                local center = impact.position + normal * 0.05
+                local previous = center + tangent * radius
+
+                for index = 1, RING_SEGMENTS do
+                    local angle = (index / RING_SEGMENTS) * math.pi * 2
+                    local nextPoint = center + (tangent * math.cos(angle) + bitangent * math.sin(angle)) * radius
+                    local from, to = projectSegment(cam, camPosition, camLook, previous, nextPoint)
+
+                    if from then
+                        ringCount += 1
+
+                        local line = getLine(ringLines, ringCount)
+                        line.From = from
+                        line.To = to
+                        line.Color = landingColor
+                        line.Thickness = thickness
+                        line.Visible = true
+                    end
+
+                    previous = nextPoint
+                end
+            end
+
+            hidePool(ringLines, ringCount + 1)
+
+            -- Distance / time label above the landing spot
+            if impact and toggles.trajectoryShowInfo_Toggle.Value then
+                local screen = cam:WorldToViewportPoint(impact.position)
+
+                if screen.Z > 0 then
+                    local text = string.format("%d studs | %.1fs", math.floor((impact.position - origin).Magnitude + 0.5), impact.time)
+
+                    if killerHit then
+                        text ..= " | " .. impact.humanoid.Parent.Name
+                    end
+
+                    local label = getInfoLabel()
+                    label.Text = text
+                    label.Position = Vector2.new(screen.X, screen.Y - 30)
+                    label.Visible = true
+                else
+                    getInfoLabel().Visible = false
+                end
+            elseif infoLabel then
+                infoLabel.Visible = false
+            end
+
+            if killerHit then
+                setHighlightTarget(impact.humanoid.Parent, killerColor)
+            else
+                setHighlightTarget(nil)
+            end
+        end
+
+        local function stepPreview()
+            local success, err = pcall(updatePreview)
+
+            if not success and os.clock() - lastErrorTime > 5 then
+                lastErrorTime = os.clock()
+                warn("[Grenade Trajectory] " .. tostring(err))
+            end
+        end
+
+        local function startPreview()
+            if running then
+                return
+            end
+
+            running = true
+
+            pcall(function() runService:UnbindFromRenderStep(RENDER_NAME) end)
+            runService:BindToRenderStep(RENDER_NAME, Enum.RenderPriority.Last.Value, stepPreview)
+        end
+
+        local function stopPreview()
+            running = false
+
+            pcall(function() runService:UnbindFromRenderStep(RENDER_NAME) end)
+
+            for index, line in ipairs(pathLines) do
+                destroyDrawing(line)
+                pathLines[index] = nil
+            end
+
+            for index, line in ipairs(ringLines) do
+                destroyDrawing(line)
+                ringLines[index] = nil
+            end
+
+            if infoLabel then
+                destroyDrawing(infoLabel)
+                infoLabel = nil
+            end
+
+            clearHighlights()
+
+            if highlightContainer then
+                pcall(function() highlightContainer:Destroy() end)
+                highlightContainer = nil
+            end
+        end
+
+        toggles.trajectoryPreview_Toggle:OnChanged(function(enabled)
+            if enabled then
+                if type(Drawing) ~= "table" or type(Drawing.new) ~= "function" then
+                    notify("Error", "Drawing unsupported", "Your executor does not support the Drawing library.", 8)
+                    toggles.trajectoryPreview_Toggle:SetValue(false)
+                    return
+                end
+
+                startPreview()
+            else
+                stopPreview()
+            end
+        end)
+
+        table.insert(teardownTasks, stopPreview)
+    end
+
+    buildGrenadeTrajectory()
+end
+
 -- ============================================================================
 -- 12 | TAB: WORLD
 -- ============================================================================
@@ -5444,18 +6334,9 @@ local unlockAlienGroup = tabs.world:AddRightGroupbox("Alien")
 
 worldGroup:AddToggle("disableCactuses_Toggle", { Text = "Disable Cactuses", Tooltip = false })
 worldGroup:AddToggle("removeBearTraps_Toggle", { Text = "Remove Bear Traps", Tooltip = false })
-worldGroup:AddToggle("disableRadioactiveZone_Toggle", { Text = "Disable Radioactive Damage", Tooltip = false })
+worldGroup:AddToggle("disableRadioactiveZone_Toggle", { Text = "Disable Radioactive Zone", Tooltip = false })
 
-local radioactiveZoneDepbox = worldGroup:AddDependencyBox()
-
-radioactiveZoneDepbox:AddToggle("removeBarriers_Toggle", { Text = "Remove Barriers", Tooltip = false })
-radioactiveZoneDepbox:AddToggle("removeEntrance_Toggle", { Text = "Remove Entrance", Tooltip = false })
-radioactiveZoneDepbox:AddToggle("disableRadioactiveFog_Toggle", { Text = "Disable Fog", Tooltip = false })
-radioactiveZoneDepbox:AddDivider()
-
-worldGroup:AddToggle("disableKillParts_Toggle", { Text = "Disable Kill Parts", Tooltip = "Disables the fans/spinners, etc." })
-
-radioactiveZoneDepbox:SetupDependencies({ { toggles.disableRadioactiveZone_Toggle, true } })
+worldGroup:AddToggle("disableKillParts_Toggle", { Text = "Disable Kill Parts", Tooltip = "Disables parts that can damage or kill you such as fans/spinners, polluted water, etc." })
 
 toggles.disableCactuses_Toggle:OnChanged(function(enabled)
     for _, cactus in pairs(area51.Outside.Cactus:GetDescendants()) do
@@ -5491,37 +6372,27 @@ toggles.disableRadioactiveZone_Toggle:OnChanged(function(enabled)
         end
     end
 
-    -- Disable color change
+    -- Disable radioactive smoke/fog
+
+    area51.RadioactiveArea.RadioactiveDrop.Part.Smoke.Enabled = not enabled
 
     if enabled then
+        -- Disable color change
+
         local script = area51.RadioactiveArea.RadioactiveDrop.Drops:FindFirstChild("Color change")
 
         if script then
             script.Parent = game:GetService("Teams")
         end
-    else
-        local script = game:GetService("Teams"):FindFirstChild("Color change")
 
-        if script then
-            script.Parent = area51.RadioactiveArea.RadioactiveDrop.Drops
-        end
-    end
-end)
+        -- Remove barriers
 
-toggles.removeBarriers_Toggle:OnChanged(function(enabled)
-    if enabled then
         for _, barriers in ipairs(area51.RadioactiveArea.Floor1.Barrier:GetChildren()) do
             barriers.Parent = game:GetService("Chat")
         end
-    else
-        for _, barriers in ipairs(game:GetService("Chat"):GetChildren()) do
-            barriers.Parent = area51.RadioactiveArea.Floor1.Barrier
-        end
-    end
-end)
 
-toggles.removeEntrance_Toggle:OnChanged(function(enabled)
-    if enabled then
+        -- Remove entrance
+
         for _, entrance in ipairs(area51.RadioactiveArea.Floor1.Entrance:GetChildren()) do
             entrance.Parent = game:GetService("Lighting")
         end
@@ -5530,6 +6401,22 @@ toggles.removeEntrance_Toggle:OnChanged(function(enabled)
             dirt.Parent = game:GetService("StarterGui")
         end
     else
+        -- Disable color change
+
+        local script = game:GetService("Teams"):FindFirstChild("Color change")
+
+        if script then
+            script.Parent = area51.RadioactiveArea.RadioactiveDrop.Drops
+        end
+
+        -- Remove barriers
+
+        for _, barriers in ipairs(game:GetService("Chat"):GetChildren()) do
+            barriers.Parent = area51.RadioactiveArea.Floor1.Barrier
+        end
+
+        -- Remove entrance
+
         for _, entrance in ipairs(game:GetService("Lighting"):GetChildren()) do
             entrance.Parent = area51.RadioactiveArea.Floor1.Entrance
         end
@@ -5540,10 +6427,6 @@ toggles.removeEntrance_Toggle:OnChanged(function(enabled)
     end
 end)
 
-toggles.disableRadioactiveFog_Toggle:OnChanged(function(enabled)
-    area51.RadioactiveArea.RadioactiveDrop.Part.Smoke.Enabled = not enabled
-end)
-
 -- [World / Kill Parts] Discovery, highlighting, and state restoration
 local function getKillParts()
     local parts = {
@@ -5552,14 +6435,11 @@ local function getKillParts()
         area51.SewerCaptainRoom.Spinner.Kill,
         area51.TrashGrindRoom.Spinner.Kill,
         area51.WasteRoom.Spinner.Kill,
-        area51.MaterialOrdererRoom.GreenThing
+        area51.MaterialOrdererRoom.GreenThing,
+        area51.WasteRoom["Polluted Water"]["Toxic Water"].Kill,
+        area51.WasteRoom["Polluted Water"]["Toxic Water"]:GetChildren()[2],
+        area51.CleanerTwoRoom["Polluted Water"]["Polluted Water"]
     }
-
-    for _, deathPart in ipairs(area51.WasteRoom["Polluted Water"]["Toxic Water"]:GetChildren()) do
-        if deathPart:IsA("BasePart") and deathPart.Name == "Kill" then
-            table.insert(parts, deathPart)
-        end
-    end
 
     for _, deathPart in ipairs(area51.MultiDirectionalRoom.Deadly:GetChildren()) do
         if deathPart:IsA("BasePart") then
@@ -7485,9 +8365,11 @@ end)
 
 local menuGroup = tabs.uiSettings:AddLeftGroupbox("Menu")
 
-menuGroup:AddToggle("KeybindMenuOpen", { Text = "Open Keybind Menu", Default = window.keybindFrameEnabled, Disabled = false, Callback = function(enabled) library.KeybindFrame.Visible = enabled end })
+menuGroup:AddToggle("openKeybindMenu_Toggle", { Text = "Open Keybind Menu", Default = window.keybindFrameEnabled, Disabled = false, Callback = function(enabled) library.KeybindFrame.Visible = enabled end })
+menuGroup:AddToggle("configKeybinds_Toggle", { Text = "Keybind Menu Visibility", Default = false, Tooltip = "Show or hide specific keybinds.", Visible = false, Callback = function(enabled) library.KeybindMenu:SetVisibilityControl(enabled) end })
 menuGroup:AddToggle("autoResetColor_Toggle", { Text = "Auto Reset Color", Tooltip = "Resets the colorpicker color back to its default color once a rainbow toggle is disabled.", Default = true,
     Callback = function(Value) window.autoResetRainbowColor = Value end })
+menuGroup:AddToggle("alwaysOnTop_Toggle", { Text = "Always On Top", Default = window.AlwaysOnTop, Tooltip = "Places the window over all Roblox GUI.", Callback = function(enabled) window:SetAlwaysOnTop(enabled) end })
 menuGroup:AddToggle("notifSound_Toggle", { Text = "Notification Alert Sounds", Tooltip = false, Default = true, Callback = function(enabled) window.notifSoundEnabled = enabled end })
 
 local notifSoundDepbox = menuGroup:AddDependencyBox()
@@ -7497,7 +8379,7 @@ notifSoundDepbox:AddDivider()
 
 notifSoundDepbox:SetupDependencies({ { toggles.notifSound_Toggle, true } })
 
-menuGroup:AddDropdown("NotificationSide", { Text = "Notification Side", Values = { "Left", "Right" }, Default = "Right", Callback = function(Value) library:SetNotifySide(Value) end })
+menuGroup:AddDropdown("NotificationSide", { Text = "Notification Side", Values = { "Left", "Right" }, Default = "Right", Callback = function(val) library:SetNotifySide(val) end })
 menuGroup:AddDropdown("DPIDropdown", { Text = "DPI Scale", Values = { "50%", "75%", "100%", "125%", "150%", "175%", "200%" }, Default = "100%",
     Callback = function(val)
         val = val:gsub("%%", "")
@@ -7507,6 +8389,7 @@ menuGroup:AddDropdown("DPIDropdown", { Text = "DPI Scale", Values = { "50%", "75
         end
     end,
 })
+menuGroup:AddSlider("cornerRadius_Slider", { Text = "Corner Radius", Default = library.CornerRadius, Min = 0, Max = 20, Callback = function(val) window:SetCornerRadius(val) end })
 
 local rainbowSpeed_Slider = menuGroup:AddSlider("rainbowSpeed_Slider", { Text = "Rainbow Speed", Tooltip = false, Default = window.rainbowSpeed, Min = 0.1, Max = 1, Rounding = 1 })
 menuGroup:AddLabel("Menu bind"):AddKeyPicker("menuKeybind_KeyPicker", { Text = "Menu keybind", Default = "RightControl", NoUI = true })
@@ -8117,7 +9000,7 @@ local function unloadModules()
     -- Switch off every toggle so each OnChanged handler can stop its own loops, connections and hooks.
     for name, toggle in pairs(toggles) do
         if type(toggle) == "table" and toggle.Value == true and type(toggle.SetValue) == "function"
-            and name ~= "KeybindMenuOpen" and name ~= "autoResetColor_Toggle" and name ~= "notifSound_Toggle" then
+            and name ~= "openKeybindMenu_Toggle" and name ~= "autoResetColor_Toggle" and name ~= "notifSound_Toggle" then
             local success = pcall(toggle.SetValue, toggle, false)
 
             if not success then
