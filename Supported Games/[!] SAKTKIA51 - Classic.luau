@@ -10,7 +10,7 @@
     06. Shared helpers
     07. Home: player, game, and whitelist panels
     08. Utility: teleport, healing, sounds, and interactions
-    09. Player: movement, speed handling, freecam, and backtrack
+    09. Player: movement, phase, speed handling, freecam, and backtrack
     10. Exploits: Pack-a-Punch, aim controls, collection, and killer controls
     11. Visuals: ESP, FOV, fog, anti-effect handlers, scope overlay removal, and grenade trajectory preview
     12. World: environmental settings and alien / kill-part controls
@@ -131,7 +131,12 @@ local window = library:CreateWindow({
     ShowCustomCursor = false,
     Icon = assetLib.fetchAsset("Icons/Celestial.png"),
     Resizable = true,
-    MobileButtonsSide = "Left",
+    SearchbarSize = UDim2.fromScale(0.5, 1),
+    GlobalSearch = true,
+    EnableSidebarResize = true,
+    EnableCompacting = true,
+    Snapping = true,
+    TabSwipeFrom = "Right",
 
     Animations = {
         ToggleWindow = true,
@@ -1649,6 +1654,509 @@ do
     end)
 end
 
+-- [Player / Phase] Teleports you through a wall to the floor on the other side
+do
+    local performPhase
+
+    local function buildPhase()
+        movementGroup:AddToggle("enablePhase_Toggle", { Text = "Enable Phase", Tooltip = "Adds a Phase button and keybind. Phase teleports you through the wall in front of you to the floor behind it. It is not noclip: it refuses when the wall is too thick or there is no safe floor behind it." })
+
+        local phaseDepbox = movementGroup:AddDependencyBox()
+
+        phaseDepbox:AddButton({ Text = "Phase", Tooltip = "Teleports you through the wall you are facing (or walking into) to the floor behind it.",
+            Func = function()
+                performPhase()
+            end,
+        }):AddKeyPicker("phase_KeyPicker", {
+            Default = "B",
+            Text = "Phase",
+            Mode = "Press",
+            NoUI = true,
+            Disabled = true,
+        })
+
+        phaseDepbox:AddSlider("phaseWallThickness_Slider", { Text = "Wall Thickness", Tooltip = "The thickest wall Phase will go through. Thicker walls are refused. Nearly all walls in the map are 0.5-1 stud thick; a few go up to about 10.", Default = 5, Min = 2, Max = 10, Suffix = " Studs", Rounding = 1,
+            Callback = function(val)
+                options.phaseWallThickness_Slider:SetSuffix(getSuffix(options.phaseWallThickness_Slider, "Stud"))
+            end
+        })
+
+        phaseDepbox:AddToggle("phaseSkipGaps_Toggle", { Text = "Skip Gaps", Tooltip = "When there is no floor behind the wall, keep scanning across the gap and land on the first safe ground. If another wall appears (like the wall of a room) Phase crosses it too, within the Wall Thickness limit, and lands on the floor inside." })
+
+        local phaseGapDepbox = phaseDepbox:AddDependencyBox()
+
+        phaseGapDepbox:AddSlider("phaseGapDistance_Slider", { Text = "Max Gap Scan", Tooltip = "How far past the first wall Skip Gaps will scan for safe ground, in studs.", Default = 60, Min = 10, Max = 150, Suffix = " Studs", Rounding = 0,
+            Callback = function(val)
+                options.phaseGapDistance_Slider:SetSuffix(getSuffix(options.phaseGapDistance_Slider, "Stud"))
+            end
+        })
+
+        phaseGapDepbox:SetupDependencies({ { toggles.phaseSkipGaps_Toggle, true } })
+
+        phaseDepbox:AddDivider()
+
+        phaseDepbox:SetupDependencies({ { toggles.enablePhase_Toggle, true } })
+
+
+        toggles.enablePhase_Toggle:OnChanged(function(enabled)
+            local keypicker = options.phase_KeyPicker
+            keypicker:SetDisabled(not enabled)
+            keypicker:SetNoUI(not enabled)
+        end)
+
+        local config = {
+            Reach = 6, -- studs in front of you that a wall may start
+            Step = 0.25, -- studs between wall-thickness checks
+            ProbeSize = Vector3.new(0.5, 3, 0.5), -- torso-height box that follows the wall (floor-level clutter is not a wall)
+            ClearanceBox = Vector3.new(2.4, 4.6, 2.4), -- room needed around the landing spot (a bit larger than your body)
+            ClearanceLift = 0.35, -- the clearance box sits this far above the root part, so the floor itself is never inside it
+            ClearanceHalf = 1.25, -- the landing spot starts this far behind the wall's far face
+            LandingSearch = 8, -- studs behind the wall that are searched for a landing spot
+            MaxRise = 2.5, -- highest step up from your current floor that counts as floor behind the wall
+            MaxDrop = 12, -- deepest drop from your current floor that counts as floor behind the wall
+            MinFloorNormalY = 0.7, -- steeper than this is a wall or a slide, not a floor
+            BoundsInset = 2, -- studs the landing spot is kept inside the MapLimit walls
+            CeilingInset = 3, -- studs the landing spot is kept below the MapLimit ceiling
+            GapStep = 0.5, -- studs between checks while scanning across a gap (matches the probe width, so thin walls are not skipped)
+            GapMaxWalls = 4, -- most extra walls Skip Gaps will cross in one Phase
+            GapEdgeMargin = 0.75, -- Skip Gaps will not land on the very lip of a floor: there must be floor this far back toward the gap too
+            Cooldown = 0.3,
+            NotifyCooldown = 1,
+        }
+
+        -- Roots to count as the "real" map
+        local realMapRoots = { "AREA51", "Doors", "Spawns", "PACKAPUNCH", "Top10" }
+
+        local solidGroup = "Default"
+
+        for _, group in ipairs(game:GetService("PhysicsService"):GetRegisteredCollisionGroups()) do
+            if group.name == "Survivors" then
+                solidGroup = "Survivors"
+                break
+            end
+        end
+
+        local overlapParams = OverlapParams.new()
+        overlapParams.FilterType = Enum.RaycastFilterType.Exclude
+        overlapParams.RespectCanCollide = true
+        overlapParams.CollisionGroup = solidGroup
+
+        local rayParams = RaycastParams.new()
+        rayParams.FilterType = Enum.RaycastFilterType.Exclude
+        rayParams.RespectCanCollide = true
+        rayParams.CollisionGroup = solidGroup
+
+        local mapBounds = nil
+        local lastPhase = -math.huge
+        local lastNotify = -math.huge
+
+        local function notifyPhase(description)
+            local now = os.clock()
+
+            if now - lastNotify < config.NotifyCooldown then
+                return
+            end
+
+            lastNotify = now
+            notify("Error", "Phase", description, 3)
+        end
+
+        -- Your character, killers, other players and the MapLimit walls are never walls
+        local function refreshFilters(character)
+            local ignored = { character }
+
+            for _, name in ipairs({ "Killers", "Characters to kill" }) do
+                local folder = workspace:FindFirstChild(name)
+
+                if folder then
+                    table.insert(ignored, folder)
+                end
+            end
+
+            local area = workspace:FindFirstChild("AREA51")
+            local limit = area and area:FindFirstChild("MapLimit")
+
+            if limit then
+                table.insert(ignored, limit)
+            end
+
+            overlapParams.FilterDescendantsInstances = ignored
+            rayParams.FilterDescendantsInstances = ignored
+        end
+
+        -- Inner faces of the MapLimit walls (a wall is thin on exactly one axis; that axis is the one it closes off)
+        local function measureMapBounds()
+            local area = workspace:FindFirstChild("AREA51")
+            local limit = area and area:FindFirstChild("MapLimit")
+
+            if not limit then
+                return nil
+            end
+
+            local center = limit:GetBoundingBox().Position
+            local low, high = {}, {}
+
+            for _, part in ipairs(limit:GetChildren()) do
+                if part:IsA("BasePart") and part.CanCollide then
+                    local size, position = part.Size, part.Position
+                    local axis
+
+                    if size.X <= 4 and size.Y > 20 and size.Z > 20 then
+                        axis = "X"
+                    elseif size.Y <= 4 and size.X > 20 and size.Z > 20 then
+                        axis = "Y"
+                    elseif size.Z <= 4 and size.X > 20 and size.Y > 20 then
+                        axis = "Z"
+                    end
+
+                    if axis then
+                        local half = size[axis] / 2
+
+                        if position[axis] < center[axis] then
+                            low[axis] = math.max(low[axis] or -math.huge, position[axis] + half)
+                        else
+                            high[axis] = math.min(high[axis] or math.huge, position[axis] - half)
+                        end
+                    end
+                end
+            end
+
+            for _, axis in ipairs({ "X", "Y", "Z" }) do
+                if not (low[axis] and high[axis]) then
+                    return nil
+                end
+            end
+
+            return { Min = Vector3.new(low.X, low.Y, low.Z), Max = Vector3.new(high.X, high.Y, high.Z) }
+        end
+
+        local function insideMapBox(position)
+            if not mapBounds then
+                local success, bounds = pcall(measureMapBounds)
+                mapBounds = success and bounds or nil
+            end
+
+            if not mapBounds then
+                return true -- the limits could not be measured; the floor and room checks still apply
+            end
+
+            local inset = config.BoundsInset
+
+            return position.X >= mapBounds.Min.X + inset and position.X <= mapBounds.Max.X - inset
+                and position.Z >= mapBounds.Min.Z + inset and position.Z <= mapBounds.Max.Z - inset
+                and position.Y >= mapBounds.Min.Y and position.Y <= mapBounds.Max.Y - config.CeilingInset
+        end
+
+        local function isRealMapPart(part)
+            for _, name in ipairs(realMapRoots) do
+                local root = workspace:FindFirstChild(name)
+
+                if root and part:IsDescendantOf(root) then
+                    return true
+                end
+            end
+
+            return false
+        end
+
+        -- Anything solid in the box that is not a character
+        local function isSolid(cframe, size)
+            for _, part in ipairs(workspace:GetPartBoundsInBox(cframe, size, overlapParams)) do
+                local model = part:FindFirstAncestorOfClass("Model")
+
+                if not (model and model:FindFirstChildOfClass("Humanoid")) then
+                    return true
+                end
+            end
+
+            return false
+        end
+
+        -- The way you are trying to go: your movement direction, otherwise where the camera points (flattened)
+        local function getTravelDirection(hrp, humanoid)
+            local move = humanoid.MoveDirection
+            local flat = Vector3.new(move.X, 0, move.Z)
+
+            if flat.Magnitude > 0.1 then
+                return flat.Unit
+            end
+
+            local camera = workspace.CurrentCamera
+
+            if camera then
+                local look = camera.CFrame.LookVector
+                flat = Vector3.new(look.X, 0, look.Z)
+
+                if flat.Magnitude > 0.01 then
+                    return flat.Unit
+                end
+            end
+
+            local look = hrp.CFrame.LookVector
+
+            return Vector3.new(look.X, 0, look.Z).Unit
+        end
+
+        -- Highest-first search for walkable floor under a spot: starts MaxRise above your floor, reaches MaxDrop below it
+        local function findFloor(spot, floorLevel)
+            local startY = floorLevel + config.MaxRise + 0.5
+            local result = workspace:Raycast(Vector3.new(spot.X, startY, spot.Z), Vector3.new(0, -(config.MaxRise + config.MaxDrop + 0.5), 0), rayParams)
+
+            if result and result.Normal.Y >= config.MinFloorNormalY then
+                return result
+            end
+
+            return nil
+        end
+
+        -- Skip Gaps: crosses a wall that was found while scanning. `nearDistance` is the scan distance where the probe first hit it.
+        -- Returns the distance of its far face, or nil and the reason.
+        local function crossGapWall(pointAt, across, nearDistance, maxThickness)
+            local step = config.Step
+            local startDistance = math.max(nearDistance - config.GapStep, 0.1) -- the near face is somewhere in the last scan step
+            local limit = nearDistance + maxThickness + 1 -- slack for the probe width; the real thickness is checked below
+            local exitDistance = nil
+            local distance = nearDistance
+
+            while distance <= limit do
+                if not isSolid(CFrame.new(pointAt(distance)), config.ProbeSize) then
+                    exitDistance = distance
+                    break
+                end
+
+                distance += step
+            end
+
+            if not exitDistance then
+                return nil, string.format("A wall in the gap is thicker than %.1f studs.", maxThickness)
+            end
+
+            -- Exact far face, looking back at it from the clear side
+            local clearPoint = exitDistance + 0.3
+            local back = workspace:Raycast(pointAt(clearPoint), -across * (clearPoint - startDistance + 0.2), rayParams)
+            local farFace = back and (clearPoint - back.Distance) or (exitDistance - 0.25)
+
+            -- Exact near face, looking forward from the clear side before it (falls back to the scan step)
+            local nearFace = startDistance
+            local forward = workspace:Raycast(pointAt(startDistance), across * (farFace - startDistance + 0.2), rayParams)
+
+            if forward then
+                nearFace = startDistance + forward.Distance
+            end
+
+            local thickness = math.max(farFace - nearFace, 0)
+
+            if thickness > maxThickness + 1e-3 then
+                return nil, string.format("A wall in the gap is about %.1f studs thick (limit %.1f).", thickness, maxThickness)
+            end
+
+            return farFace
+        end
+
+        -- Skip Gaps: scans across the void behind the first wall. `startDistance` is the far face of the wall you are phasing through.
+        -- Lands on the first safe floor; any further wall on the way is crossed (within the thickness limit) and its far side searched.
+        -- Returns the landing position, or nil and the reason.
+        local function scanAcrossGap(pointAt, across, startDistance, maxThickness, maxScan, origin, floorLevel, standOffset)
+            local gapStep = config.GapStep
+            local distance = startDistance + gapStep
+            local landFrom = startDistance + config.ClearanceHalf -- landing spots must be this far past the last wall's far face
+            local wallsCrossed = 0
+            local sawFloor, sawMapFloor = false, false
+
+            while distance <= maxScan do
+                local spot = pointAt(distance)
+
+                if isSolid(CFrame.new(spot), config.ProbeSize) then
+                    if wallsCrossed >= config.GapMaxWalls then
+                        return nil, "There are too many walls behind that gap."
+                    end
+
+                    local farFace, reason = crossGapWall(pointAt, across, distance, maxThickness)
+
+                    if not farFace then
+                        return nil, reason
+                    end
+
+                    wallsCrossed += 1
+                    landFrom = farFace + config.ClearanceHalf
+                    distance = farFace + gapStep
+                else
+                    if distance >= landFrom then
+                        local floorHit = findFloor(spot, floorLevel)
+
+                        if floorHit then
+                            sawFloor = true
+
+                            if isRealMapPart(floorHit.Instance) then
+                                sawMapFloor = true
+
+                                local landing = Vector3.new(spot.X, floorHit.Position.Y + standOffset, spot.Z)
+                                local lip = findFloor(pointAt(distance - config.GapEdgeMargin), floorLevel)
+                                local supported = lip ~= nil and math.abs(lip.Position.Y - floorHit.Position.Y) < 1
+
+                                if supported and landing.Y >= origin.Y - config.MaxDrop and landing.Y <= origin.Y + config.MaxRise
+                                    and insideMapBox(landing)
+                                    and not isSolid(CFrame.new(landing + Vector3.new(0, config.ClearanceLift, 0)), config.ClearanceBox)
+                                then
+                                    return landing
+                                end
+                            end
+                        end
+                    end
+
+                    distance += gapStep
+                end
+            end
+
+            if sawFloor and not sawMapFloor then
+                return nil, "The only floor past that gap is outside the map."
+            end
+
+            return nil, "There is no safe ground within " .. tostring(math.floor(maxScan)) .. " studs behind that wall."
+        end
+
+        -- Works out where Phase would put you. Returns the landing position and the wall thickness, or nil and the reason.
+        local function planPhase(hrp, humanoid, direction, maxThickness)
+            local origin = hrp.Position
+            local wall = workspace:Raycast(origin, direction * config.Reach, rayParams)
+
+            if not wall then
+                return nil, "There is no wall in front of you."
+            end
+
+            if math.abs(wall.Normal.Y) > 0.5 then
+                return nil, "That is not a wall."
+            end
+
+            -- Go straight across the wall (against its face), whatever angle you hit it from
+            local across = -Vector3.new(wall.Normal.X, 0, wall.Normal.Z).Unit
+            local base = wall.Position
+
+            local function pointAt(distance)
+                return base + across * distance -- distance 0 is the face you are touching
+            end
+
+            -- Follow the wall until it ends
+            local step = config.Step
+            local limit = maxThickness + 0.25 + step
+            local exitDistance = nil
+            local distance = 0.1
+
+            while distance <= limit do
+                if not isSolid(CFrame.new(pointAt(distance)), config.ProbeSize) then
+                    exitDistance = distance
+                    break
+                end
+
+                distance += step
+            end
+
+            if not exitDistance then
+                return nil, string.format("That wall is thicker than %.1f studs.", maxThickness)
+            end
+
+            -- Measure the far face exactly: look back at it from a point that is in the clear
+            local clearPoint = exitDistance + 0.3
+            local back = workspace:Raycast(pointAt(clearPoint), -across * (clearPoint + 0.2), rayParams)
+            local thickness = back and (clearPoint - back.Distance) or (exitDistance - 0.25)
+
+            thickness = math.max(thickness, 0)
+
+            if thickness > maxThickness + 1e-3 then
+                return nil, string.format("That wall is about %.1f studs thick (limit %.1f).", thickness, maxThickness)
+            end
+
+            -- Find a landing spot behind it
+            local standOffset = humanoid.HipHeight + hrp.Size.Y / 2
+            local floorLevel = origin.Y - standOffset
+            local sawFloor, sawMapFloor = false, false
+
+            for extra = 0, config.LandingSearch, step do
+                local spot = pointAt(thickness + config.ClearanceHalf + extra)
+                local floorHit = findFloor(spot, floorLevel)
+
+                if floorHit then
+                    sawFloor = true
+
+                    if isRealMapPart(floorHit.Instance) then
+                        sawMapFloor = true
+
+                        local landing = Vector3.new(spot.X, floorHit.Position.Y + standOffset, spot.Z)
+
+                        if landing.Y >= origin.Y - config.MaxDrop and landing.Y <= origin.Y + config.MaxRise
+                            and insideMapBox(landing)
+                            and not isSolid(CFrame.new(landing + Vector3.new(0, config.ClearanceLift, 0)), config.ClearanceBox)
+                        then
+                            return landing, thickness
+                        end
+                    end
+                end
+            end
+
+            -- Skip Gaps: nothing usable right behind the wall, so keep scanning across the gap (and through any further walls)
+            if toggles.phaseSkipGaps_Toggle.Value then
+                local gapLanding, gapReason = scanAcrossGap(pointAt, across, thickness, maxThickness, options.phaseGapDistance_Slider.Value, origin, floorLevel, standOffset)
+
+                if gapLanding then
+                    return gapLanding, thickness
+                end
+
+                return nil, gapReason
+            end
+
+            if not sawFloor then
+                return nil, "There is no floor behind that wall."
+            elseif not sawMapFloor then
+                return nil, "The floor behind that wall is outside the map."
+            end
+
+            return nil, "There is no safe spot behind that wall."
+        end
+
+        performPhase = function()
+            if not toggles.enablePhase_Toggle.Value or uis:GetFocusedTextBox() or not isAlive() then
+                return
+            end
+
+            local now = os.clock()
+
+            if now - lastPhase < config.Cooldown then
+                return
+            end
+
+            lastPhase = now
+
+            local hrp = getHRP()
+            local humanoid = getHumanoid()
+
+            if not hrp or not humanoid then
+                return
+            end
+
+            local success, landing, info = pcall(function()
+                refreshFilters(hrp.Parent)
+
+                return planPhase(hrp, humanoid, getTravelDirection(hrp, humanoid), options.phaseWallThickness_Slider.Value)
+            end)
+
+            if not success then
+                warn("[Phase] " .. tostring(landing))
+                return
+            end
+
+            if not landing then
+                notifyPhase(info)
+                return
+            end
+
+            entityLib.teleport(CFrame.new(landing) * hrp.CFrame.Rotation)
+            hrp.AssemblyLinearVelocity = Vector3.zero
+        end
+    end
+
+    buildPhase()
+end
+
 -- [Player / Other] Door noclip, backtrack, and freecam
 
 othersGroup3:AddToggle("doorNoclip_Toggle", { Text = "Door Noclip" })
@@ -2279,6 +2787,7 @@ end
 -- [Player / Freecam] Controls and camera lifecycle
 
 othersGroup3:AddToggle("freecam_Toggle", { Text = "Freecam", Tooltip = false, Default = false })
+:AddKeyPicker("freecam_KeyPicker", { Text = "Freecam", Default = "H", SyncToggleState = true, Mode = "Toggle" })
 
 local freecamDepbox = othersGroup3:AddDependencyBox()
 
