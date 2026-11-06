@@ -11,8 +11,8 @@
     07. Home: player, game, and whitelist panels
     08. Utility: teleport, healing, sounds, and interactions
     09. Player: movement, phase, speed handling, freecam, and backtrack
-    10. Exploits: Pack-a-Punch, aim controls, collection, and killer controls
-    11. Visuals: ESP, FOV, fog, anti-effect handlers, scope overlay removal, and grenade trajectory preview
+    10. Exploits: Pack-a-Punch, aim controls, collection, killer controls, and Hitbox Expander
+    11. Visuals: ESP, FOV, fog, anti-effect handlers, scope overlay removal, Hitbox Visualizer, and grenade trajectory preview
     12. World: environmental settings and alien / kill-part controls
     13. Weapons: inventory, Pack-a-Punch queue, defense, gun options, and skin changer
     14. Miscellaneous: utility actions and weapon spam
@@ -180,8 +180,8 @@ local tabs = {
     home = window:AddTab("Home", assetLib.fetchAsset("Icons/info.png"), "Player info, game info, and whitelist"),
     utils = window:AddTab("Utility", assetLib.fetchAsset("Icons/wrench.png"), "Teleports, healing, sounds, and interactions"),
     player = window:AddTab("Player", assetLib.fetchAsset("Icons/circle-user-round.png"), "Movement, phase, freecam, and backtrack"),
-    exploits = window:AddTab("Exploits", assetLib.fetchAsset("Icons/bug.png"), "Aim, collection, and killer controls"),
-    visuals = window:AddTab("Visuals", assetLib.fetchAsset("Icons/eye.png"), "ESP, FOV, effects, and trajectory preview"),
+    exploits = window:AddTab("Exploits", assetLib.fetchAsset("Icons/bug.png"), "Aim, collection, killer controls, and hitboxes"),
+    visuals = window:AddTab("Visuals", assetLib.fetchAsset("Icons/eye.png"), "ESP, FOV, effects, hitboxes, and trajectory preview"),
     world = window:AddTab("World", assetLib.fetchAsset("Icons/globe.png"), "Map hazards and Alien controls"),
     weapons = window:AddTab("Weapons", assetLib.fetchAsset("Icons/swords.png"), "Inventory, defense, gun mods, and skins"),
     misc = window:AddTab("Miscellaneous", assetLib.fetchAsset("Icons/circle-ellipsis.png"), "Weapon spam and keycard shortcuts"),
@@ -1244,10 +1244,15 @@ toggles.autoCloseDoors_Toggle:OnChanged(updateDoorLoop)
 local movementGroup = tabs.player:AddGroupbox({ Side = "Left", Name = "Movement", IconName = assetLib.fetchAsset("Icons/move.png"), Description = "Speed, fly, noclip, phase" })
 local othersGroup3 = tabs.player:AddGroupbox({ Side = "Right", Name = "Other", IconName = assetLib.fetchAsset("Icons/sliders-horizontal.png"), Description = "Freecam, backtrack, guard" })
 
-tabs.player:UpdateWarningBox({ Title = "Warning", Text = "Due to Roblox's physics limitations, high velocity speeds may cause unexpected falling on collisions.\n\nFly is NOT compatible when Speed Exploit's mode is set as Velocity and will be swapped.",
-Visible = true })
-
 -- [Player / Movement] Speed, fly, noclip, and jump settings
+
+-- [Player / Speed Check Bypass] Controls
+
+movementGroup:AddToggle("speedBypass_Toggle", { Text = "Speed Check Bypass", Default = true, Tooltip = "EXPERIMENTAL. Disables the game's client-side movement checks (WalkSpeed, JumpPower, state changes, collision). You should still be cautious when using features in the Player tab." })
+
+local speedBypassDepbox = movementGroup:AddDependencyBox()
+speedBypassDepbox:AddToggle("speedBypassNoAcceleration_Toggle", { Text = "Disable Acceleration", Tooltip = "Removes the slight sliding effect when starting or stopping at high WalkSpeed values. Only applies while on the ground." })
+speedBypassDepbox:AddDivider()
 
 -- [Player / Speed Exploit] Controls
 
@@ -1256,6 +1261,7 @@ movementGroup:AddToggle("speedExploit_Toggle", { Text = "Speed Exploit" })
 local speedExploitDepbox = movementGroup:AddDependencyBox()
 speedExploitDepbox:AddDropdown("speedExploitMethod_Dropdown", { Text = "Method", Values = { "WalkSpeed", "Velocity" }, Default = 1 })
 speedExploitDepbox:AddSlider("speedExploitAmount_Slider", { Text = "Amount", Default = 20, Min = 16, Max = 100 })
+speedExploitDepbox:AddLabel("Due to Roblox's physics limitations, high velocity speeds may cause unexpected falling on collisions.", true)
 speedExploitDepbox:AddDivider()
 
 -- [Player / Fly] Controls and input handling
@@ -1267,6 +1273,7 @@ flyDepbox:AddToggle("toggleFly_Toggle", { Text = "Fly" })
 :AddKeyPicker("fly_KeyPicker", { Text = "Fly", Default = "F", SyncToggleState = true, Mode = "Toggle", NoUI = true, Disabled = true })
 local flyHorizSpeed_Slider = flyDepbox:AddSlider("flyHorizSpeed_Slider", { Text = "Horizontal Speed", Tooltip = "The speed you normally go at.", Default = 100, Min = 30, Max = 1000 })
 local flyVertSpeed_Slider = flyDepbox:AddSlider("flyVertSpeed_Slider", { Text = "Vertical Speed", Tooltip = "The speed you go when ascending/descending.", Default = 100, Min = 30, Max = 300 })
+flyDepbox:AddLabel("Fly is NOT compatible when Speed Exploit's mode is set as Velocity and will be swapped.", true)
 flyDepbox:AddDivider()
 
 -- [Player / Noclip] Controls
@@ -1285,6 +1292,7 @@ movementGroup:AddToggle("enableJumpPower_Toggle", { Text = "Enable JumpPower" })
 local jumpPowerDepbox = movementGroup:AddDependencyBox()
 jumpPowerDepbox:AddSlider("jumpPowerValue_Slider", { Text = "Value", Default = 50, Min = 50, Max = 200 })
 
+speedBypassDepbox:SetupDependencies({ { toggles.speedBypass_Toggle, true } })
 speedExploitDepbox:SetupDependencies({ { toggles.speedExploit_Toggle, true } })
 flyDepbox:SetupDependencies({ { toggles.enableFly_Toggle, true } })
 noclipDepbox:SetupDependencies({ { toggles.enableNoclip_Toggle, true } })
@@ -1446,12 +1454,19 @@ end)
 
 -- [Player / Speed Exploit] Initial configuration and runtime updates
 
+local WALKSPEED_BASE_MAX = 25 -- WalkSpeed slider maximum while Speed Check Bypass is off
+local WALKSPEED_BYPASS_MAX = 200 -- WalkSpeed slider maximum while Speed Check Bypass is on
+
+local function getWalkSpeedMax()
+    return toggles.speedBypass_Toggle.Value and WALKSPEED_BYPASS_MAX or WALKSPEED_BASE_MAX
+end
+
 local method = options.speedExploitMethod_Dropdown.Value
 local slider = options.speedExploitAmount_Slider
 slider:SetMin(1)
 
 if method == "WalkSpeed" then
-    slider:SetMax(20)
+    slider:SetMax(getWalkSpeedMax())
 else
     slider:SetMax(100)
 end
@@ -1551,9 +1566,10 @@ options.speedExploitMethod_Dropdown:OnChanged(function()
     end
 
     if method == "WalkSpeed" then
+        local walkSpeedMax = getWalkSpeedMax()
         slider:SetMin(1)
-        slider:SetMax(20)
-        if slider.Value > 20 then slider:SetValue(20) end
+        slider:SetMax(walkSpeedMax)
+        if slider.Value > walkSpeedMax then slider:SetValue(walkSpeedMax) end
     else
         slider:SetMin(1)
         slider:SetMax(100)
@@ -1600,6 +1616,233 @@ do
     table.insert(teardownTasks, function()
         walkSpeedConnection:Disconnect()
     end)
+end
+
+-- [Player / Speed Check Bypass] Disables the game's client-side movement checks and fully reverses it when turned off
+do
+    local bypass = {
+        Active = false,
+        Generation = 0, -- bumped on every start/stop so in-progress character setups know they are stale
+        Disabled = {}, -- every connection this feature disabled, so each one can be re-enabled
+        CharacterAdded = nil :: RBXScriptConnection?,
+    }
+
+    local INITIALIZATION_TIMEOUT = 5
+    local RETRY_INTERVAL = 0.05
+
+    local checks = {
+        { Name = "WalkSpeed", Signal = function(hum) return hum:GetPropertyChangedSignal("WalkSpeed") end },
+        { Name = "JumpPower", Signal = function(hum) return hum:GetPropertyChangedSignal("JumpPower") end },
+        { Name = "StateChanged", Signal = function(hum) return hum.StateChanged end },
+        { Name = "Strafing", Signal = function(hum) return hum.Strafing end },
+        { Name = "Swimming", Signal = function(hum) return hum.Swimming end },
+        { Name = "DescendantAdded", Signal = function(_, character) return character.DescendantAdded end },
+        { Name = "CanCollide", Signal = function(_, _, root) return root:GetPropertyChangedSignal("CanCollide") end },
+    }
+
+    local function initializeCharacter(character: Model, generation: number, target: string)
+        local hum = character:WaitForChild("Humanoid", 10)
+        local root = character:WaitForChild("HumanoidRootPart", 10)
+        if not hum or not root then return end
+
+        local completed = {}
+        local deadline = os.clock() + INITIALIZATION_TIMEOUT
+
+        repeat
+            if bypass.Generation ~= generation then return end
+
+            local pending = false
+
+            for _, check in ipairs(checks) do
+                if not completed[check.Name] then
+                    local found = false
+
+                    for _, connection in ipairs(getconnections(check.Signal(hum, character, root))) do
+                        local callback = connection.Function
+                        local info = callback and debug.getinfo(callback)
+                        local source = info and info.source
+
+                        if type(source) == "string" and string.find(source, target, 1, true) then
+                            found = true
+
+                            if not bypass.Disabled[connection] and pcall(function() connection:Disable() end) then
+                                bypass.Disabled[connection] = true
+
+                                -- Turned off while this was running: undo it right away.
+                                if bypass.Generation ~= generation then
+                                    bypass.Disabled[connection] = nil
+                                    pcall(function() connection:Enable() end)
+                                    return
+                                end
+                            end
+                        end
+                    end
+
+                    completed[check.Name] = found
+
+                    if not found then
+                        pending = true
+                    end
+                end
+            end
+
+            if not pending then break end
+
+            task.wait(RETRY_INTERVAL)
+        until os.clock() >= deadline
+
+        if bypass.Generation ~= generation then return end
+
+        local missing = {}
+        for _, check in ipairs(checks) do
+            if not completed[check.Name] then
+                table.insert(missing, check.Name)
+            end
+        end
+
+        if #missing > 0 then
+            notify("Error", "Speed Check Bypass", "Could not find these checks: " .. table.concat(missing, ", "), 10)
+        end
+    end
+
+    -- UI-free so it is also safe to call from teardown after the library has cleared its toggles.
+    local function stopBypass()
+        if not bypass.Active then return end
+
+        bypass.Active = false
+        bypass.Generation += 1
+
+        if bypass.CharacterAdded then
+            bypass.CharacterAdded:Disconnect()
+            bypass.CharacterAdded = nil
+        end
+
+        for connection in pairs(bypass.Disabled) do
+            pcall(function() connection:Enable() end)
+        end
+
+        table.clear(bypass.Disabled)
+    end
+
+    local function startBypass()
+        if bypass.Active then return end
+
+        if type(getconnections) ~= "function" then
+            notify("Error", "Speed Check Bypass", "Your executor does not support getconnections.", 10)
+            task.defer(function() toggles.speedBypass_Toggle:SetValue(false) end)
+            return
+        end
+
+        bypass.Active = true
+        bypass.Generation += 1
+        local generation = bypass.Generation
+
+        task.spawn(function()
+            local gamemodeScript = localplayer:WaitForChild("PlayerScripts"):WaitForChild("CommonGamemodeSetup", 10)
+            if bypass.Generation ~= generation then return end
+
+            if not gamemodeScript then
+                notify("Error", "Speed Check Bypass", "Could not find the game's movement check script.", 10)
+                toggles.speedBypass_Toggle:SetValue(false)
+                return
+            end
+
+            local target = gamemodeScript:GetFullName()
+
+            if localplayer.Character then
+                task.spawn(initializeCharacter, localplayer.Character, generation, target)
+            end
+
+            bypass.CharacterAdded = localplayer.CharacterAdded:Connect(function(character)
+                task.spawn(initializeCharacter, character, generation, target)
+            end)
+        end)
+    end
+
+    -- Disable Acceleration: the Humanoid slides to a stop, which is very noticeable at high WalkSpeed.
+    -- While grounded and above the default speed, snap horizontal velocity to the movement input (and to zero without input).
+    local noAcceleration = { Connection = nil :: RBXScriptConnection? }
+
+    local function stopNoAcceleration()
+        if noAcceleration.Connection then
+            noAcceleration.Connection:Disconnect()
+            noAcceleration.Connection = nil
+        end
+    end
+
+    local function startNoAcceleration()
+        if noAcceleration.Connection then return end
+
+        noAcceleration.Connection = runService.RenderStepped:Connect(function()
+            local character = localplayer.Character
+            local hum = character and character:FindFirstChildOfClass("Humanoid")
+            local root = hum and hum.RootPart
+            if not hum or not root then return end
+
+            if hum.Health <= 0 or hum.Sit or hum.PlatformStand then return end
+            if hum.WalkSpeed <= 16 or hum.FloorMaterial == Enum.Material.Air then return end
+            if toggles.toggleFly_Toggle.Value then return end
+            if toggles.speedExploit_Toggle.Value and options.speedExploitMethod_Dropdown.Value == "Velocity" then return end
+
+            local velocity = root.AssemblyLinearVelocity
+            local moveDirection = hum.MoveDirection
+
+            if moveDirection.Magnitude > 0 then
+                local target = moveDirection.Unit * hum.WalkSpeed
+                root.AssemblyLinearVelocity = Vector3.new(target.X, velocity.Y, target.Z)
+            else
+                root.AssemblyLinearVelocity = Vector3.new(0, velocity.Y, 0)
+            end
+        end)
+    end
+
+    -- Active only while the bypass and its Disable Acceleration option are both on.
+    local function refreshNoAcceleration()
+        if toggles.speedBypass_Toggle.Value and toggles.speedBypassNoAcceleration_Toggle.Value then
+            startNoAcceleration()
+        else
+            stopNoAcceleration()
+        end
+    end
+
+    toggles.speedBypassNoAcceleration_Toggle:OnChanged(refreshNoAcceleration)
+
+    toggles.speedBypass_Toggle:OnChanged(function(enabled)
+        refreshNoAcceleration()
+
+        local slider = options.speedExploitAmount_Slider
+        local walkSpeedMode = options.speedExploitMethod_Dropdown.Value == "WalkSpeed"
+
+        if enabled then
+            -- Checks go down first, then the higher limit opens up.
+            startBypass()
+
+            if walkSpeedMode then
+                slider:SetMin(1)
+                slider:SetMax(WALKSPEED_BYPASS_MAX)
+            end
+        else
+            -- Bring speed back under the normal limit first, then re-enable the checks.
+            if walkSpeedMode then
+                slider:SetMin(1)
+                slider:SetMax(WALKSPEED_BASE_MAX)
+                if slider.Value > WALKSPEED_BASE_MAX then slider:SetValue(WALKSPEED_BASE_MAX) end
+            end
+
+            applySpeed()
+            stopBypass()
+        end
+    end)
+
+    table.insert(teardownTasks, stopBypass)
+    table.insert(teardownTasks, stopNoAcceleration)
+
+    -- Enabled by default: OnChanged does not fire for the initial value.
+    if toggles.speedBypass_Toggle.Value then
+        startBypass()
+    end
+
+    refreshNoAcceleration()
 end
 
 -- [Player / Phase] Teleports you through a wall to the floor on the other side
@@ -3893,7 +4136,7 @@ disableKillersDepbox:AddDropdown("disableAuraMethod_Dropdown", { Text = "Method"
 disableKillersDepbox:AddSlider("disableKillersDistance_Slider", { Text = "Range", Tooltip = "How far away to disable killers", Default = 20, Min = 10, Max = 100, Suffix = " Studs" })
 disableKillersDepbox:AddToggle("disableAuraWallCheck_Toggle", { Text = "Wall Check", Tooltip = "Only affects Killers that are visible. Killers behind walls are left alone. Emergency Kill ignores this." })
 disableKillersDepbox:AddLabel("Emergency Kill"):AddKeyPicker("emergencyKill_KeyPicker", { Text = "Emergency Kill", Default = "X", Mode = "Hold", NoUI = true, Disabled = true })
-disableKillersDepbox:AddToggle("disableAuraDebugNotifs_Toggle", { Text = "Debug Notifications", Tooltip = "Sends a notification each time Disable Aura kills, disables or starts pushing a killer." })
+disableKillersDepbox:AddToggle("disableAuraDebugNotifs_Toggle", { Text = "Debug Notifications", Tooltip = "Sends a notification each time Disable Aura kills, disables or starts pushing a killer, and while it waits for control of a killer." })
 disableKillersDepbox:AddDivider()
 
 -- [Exploits / Killer Controls] Defensive toggles
@@ -4582,35 +4825,121 @@ local function releaseKiller(hum)
     affectedKillers[hum] = nil
 end
 
-local function updateKiller(hum, model, method, inRange, visible)
+-- [Exploits / Killer Controls] Disable Aura: network control
+do
+    local function ownsKiller(root)
+        if type(isnetworkowner) ~= "function" then
+            return true
+        end
+
+        local ok, owned = pcall(isnetworkowner, root)
+
+        return ok and owned == true
+    end
+
+    local function newTracker(source)
+        local waits = setmetatable({}, { __mode = "k" })
+        local tracker = {}
+
+        -- True while the killer can be affected. When it can not, the wait starts (and is announced) once. When control arrives, how long it took is announced.
+        function tracker.check(model, root)
+            if ownsKiller(root) then
+                local startedAt = waits[model]
+
+                if startedAt then
+                    waits[model] = nil
+
+                    if toggles.disableAuraDebugNotifs_Toggle.Value then
+                        notify("Info", source, string.format("Took control of %s after %.1f s", model.Name, os.clock() - startedAt), 3)
+                    end
+                end
+
+                return true
+            end
+
+            if not waits[model] then
+                waits[model] = os.clock()
+
+                if toggles.disableAuraDebugNotifs_Toggle.Value then
+                    notify("Info", source, "Waiting for control of " .. model.Name, 3)
+                end
+            end
+
+            return false
+        end
+
+        -- The killer no longer needs to be affected (out of range, behind a wall, dead or gone), so its wait is dropped without a notification
+        function tracker.clear(model)
+            waits[model] = nil
+        end
+
+        function tracker.reset()
+            if next(waits) then
+                table.clear(waits)
+            end
+        end
+
+        return tracker
+    end
+
+    utils.auraControl = newTracker("Disable Aura")
+    utils.emergencyControl = newTracker("Emergency Kill")
+end
+
+local function updateKiller(hum, model, root, method, inRange, visible)
     if hum.Health <= 0 then
         if affectedKillers[hum] then
             releaseKiller(hum)
         end
 
+        utils.auraControl.clear(model)
+
         return
     end
 
     -- Restore if leaving range
-    if not inRange and affectedKillers[hum] == "Disable Movement" then
-        releaseKiller(hum)
-        if toggles.disableAuraDebugNotifs_Toggle.Value then
-            notify("Info", "Successful restore", "Restored " .. model.Name .. "'s movement.", 3)
+    if not inRange then
+        if affectedKillers[hum] == "Disable Movement" then
+            releaseKiller(hum)
+            if toggles.disableAuraDebugNotifs_Toggle.Value then
+                notify("Info", "Successful restore", "Restored " .. model.Name .. "'s movement.", 3)
+            end
         end
+
+        utils.auraControl.clear(model)
+
+        return
     end
 
-    -- Skip if not in range
-    if not inRange then return end
+    -- Already applied. Disable Movement is held every frame, because the game can raise WalkSpeed or JumpPower again.
+    if affectedKillers[hum] == method then
+        if method == "Disable Movement" and utils.auraControl.check(model, root) then
+            if hum.WalkSpeed ~= 0 then
+                hum.WalkSpeed = 0
+            end
 
-    -- Skip if method already applied
-    if affectedKillers[hum] == method then return end
+            if hum.JumpPower ~= 0 then
+                hum.JumpPower = 0
+            end
+        end
+
+        return
+    end
 
     -- Wall Check: killers behind walls are left alone
-    if visible == false then return end
+    if visible == false then
+        utils.auraControl.clear(model)
+        return
+    end
 
     -- Restore previous movement if switching methods
     if affectedKillers[hum] == "Disable Movement" then
         releaseKiller(hum)
+    end
+
+    -- Wait until you own the killer, then act on the frame control begins
+    if not utils.auraControl.check(model, root) then
+        return
     end
 
     -- Apply new method
@@ -4645,16 +4974,24 @@ end
 local pushToggled
 
 -- [Exploits / Killer Controls] Disable Aura: Emergency Kill (Hold)
--- While the key is held, every killer inside the Range is killed, whatever Method is selected.
+-- While the key is held, every killer inside the Range is killed using whatever Method is selected. A killer is only killed while you own it.
 do
-    local loopId = 0
+    local connection = nil
     local lastError = nil
+
+    local function stopLoop()
+        if connection then
+            connection:Disconnect()
+            connection = nil
+        end
+    end
 
     local function step()
         local keypicker = options.emergencyKill_KeyPicker
 
         -- Hold mode: GetState() is only true while the key is physically down. Typing in chat must not trigger it.
         if not keypicker or keypicker.Disabled or uis:GetFocusedTextBox() or not keypicker:GetState() then
+            utils.emergencyControl.reset() -- Nothing is pending when the key is let go
             return
         end
 
@@ -4674,11 +5011,16 @@ do
             local root = model:FindFirstChild("HumanoidRootPart")
 
             if hum and root and hum.Health > 0 and entityLib.getEntityDistance(hrp, root) <= range then
-                hum.Health = 0
+                -- Wait until you own the killer, then kill it on the frame control begins
+                if utils.emergencyControl.check(model, root) then
+                    hum.Health = 0
 
-                if toggles.disableAuraDebugNotifs_Toggle.Value then
-                    notify("Info", "Emergency Kill", "Killed " .. model.Name, 3)
+                    if toggles.disableAuraDebugNotifs_Toggle.Value then
+                        notify("Info", "Emergency Kill", "Killed " .. model.Name, 3)
+                    end
                 end
+            else
+                utils.emergencyControl.clear(model)
             end
         end
     end
@@ -4691,98 +5033,126 @@ do
             pcall(keypicker.SetNoUI, keypicker, not enabled)
         end
 
-        -- Invalidates any previous loop
-        loopId += 1
-        local myLoopId = loopId
+        stopLoop()
+        utils.emergencyControl.reset()
 
         if enabled then
-            task.spawn(function()
-                while toggles.disableAllKillers_Toggle.Value and loopId == myLoopId and not library.Unloaded do
-                    local ok, err = pcall(step)
+            -- Every frame
+            connection = runService.Heartbeat:Connect(function()
+                if library.Unloaded or not toggles.disableAllKillers_Toggle.Value then
+                    stopLoop()
+                    return
+                end
 
-                    if not ok and err ~= lastError then
-                        lastError = err
-                        warn("[Disable Aura: Emergency Kill] " .. tostring(err))
-                    end
+                local ok, err = pcall(step)
 
-                    task.wait()
+                if not ok and err ~= lastError then
+                    lastError = err
+                    warn("[Disable Aura: Emergency Kill] " .. tostring(err))
                 end
             end)
         end
     end
 end
 
-toggles.disableAllKillers_Toggle:OnChanged(function(enabled)
-    utils.emergencyKillToggled(enabled)
+-- [Exploits / Killer Controls] Disable Aura: main loop
+do
+    local connection = nil
+    local lastError = nil
 
-    if pushToggled then
-        pushToggled(enabled)
+    local function stopLoop()
+        if connection then
+            connection:Disconnect()
+            connection = nil
+        end
     end
 
-    if enabled then
-        task.spawn(function()
-            while toggles.disableAllKillers_Toggle.Value do
-                local hrp = getHRP()
-                if not hrp then
-                    task.wait(0.3)
-                    continue
-                end
+    local function step()
+        local hrp = getHRP()
 
-                local method = tostring(options.disableAuraMethod_Dropdown.Value)
-                local range = proximityRange or 30
+        if not hrp then
+            return
+        end
 
-                -- Push runs every frame in its own loop (see Disable Aura: Push). Nothing is applied from here, and whatever another method applied is given back.
-                if method == "Push" then
-                    for trackedHum in pairs(affectedKillers) do
-                        releaseKiller(trackedHum)
-                    end
+        local method = tostring(options.disableAuraMethod_Dropdown.Value)
+        local range = proximityRange or 30
 
-                    task.wait(0.15)
-                    continue
-                end
-
-                -- Forget killers that are gone (removed corpses, destroyed humanoids)
-                for trackedHum in pairs(affectedKillers) do
-                    if not trackedHum:IsDescendantOf(killersFolder) then
-                        releaseKiller(trackedHum)
-                    end
-                end
-
-                for _, model in ipairs(killersFolder:GetChildren()) do
-                    if not model:IsA("Model") then
-                        continue
-                    end
-                    local hum = model:FindFirstChildOfClass("Humanoid")
-                    local root = model:FindFirstChild("HumanoidRootPart")
-                    if hum and root then
-                        local distance = entityLib.getEntityDistance(hrp, root)
-                        local inRange = distance <= range
-                        local visible = true
-
-                        if inRange and affectedKillers[hum] ~= method and toggles.disableAuraWallCheck_Toggle.Value then
-                            visible = utils.isKillerVisible(hrp.Position, model, root)
-                        end
-
-                        updateKiller(hum, model, method, inRange, visible)
-                    end
-                end
-
-                task.wait(0.15)
+        -- Push runs in its own loop (see Disable Aura: Push). Nothing is applied from here, and whatever another method applied is given back.
+        if method == "Push" then
+            for trackedHum in pairs(affectedKillers) do
+                releaseKiller(trackedHum)
             end
-        end)
-    else
-        -- Restore movement for all affected killers when toggled off
-        for hum, method in pairs(affectedKillers) do
-            if hum and method == "Disable Movement" then
-                entityLib.restoreData(hum, "WalkSpeed")
-                entityLib.restoreData(hum, "JumpPower")
-                entityLib.clearData(hum, "WalkSpeed")
-                entityLib.clearData(hum, "JumpPower")
+
+            return
+        end
+
+        -- Forget killers that are gone (removed corpses, destroyed humanoids)
+        for trackedHum in pairs(affectedKillers) do
+            if not trackedHum:IsDescendantOf(killersFolder) then
+                releaseKiller(trackedHum)
             end
         end
-        affectedKillers = {}
+
+        local wallCheck = toggles.disableAuraWallCheck_Toggle.Value
+
+        for _, model in ipairs(killersFolder:GetChildren()) do
+            if not model:IsA("Model") then
+                continue
+            end
+            local hum = model:FindFirstChildOfClass("Humanoid")
+            local root = model:FindFirstChild("HumanoidRootPart")
+            if hum and root then
+                local distance = entityLib.getEntityDistance(hrp, root)
+                local inRange = distance <= range
+                local visible = true
+
+                if inRange and affectedKillers[hum] ~= method and wallCheck then
+                    visible = utils.isKillerVisible(hrp.Position, model, root)
+                end
+
+                updateKiller(hum, model, root, method, inRange, visible)
+            end
+        end
     end
-end)
+
+    toggles.disableAllKillers_Toggle:OnChanged(function(enabled)
+        utils.emergencyKillToggled(enabled)
+
+        if pushToggled then
+            pushToggled(enabled)
+        end
+
+        stopLoop()
+        utils.auraControl.reset()
+
+        if enabled then
+            connection = runService.Heartbeat:Connect(function()
+                if library.Unloaded or not toggles.disableAllKillers_Toggle.Value then
+                    stopLoop()
+                    return
+                end
+
+                local ok, err = pcall(step)
+
+                if not ok and err ~= lastError then
+                    lastError = err
+                    warn("[Disable Aura] " .. tostring(err))
+                end
+            end)
+        else
+            -- Restore movement for all affected killers when toggled off
+            for hum, method in pairs(affectedKillers) do
+                if hum and method == "Disable Movement" then
+                    entityLib.restoreData(hum, "WalkSpeed")
+                    entityLib.restoreData(hum, "JumpPower")
+                    entityLib.clearData(hum, "WalkSpeed")
+                    entityLib.clearData(hum, "JumpPower")
+                end
+            end
+            affectedKillers = {}
+        end
+    end)
+end
 
 options.disableKillersDistance_Slider:OnChanged(function(val)
     proximityRange = val
@@ -4909,16 +5279,6 @@ do
     local pushConnection = nil
     local pushLastError = nil
 
-    local function ownsPart(part)
-        if type(isnetworkowner) ~= "function" then
-            return true
-        end
-
-        local ok, owned = pcall(isnetworkowner, part)
-
-        return ok and owned
-    end
-
     -- Everything the wall checks must look straight through: killers, and every character (the LocalPlayer and the other players')
     local function buildFilter()
         local filter = { killersFolder }
@@ -4956,6 +5316,7 @@ do
         if tostring(options.disableAuraMethod_Dropdown.Value) ~= "Push" then
             if next(pushStates) then
                 table.clear(pushStates)
+                utils.auraControl.reset()
             end
 
             return
@@ -4982,6 +5343,7 @@ do
             -- Dead killers (and ones whose humanoid is gone) are left alone
             if not (root and root:IsA("BasePart")) or hum.Health <= 0 then
                 pushStates[model] = nil
+                utils.auraControl.clear(model)
                 continue
             end
 
@@ -5018,7 +5380,16 @@ do
                 speed = math.max(speed, want)
             end
 
-            if speed < 1 or not ownsPart(root) then
+            if speed < 1 then
+                state.speed = 0
+                state.last = position
+                state.active = false
+                utils.auraControl.clear(model)
+                continue
+            end
+
+            -- Wait until you own the killer, then push it on the frame control begins
+            if not utils.auraControl.check(model, root) then
                 state.speed = 0
                 state.last = position
                 state.active = false
@@ -5266,6 +5637,613 @@ toggles.antiSlendermanJumpscare_Toggle:OnChanged(function(enabled)
         end)
     end
 end)
+
+-- [Exploits / Hitbox Expander] Resizes Killer hit parts safely
+do
+    local hitboxGroup = tabs.exploits:AddGroupbox({ Side = "Right", Name = "Hitbox Expander", IconName = assetLib.fetchAsset("Icons/crosshair.png"), Description = "Killer hitbox size" })
+
+    hitboxGroup:AddToggle("hitboxExpander_Toggle", { Text = "Hitbox Expander", Tooltip = "Enlarges the hit parts of every Killer in range so shots land more easily." })
+
+    local hitboxExpanderDepbox = hitboxGroup:AddDependencyBox()
+    hitboxExpanderDepbox:AddSlider("hitboxSize_Slider", { Text = "Hitbox Size", Tooltip = "Smallest size of each resized hit part (head, arms and legs).", Default = 8, Min = 2, Max = 30, Suffix = " Studs", Rounding = 1 })
+    hitboxExpanderDepbox:AddSlider("hitboxRange_Slider", { Text = "Range", Tooltip = "Only Killers closer than this get an expanded hitbox.", Default = 350, Min = 50, Max = 1000, Suffix = " Studs" })
+    hitboxExpanderDepbox:AddDropdown("hitboxExcludedKillers_Dropdown", { Text = "Excluded Killers", Tooltip = "Killers that keep their original hitbox. Giant and Jane are always skipped, because the game ignores normal shots on them.", Values = killerNames, Multi = true, Searchable = true, AllowNull = true })
+    hitboxExpanderDepbox:AddDivider()
+
+    hitboxExpanderDepbox:SetupDependencies({ { toggles.hitboxExpander_Toggle, true } })
+
+    -- Killers the game never registers normal shots on.
+    local immuneKillers = { Giant = true, Jane = true }
+
+    -- Only these humanoid parts are ever resized.
+    local resizableParts = {
+        Head = true,
+        LeftUpperArm = true, RightUpperArm = true, LeftLowerArm = true, RightLowerArm = true, LeftHand = true, RightHand = true,
+        LeftUpperLeg = true, RightUpperLeg = true, LeftLowerLeg = true, RightLowerLeg = true, LeftFoot = true, RightFoot = true,
+    }
+
+    -- ESP boxes are measured from these sizes, so enlarged hitboxes never inflate them.
+    utils.hitboxOriginalSizes = setmetatable({}, { __mode = "k" })
+
+    local expander = {
+        killers = {},      -- [model] = { model, ghost, records = { [part] = record }, rejected = { [part] = retryTime } }
+        compensated = {},  -- [HumanoidRootPart] = { physics, mass, applied }
+        moveSources = {},  -- real parts, in the same order as moveGhosts
+        moveGhosts = {},   -- normal-sized look-alike parts that follow the real ones every frame
+        moveFrames = {},
+        movesDirty = false,
+        massDirty = false,
+        token = nil,
+        folder = nil,
+        renderConnection = nil,
+        excluded = {},
+        lastError = nil,
+        lastRenderError = nil,
+    }
+
+    local function getKillersFolder()
+        return killersFolder or workspace:FindFirstChild("Killers")
+    end
+
+    local function readExcluded(value)
+        expander.excluded = {}
+
+        if type(value) == "table" then
+            for name, selected in pairs(value) do
+                if type(name) == "string" and selected then
+                    expander.excluded[name] = true
+                elseif type(selected) == "string" then
+                    expander.excluded[selected] = true
+                end
+            end
+        end
+    end
+
+    -- A part is safe to resize when it can be hit but never collides and never has a touch hitbox of its own.
+    local function isResizable(part)
+        return part:IsA("BasePart")
+            and part.CanQuery and part.CanTouch and not part.CanCollide
+            and not part:FindFirstChildWhichIsA("TouchTransmitter")
+    end
+
+    -- Re-check for parts that were already accepted once
+    local function stillResizable(part)
+        return part.CanQuery and part.CanTouch and not part.CanCollide
+    end
+
+    local function writeLocalTransparency(instance, value)
+        if instance.LocalTransparencyModifier ~= value then
+            instance.LocalTransparencyModifier = value
+        end
+    end
+
+    local function setLocalTransparency(instance, value)
+        pcall(writeLocalTransparency, instance, value)
+    end
+
+    local function readLocalTransparency(instance)
+        local success, value = pcall(function()
+            return instance.LocalTransparencyModifier
+        end)
+
+        return success and value or 0
+    end
+
+    local function getExpanderFolder()
+        if expander.folder and expander.folder.Parent then
+            return expander.folder
+        end
+
+        local folder = Instance.new("Folder")
+        folder.Name = "KillerVisuals"
+        folder.Parent = workspace
+        expander.folder = folder
+
+        return folder
+    end
+
+    -- Keep the Killer's appearance the same by cloning look-alike parts.
+    local function getGhost(state)
+        if state.ghost and state.ghost.Parent then
+            return state.ghost
+        end
+
+        local ghost = Instance.new("Model")
+        ghost.Name = state.model.Name
+
+        local humanoid = Instance.new("Humanoid")
+        humanoid.RigType = Enum.HumanoidRigType.R15
+        humanoid.EvaluateStateMachine = false
+        humanoid.RequiresNeck = false
+        humanoid.BreakJointsOnDeath = false
+        humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+        humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
+        humanoid.Parent = ghost
+
+        for _, child in ipairs(state.model:GetChildren()) do
+            if child:IsA("Shirt") or child:IsA("Pants") then
+                local success, copy = pcall(child.Clone, child)
+
+                if success and copy then
+                    copy.Parent = ghost
+                end
+            end
+        end
+
+        ghost.Parent = getExpanderFolder()
+        state.ghost = ghost
+
+        return ghost
+    end
+
+    local function createGhostPart(state, part, size)
+        local success, copy = pcall(part.Clone, part)
+
+        if not success or not copy then
+            return nil
+        end
+
+        for _, child in ipairs(copy:GetChildren()) do
+            if not (child:IsA("Decal") or child:IsA("Texture") or child:IsA("SurfaceAppearance") or child:IsA("SpecialMesh")) then
+                child:Destroy()
+            end
+        end
+
+        copy.Anchored = true
+        copy.CanCollide = false
+        copy.CanTouch = false
+        copy.CanQuery = false
+        copy.Massless = true
+        copy.Size = size
+        copy.CFrame = part.CFrame
+        copy.Parent = getGhost(state)
+
+        return copy
+    end
+
+    -- Parallel lists that BulkMoveTo uses to move every look-alike in one call per frame
+    local function rebuildMoves()
+        local sources, ghosts = {}, {}
+
+        for _, state in pairs(expander.killers) do
+            for part, record in pairs(state.records) do
+                if record.ghost then
+                    sources[#sources + 1] = part
+                    ghosts[#ghosts + 1] = record.ghost
+                end
+            end
+        end
+
+        expander.moveSources = sources
+        expander.moveGhosts = ghosts
+        expander.moveFrames = table.create(#ghosts, CFrame.identity)
+        expander.movesDirty = false
+    end
+
+    local function stepGhosts()
+        if expander.movesDirty then
+            rebuildMoves()
+        end
+
+        local sources, ghosts, frames = expander.moveSources, expander.moveGhosts, expander.moveFrames
+        local count = #ghosts
+
+        if count == 0 then
+            return
+        end
+
+        for index = 1, count do
+            frames[index] = sources[index].CFrame
+        end
+
+        workspace:BulkMoveTo(ghosts, frames, Enum.BulkMoveMode.FireCFrameChanged)
+    end
+
+    local function releasePart(state, part, restore)
+        local record = state.records[part]
+
+        if not record then
+            return
+        end
+
+        state.records[part] = nil
+        utils.hitboxOriginalSizes[part] = nil
+        expander.massDirty = true
+
+        if record.connection then
+            record.connection:Disconnect()
+        end
+
+        if record.collideConnection then
+            record.collideConnection:Disconnect()
+        end
+
+        if record.ghost then
+            pcall(record.ghost.Destroy, record.ghost)
+            expander.movesDirty = true
+        end
+
+        if restore and part.Parent then
+            pcall(function()
+                part.Size = record.original
+                part.CustomPhysicalProperties = record.physics
+                part.Massless = record.massless
+            end)
+
+            setLocalTransparency(part, record.localTransparency)
+
+            for child, previous in pairs(record.hidden) do
+                setLocalTransparency(child, previous)
+            end
+        end
+    end
+
+    -- Keeps the part's mass exactly as it was, so a client-owned Killer moves the same.
+    local function writeSize(part, record, size)
+        local original = record.original
+        local ratio = (original.X * original.Y * original.Z) / (size.X * size.Y * size.Z)
+
+        record.lost = 0
+        expander.massDirty = true
+
+        if ratio > 0.9999 then
+            part.CustomPhysicalProperties = record.physics
+            part.Massless = record.massless
+        else
+            local base = record.physics or PhysicalProperties.new(part.Material)
+            local density = base.Density * ratio
+
+            if density >= 0.01 then
+                part.CustomPhysicalProperties = PhysicalProperties.new(density, base.Friction, base.Elasticity, base.FrictionWeight, base.ElasticityWeight)
+                part.Massless = record.massless
+            else
+                -- Too light for a density to express: the part goes massless and its mass is handed to the root part below.
+                part.CustomPhysicalProperties = record.physics
+                part.Massless = true
+                record.lost = record.mass
+            end
+        end
+
+        part.Size = size
+        record.applied = part.Size
+    end
+
+    -- The stretched original stays invisible and the normal-sized look-alike replaces it
+    local function hideReal(part, record)
+        setLocalTransparency(part, 1)
+
+        for _, child in ipairs(part:GetChildren()) do
+            if child:IsA("Decal") or child:IsA("Texture") then
+                if record.hidden[child] == nil then
+                    record.hidden[child] = readLocalTransparency(child)
+                end
+
+                setLocalTransparency(child, 1)
+            end
+        end
+    end
+
+    -- The look-alike copies the live appearance, so Killers that fade or change colour still look right
+    local function syncLook(part, record)
+        local ghost = record.ghost
+
+        if not ghost then
+            return
+        end
+
+        if ghost.Color ~= part.Color then
+            ghost.Color = part.Color
+        end
+
+        if ghost.Transparency ~= part.Transparency then
+            ghost.Transparency = part.Transparency
+        end
+
+        if ghost.Material ~= part.Material then
+            ghost.Material = part.Material
+        end
+
+        if ghost.Reflectance ~= part.Reflectance then
+            ghost.Reflectance = part.Reflectance
+        end
+
+        writeLocalTransparency(part, 1) -- Re-assert the hiding in case something reset it
+
+        for child in pairs(record.hidden) do
+            setLocalTransparency(child, 1)
+        end
+    end
+
+    local function applyPart(state, part, target)
+        local record = state.records[part]
+
+        if not record then
+            record = {
+                original = part.Size,
+                massless = part.Massless,
+                physics = part.CustomPhysicalProperties,
+                mass = part.Massless and 0 or part.Mass,
+                lost = 0,
+                localTransparency = readLocalTransparency(part),
+                hidden = {},
+                applied = nil,
+                ghost = nil,
+            }
+
+            state.records[part] = record
+            utils.hitboxOriginalSizes[part] = record.original
+
+            record.connection = part.AncestryChanged:Connect(function()
+                if not part:IsDescendantOf(workspace) then
+                    releasePart(state, part, false)
+                end
+            end)
+
+            -- If a dying Killer ragdolls and its limbs start to collide, give the original size back immediately.
+            record.collideConnection = part:GetPropertyChangedSignal("CanCollide"):Connect(function()
+                if part.CanCollide then
+                    releasePart(state, part, true)
+                end
+            end)
+
+            -- The look-alike is made from the untouched part, before it is resized or hidden
+            record.ghost = createGhostPart(state, part, record.original)
+
+            if record.ghost then
+                expander.movesDirty = true
+            end
+        elseif record.applied and (part.Size - record.applied).Magnitude > 0.01 then
+            -- If the game resized the part itself, make that size the new original.
+            record.original = part.Size
+            utils.hitboxOriginalSizes[part] = part.Size
+            record.applied = nil
+
+            if record.ghost then
+                record.ghost.Size = part.Size
+            end
+        end
+
+        local original = record.original
+        local size = Vector3.new(math.max(original.X, target), math.max(original.Y, target), math.max(original.Z, target))
+
+        if not record.applied or (record.applied - size).Magnitude > 0.001 then
+            writeSize(part, record, size)
+        end
+
+        if record.ghost then
+            if not record.hiddenOnce then
+                record.hiddenOnce = true
+                hideReal(part, record)
+            end
+
+            syncLook(part, record)
+        end
+    end
+
+    -- Total mass of every Killer stays exactly as the game made it: what a resized limb can not carry goes to the root part's density.
+    local function refreshMassCompensation()
+        local totals = {}
+
+        expander.massDirty = false
+
+        for _, state in pairs(expander.killers) do
+            for part, record in pairs(state.records) do
+                local model = part.Parent
+
+                if model and record.lost > 0 then
+                    totals[model] = (totals[model] or 0) + record.lost
+                end
+            end
+        end
+
+        for model, lost in pairs(totals) do
+            local root = model:FindFirstChild("HumanoidRootPart")
+
+            if root and root:IsA("BasePart") then
+                local entry = expander.compensated[root]
+
+                if not entry then
+                    entry = { physics = root.CustomPhysicalProperties, mass = root.Mass, applied = 0 }
+                    expander.compensated[root] = entry
+                end
+
+                if math.abs(entry.applied - lost) > 0.001 and entry.mass > 0 then
+                    local base = entry.physics or PhysicalProperties.new(root.Material)
+                    local density = math.min(base.Density * (entry.mass + lost) / entry.mass, 100)
+
+                    root.CustomPhysicalProperties = PhysicalProperties.new(density, base.Friction, base.Elasticity, base.FrictionWeight, base.ElasticityWeight)
+                    entry.applied = lost
+                end
+            end
+        end
+
+        for root, entry in pairs(expander.compensated) do
+            if not root.Parent or not totals[root.Parent] then
+                expander.compensated[root] = nil
+
+                if root.Parent then
+                    pcall(function()
+                        root.CustomPhysicalProperties = entry.physics
+                    end)
+                end
+            end
+        end
+    end
+
+    local function deactivateKiller(model, restore)
+        local state = expander.killers[model]
+
+        if not state then
+            return
+        end
+
+        expander.killers[model] = nil
+
+        for part in pairs(state.records) do
+            releasePart(state, part, restore)
+        end
+
+        if state.ghost then
+            pcall(state.ghost.Destroy, state.ghost)
+        end
+
+        expander.movesDirty = true
+    end
+
+    -- Only Killers close to the camera are touched; each one is scanned from a cached list of its parts
+    local function sweepExpander()
+        local folder = getKillersFolder()
+        local camera = workspace.CurrentCamera
+        local character = localplayer.Character
+        local target = tonumber(options.hitboxSize_Slider.Value) or 8
+        local range = tonumber(options.hitboxRange_Slider.Value) or 350
+        local origin = camera and camera.CFrame.Position or (character and character:GetPivot().Position)
+        local now = os.clock()
+        local eligible = {}
+
+        if folder and origin then
+            for _, model in ipairs(folder:GetChildren()) do
+                if model:IsA("Model") and model ~= character
+                    and not immuneKillers[model.Name] and not expander.excluded[model.Name] then
+                    local humanoid = model:FindFirstChildOfClass("Humanoid")
+                    local root = model:FindFirstChild("HumanoidRootPart")
+
+                    -- A dying Killer is left alone so it ragdolls with its original parts.
+                    if humanoid and humanoid.Health > 0 and root and root:IsA("BasePart") then
+                        -- A little extra room before a Killer is let go, so one standing on the edge does not flicker
+                        local limit = expander.killers[model] and range * 1.1 or range
+
+                        if (root.Position - origin).Magnitude <= limit then
+                            eligible[model] = true
+                        end
+                    end
+                end
+            end
+        end
+
+        for model in pairs(expander.killers) do
+            if not eligible[model] then
+                deactivateKiller(model, model.Parent ~= nil)
+            end
+        end
+
+        for model in pairs(eligible) do
+            local state = expander.killers[model]
+
+            if not state then
+                state = { model = model, ghost = nil, records = {}, rejected = setmetatable({}, { __mode = "k" }) }
+                expander.killers[model] = state
+            end
+
+            local seen = {}
+
+            for _, part in ipairs(model:GetChildren()) do
+                if resizableParts[part.Name] then
+                    if state.records[part] then
+                        if stillResizable(part) then
+                            seen[part] = true
+                            applyPart(state, part, target)
+                        end
+                    else
+                        local retry = state.rejected[part]
+
+                        if not (retry and retry > now) then
+                            if isResizable(part) then
+                                seen[part] = true
+                                applyPart(state, part, target)
+                            else
+                                state.rejected[part] = now + 2
+                            end
+                        end
+                    end
+                end
+            end
+
+            -- Anything no longer eligible gets its original size back.
+            for part in pairs(state.records) do
+                if not seen[part] then
+                    releasePart(state, part, true)
+                end
+            end
+        end
+
+        if expander.massDirty then
+            refreshMassCompensation()
+        end
+    end
+
+    local function stopExpander()
+        expander.token = nil
+
+        if expander.renderConnection then
+            expander.renderConnection:Disconnect()
+            expander.renderConnection = nil
+        end
+
+        for model in pairs(expander.killers) do
+            deactivateKiller(model, true)
+        end
+
+        refreshMassCompensation()
+        rebuildMoves()
+
+        if expander.folder then
+            pcall(expander.folder.Destroy, expander.folder)
+            expander.folder = nil
+        end
+    end
+
+    toggles.hitboxExpander_Toggle:OnChanged(function(enabled)
+        stopExpander()
+
+        if not enabled then
+            return
+        end
+
+        local token = {}
+        expander.token = token
+
+        expander.renderConnection = runService.RenderStepped:Connect(function()
+            local success, err = pcall(stepGhosts)
+
+            if not success and err ~= expander.lastRenderError then
+                expander.lastRenderError = err
+                warn("[Hitbox Expander] " .. tostring(err))
+            end
+        end)
+
+        task.spawn(function()
+            while expander.token == token and not library.Unloaded do
+                local success, err = pcall(sweepExpander)
+
+                if not success and err ~= expander.lastError then
+                    expander.lastError = err
+                    warn("[Hitbox Expander] " .. tostring(err))
+                end
+
+                task.wait(0.25)
+            end
+        end)
+    end)
+
+    local function refreshNow()
+        if expander.token then
+            pcall(sweepExpander)
+        end
+    end
+
+    options.hitboxSize_Slider:OnChanged(refreshNow)
+    options.hitboxRange_Slider:OnChanged(refreshNow)
+
+    readExcluded(options.hitboxExcludedKillers_Dropdown.Value)
+
+    options.hitboxExcludedKillers_Dropdown:OnChanged(function(value)
+        readExcluded(value)
+        refreshNow()
+    end)
+
+    table.insert(teardownTasks, stopExpander)
+end
 
 -- ============================================================================
 -- 11 | TAB: VISUALS
@@ -5564,7 +6542,8 @@ do
             local isCore = boxCoreParts[part.Name] == true
 
             if part:IsA("BasePart") and (isCore or boxLegParts[part.Name]) then
-                local half = part.Size / 2
+                -- Enlarged hitboxes (Hitbox Expander) never inflate the ESP box
+                local half = (utils.hitboxOriginalSizes[part] or part.Size) / 2
                 found += 1
 
                 for _, corner in ipairs(boxCorners) do
@@ -6036,6 +7015,411 @@ do
     end
 
     buildScopeOverlayRemoval()
+end
+
+-- [Visuals / Hitbox Visualizer] One box per Killer around every part a shot can hit
+do
+    local hitboxVisualizerGroup = tabs.visuals:AddGroupbox({ Side = "Right", Name = "Hitbox Visualizer", IconName = assetLib.fetchAsset("Icons/crosshair.png"), Description = "Killer hitbox outlines" })
+
+    hitboxVisualizerGroup:AddToggle("visualizeHitbox_Toggle", { Text = "Visualize Hitbox", Tooltip = "Draws a box around each Killer that covers every part a shot can hit." })
+
+    local visualizeHitboxDepbox = hitboxVisualizerGroup:AddDependencyBox()
+    visualizeHitboxDepbox:AddLabel("Hitbox Color"):AddColorPicker("hitboxVisualizeColor_ColorPicker", { Title = "Hitbox Color", Default = Color3.fromRGB(255, 60, 60), Transparency = nil })
+    visualizeHitboxDepbox:AddSlider("hitboxVisualizeFill_Slider", { Text = "Fill Transparency", Default = 1, Min = 0, Max = 1, Rounding = 2 })
+    visualizeHitboxDepbox:AddSlider("hitboxVisualizeRange_Slider", { Text = "Range", Tooltip = "How far away to show hitboxes on killers", Default = 150, Min = 50, Max = 1000, Suffix = " Studs" })
+    visualizeHitboxDepbox:AddToggle("hitboxVisualizeWallCheck_Toggle", { Text = "Wall Check", Tooltip = "Only outline Killers that are visible.", Default = true })
+    visualizeHitboxDepbox:AddDivider()
+
+    visualizeHitboxDepbox:SetupDependencies({ { toggles.visualizeHitbox_Toggle, true } })
+
+    -- Killers the game never registers normal shots on.
+    local immuneKillers = { Giant = true, Jane = true }
+
+    local OUTLINE_THICKNESS = 0.03
+    local MEASURE_INTERVAL = 1 / 30 -- how often the bounds are measured; the box itself follows the Killer every frame
+    local SHRINK_RATE = 1.2         -- how slowly the box lets go of space the limbs just left (it grows at once)
+    local TURN_RATE = 25            -- how quickly the box follows the Killer turning
+
+    local visualizer = {
+        entries = {},     -- [model] = { proxy, box, outline, parts, bounds... }
+        token = nil,
+        folder = nil,       -- holds the drawn outlines (hidden UI container)
+        proxyFolder = nil,  -- holds one invisible, non-solid stand-in part per box
+        connection = nil,
+        lastError = nil,
+        lastRenderError = nil,
+        lastStep = nil,
+    }
+
+    local function getKillersFolder()
+        return killersFolder or workspace:FindFirstChild("Killers")
+    end
+
+    local function getVisualizerFolder()
+        if visualizer.folder and visualizer.folder.Parent then
+            return visualizer.folder
+        end
+
+        local folder = Instance.new("Folder")
+        folder.Name = "HitboxVisualizer"
+        folder.Parent = gethui()
+        visualizer.folder = folder
+
+        return folder
+    end
+
+    -- The game finds the Killer from the hit part's parent or grandparent, and ignores parts of a held tool.
+    local function isHittablePart(model, part)
+        if not part:IsA("BasePart") or not (part.CanQuery or part.CanTouch) then
+            return false
+        end
+
+        local parent = part.Parent
+
+        if parent ~= model and (not parent or parent.Parent ~= model) then
+            return false
+        end
+
+        return part:FindFirstAncestorOfClass("Tool") == nil
+    end
+
+    -- Wall Check: a Killer is shown only when a straight line from the camera to its body or head has no wall in the way
+    local function isKillerShown(model, origin)
+        local root = model:FindFirstChild("HumanoidRootPart")
+
+        if not (utils.isKillerVisible and root and root:IsA("BasePart")) then
+            return true
+        end
+
+        return utils.isKillerVisible(origin, model, root)
+    end
+
+    local function getProxyFolder()
+        if visualizer.proxyFolder and visualizer.proxyFolder.Parent then
+            return visualizer.proxyFolder
+        end
+
+        local folder = Instance.new("Folder")
+        folder.Name = "HitboxVisualizerBoxes"
+        folder.Parent = workspace
+        visualizer.proxyFolder = folder
+
+        return folder
+    end
+
+    -- Each Killer gets one invisible copied part that is the box. It can not be hit, touched or collided with, so it never gets in the way of shots or movement.
+    local function createEntry(model, now)
+        local container = getVisualizerFolder()
+
+        local proxy = Instance.new("Part")
+        proxy.Name = model.Name
+        proxy.Anchored = true
+        proxy.CanCollide = false
+        proxy.CanTouch = false
+        proxy.CanQuery = false
+        proxy.CastShadow = false
+        proxy.Transparency = 1
+        proxy.Size = Vector3.one
+        proxy.Parent = getProxyFolder()
+
+        local box = Instance.new("BoxHandleAdornment")
+        box.Adornee = proxy
+        box.AlwaysOnTop = true
+        box.ZIndex = 1
+        box.Size = Vector3.one
+        box.Transparency = 1
+        box.Parent = container
+
+        local outline = Instance.new("SelectionBox")
+        outline.Adornee = proxy
+        outline.LineThickness = OUTLINE_THICKNESS
+        outline.SurfaceTransparency = 1
+        outline.Parent = container
+
+        return {
+            model = model,
+            proxy = proxy,
+            box = box,
+            outline = outline,
+            parts = {},
+            nextParts = 0,
+            nextMeasure = 0,
+            lastMeasure = now,
+            minBound = nil,
+            maxBound = nil,
+            yaw = nil,
+            shown = true,
+            color = nil,
+            fill = nil,
+        }
+    end
+
+    local function releaseEntry(model)
+        local entry = visualizer.entries[model]
+
+        if entry then
+            visualizer.entries[model] = nil
+            pcall(entry.box.Destroy, entry.box)
+            pcall(entry.outline.Destroy, entry.outline)
+            pcall(entry.proxy.Destroy, entry.proxy)
+        end
+    end
+
+    -- The parts a shot can hit are listed occasionally
+    local function refreshParts(entry)
+        local list = {}
+
+        for _, part in ipairs(entry.model:GetDescendants()) do
+            if isHittablePart(entry.model, part) then
+                list[#list + 1] = part
+            end
+        end
+
+        entry.parts = list
+    end
+
+    -- Smallest box, aligned to wherever the Killer's facing, that covers every hit part at its exact current size and rotation
+    local function measure(parts, frame)
+        local minX, minY, minZ = math.huge, math.huge, math.huge
+        local maxX, maxY, maxZ = -math.huge, -math.huge, -math.huge
+        local abs = math.abs
+
+        for index = 1, #parts do
+            local part = parts[index]
+            local x, y, z, r00, r01, r02, r10, r11, r12, r20, r21, r22 = frame:ToObjectSpace(part.CFrame):GetComponents()
+            local size = part.Size
+            local hx, hy, hz = size.X * 0.5, size.Y * 0.5, size.Z * 0.5
+            local ex = abs(r00) * hx + abs(r01) * hy + abs(r02) * hz
+            local ey = abs(r10) * hx + abs(r11) * hy + abs(r12) * hz
+            local ez = abs(r20) * hx + abs(r21) * hy + abs(r22) * hz
+
+            if x - ex < minX then minX = x - ex end
+            if y - ey < minY then minY = y - ey end
+            if z - ez < minZ then minZ = z - ez end
+            if x + ex > maxX then maxX = x + ex end
+            if y + ey > maxY then maxY = y + ey end
+            if z + ez > maxZ then maxZ = z + ez end
+        end
+
+        if minX == math.huge then
+            return nil, nil
+        end
+
+        return Vector3.new(minX, minY, minZ), Vector3.new(maxX, maxY, maxZ)
+    end
+
+    -- The box grows the moment a limb reaches out, but only lets go of space slowly, so a walk cycle does not make it pulse
+    local function relaxLow(current, measured, keep)
+        if measured <= current then
+            return measured
+        end
+
+        return current + (measured - current) * keep
+    end
+
+    local function relaxHigh(current, measured, keep)
+        if measured >= current then
+            return measured
+        end
+
+        return current + (measured - current) * keep
+    end
+
+    local function updateEntry(entry, now, dt)
+        local model = entry.model
+        local root = model:FindFirstChild("HumanoidRootPart")
+        local rootCFrame = root and root:IsA("BasePart") and root.CFrame or model:GetPivot()
+
+        -- Upright and turning with the Killer; the box ignores any tilt of its limbs
+        local look = rootCFrame.LookVector
+        local targetYaw = math.atan2(-look.X, -look.Z)
+
+        if not entry.yaw then
+            entry.yaw = targetYaw
+        else
+            local difference = (targetYaw - entry.yaw + math.pi) % (2 * math.pi) - math.pi
+            entry.yaw = entry.yaw + difference * (1 - math.exp(-dt * TURN_RATE))
+        end
+
+        local frame = CFrame.new(rootCFrame.Position) * CFrame.Angles(0, entry.yaw, 0)
+
+        if now >= entry.nextParts then
+            entry.nextParts = now + 1 + math.random() * 0.25
+            refreshParts(entry)
+        end
+
+        local resized = false
+
+        if now >= entry.nextMeasure then
+            local elapsed = now - entry.lastMeasure
+
+            entry.nextMeasure = now + MEASURE_INTERVAL
+            entry.lastMeasure = now
+
+            local measuredMin, measuredMax = measure(entry.parts, frame)
+
+            if measuredMin then
+                if not entry.minBound then
+                    entry.minBound, entry.maxBound = measuredMin, measuredMax
+                else
+                    local keep = 1 - math.exp(-elapsed * SHRINK_RATE)
+                    local low, high = entry.minBound, entry.maxBound
+
+                    entry.minBound = Vector3.new(
+                        relaxLow(low.X, measuredMin.X, keep), relaxLow(low.Y, measuredMin.Y, keep), relaxLow(low.Z, measuredMin.Z, keep))
+                    entry.maxBound = Vector3.new(
+                        relaxHigh(high.X, measuredMax.X, keep), relaxHigh(high.Y, measuredMax.Y, keep), relaxHigh(high.Z, measuredMax.Z, keep))
+                end
+
+                resized = true
+            end
+        end
+
+        if not entry.minBound then
+            return
+        end
+
+        if resized then
+            local size = entry.maxBound - entry.minBound
+
+            entry.proxy.Size = size
+            entry.box.Size = size
+        end
+
+        entry.proxy.CFrame = frame * CFrame.new((entry.minBound + entry.maxBound) * 0.5)
+    end
+
+    local function stepEntries()
+        local now = os.clock()
+        local dt = math.min(now - (visualizer.lastStep or now), 0.25)
+
+        visualizer.lastStep = now
+
+        for _, entry in pairs(visualizer.entries) do
+            if entry.shown then
+                updateEntry(entry, now, dt)
+            end
+        end
+    end
+
+    -- Decides which Killers get a box (alive, in range, visible) and keeps the colors current
+    local function sweepVisualizer()
+        local folder = getKillersFolder()
+        local camera = workspace.CurrentCamera
+        local color = options.hitboxVisualizeColor_ColorPicker.Value
+        local fill = options.hitboxVisualizeFill_Slider.Value
+        local range = options.hitboxVisualizeRange_Slider.Value
+        local wallCheck = toggles.hitboxVisualizeWallCheck_Toggle.Value
+        local now = os.clock()
+        local active = {}
+
+        if folder and camera then
+            local origin = camera.CFrame.Position
+
+            for _, model in ipairs(folder:GetChildren()) do
+                if model:IsA("Model") and model ~= localplayer.Character and not immuneKillers[model.Name] then
+                    local humanoid = model:FindFirstChildOfClass("Humanoid")
+                    local root = model:FindFirstChild("HumanoidRootPart")
+                    local position = root and root:IsA("BasePart") and root.Position or model:GetPivot().Position
+
+                    if humanoid and humanoid.Health > 0 and (position - origin).Magnitude <= range then
+                        active[model] = true
+
+                        local entry = visualizer.entries[model]
+
+                        if not entry then
+                            entry = createEntry(model, now)
+                            visualizer.entries[model] = entry
+                        end
+
+                        local shown = not wallCheck or isKillerShown(model, origin)
+
+                        if entry.shown ~= shown then
+                            entry.shown = shown
+                            entry.box.Visible = shown
+                            entry.outline.Visible = shown
+                        end
+
+                        if entry.color ~= color then
+                            entry.color = color
+                            entry.box.Color3 = color
+                            entry.outline.Color3 = color
+                        end
+
+                        if entry.fill ~= fill then
+                            entry.fill = fill
+                            entry.box.Transparency = fill
+                        end
+                    end
+                end
+            end
+        end
+
+        for model in pairs(visualizer.entries) do
+            if not active[model] then
+                releaseEntry(model)
+            end
+        end
+    end
+
+    local function stopVisualizer()
+        visualizer.token = nil
+
+        if visualizer.connection then
+            visualizer.connection:Disconnect()
+            visualizer.connection = nil
+        end
+
+        for model in pairs(visualizer.entries) do
+            releaseEntry(model)
+        end
+
+        if visualizer.folder then
+            pcall(visualizer.folder.Destroy, visualizer.folder)
+            visualizer.folder = nil
+        end
+
+        if visualizer.proxyFolder then
+            pcall(visualizer.proxyFolder.Destroy, visualizer.proxyFolder)
+            visualizer.proxyFolder = nil
+        end
+    end
+
+    toggles.visualizeHitbox_Toggle:OnChanged(function(enabled)
+        stopVisualizer()
+
+        if not enabled then
+            return
+        end
+
+        local token = {}
+        visualizer.token = token
+        visualizer.lastStep = nil
+
+        visualizer.connection = runService.RenderStepped:Connect(function()
+            local success, err = pcall(stepEntries)
+
+            if not success and err ~= visualizer.lastRenderError then
+                visualizer.lastRenderError = err
+                warn("[Visualize Hitbox] " .. tostring(err))
+            end
+        end)
+
+        task.spawn(function()
+            while visualizer.token == token and not library.Unloaded do
+                local success, err = pcall(sweepVisualizer)
+
+                if not success and err ~= visualizer.lastError then
+                    visualizer.lastError = err
+                    warn("[Visualize Hitbox] " .. tostring(err))
+                end
+
+                task.wait(0.2)
+            end
+        end)
+    end)
+
+    table.insert(teardownTasks, stopVisualizer)
 end
 
 -- [Visuals / Grenade Trajectory] Flight path and landing preview for the M16A2's grenade launcher (M203)
