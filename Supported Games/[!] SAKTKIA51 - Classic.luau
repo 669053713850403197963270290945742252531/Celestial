@@ -4944,6 +4944,11 @@ local function updateKiller(hum, model, root, method, inRange, visible)
 
     -- Apply new method
     if method == "Kill" then
+        -- The real hit parts come back first, so the ragdoll never starts from an enlarged hitbox (see Hitbox Expander)
+        if utils.releaseKillerHitbox then
+            pcall(utils.releaseKillerHitbox, model)
+        end
+
         hum.Health = 0
         if toggles.disableAuraDebugNotifs_Toggle.Value then
             notify("Info", "Disable Aura", "Killed " .. model.Name, 3)
@@ -5013,6 +5018,11 @@ do
             if hum and root and hum.Health > 0 and entityLib.getEntityDistance(hrp, root) <= range then
                 -- Wait until you own the killer, then kill it on the frame control begins
                 if utils.emergencyControl.check(model, root) then
+                    -- The real hit parts come back first, so the ragdoll never starts from an enlarged hitbox (see Hitbox Expander)
+                    if utils.releaseKillerHitbox then
+                        pcall(utils.releaseKillerHitbox, model)
+                    end
+
                     hum.Health = 0
 
                     if toggles.disableAuraDebugNotifs_Toggle.Value then
@@ -5181,24 +5191,46 @@ do
     local shapes = setmetatable({}, { __mode = "k" })
 
     -- How big the wall checks have to be for a killer: its width, how far its feet are under the root part and how far its head is above it
-    local function getShape(model, root)
+    local function getShape(model, root, hum)
         local shape = shapes[model]
 
         if shape then
             return shape
         end
 
-        local bottom, top, width = 3.5, 3, 3
-        local ok, boxCFrame, boxSize = pcall(model.GetBoundingBox, model)
+        local rootCFrame = root.CFrame
+        local minX, maxX, minY, maxY, minZ, maxZ = math.huge, -math.huge, math.huge, -math.huge, math.huge, -math.huge
 
-        if ok then
-            local rootY = root.Position.Y
-            bottom = math.clamp(rootY - (boxCFrame.Position.Y - boxSize.Y / 2), 1.5, 8)
-            top = math.clamp((boxCFrame.Position.Y + boxSize.Y / 2) - rootY, 1, 8)
-            width = math.clamp(math.min(boxSize.X, boxSize.Z) * 0.6, 1.6, 6)
+        -- Grows the measured area (in the root part's own space, so the way the killer faces does not matter) to hold a part
+        local function include(part)
+            local relative = rootCFrame:ToObjectSpace(part.CFrame)
+            local r00, r01, r02, r10, r11, r12, r20, r21, r22 = select(4, relative:GetComponents())
+            local half = part.Size / 2
+            local extentX = math.abs(r00) * half.X + math.abs(r01) * half.Y + math.abs(r02) * half.Z
+            local extentY = math.abs(r10) * half.X + math.abs(r11) * half.Y + math.abs(r12) * half.Z
+            local extentZ = math.abs(r20) * half.X + math.abs(r21) * half.Y + math.abs(r22) * half.Z
+
+            minX, maxX = math.min(minX, relative.X - extentX), math.max(maxX, relative.X + extentX)
+            minY, maxY = math.min(minY, relative.Y - extentY), math.max(maxY, relative.Y + extentY)
+            minZ, maxZ = math.min(minZ, relative.Z - extentZ), math.max(maxZ, relative.Z + extentZ)
         end
 
-        shape = { bottom = bottom, top = top, width = width }
+        include(root)
+
+        for _, part in ipairs(model:GetDescendants()) do
+            if part ~= root and part:IsA("BasePart") and part.CanCollide and part.Size.Magnitude < 30 then
+                include(part)
+            end
+        end
+
+        -- R15 rigs stand on their hip height, and their legs do not collide, so the feet come from the humanoid
+        local feet = math.min(minY, -(root.Size.Y / 2 + hum.HipHeight))
+
+        shape = {
+            bottom = math.clamp(-feet, 1.5, 12),
+            top = math.clamp(maxY, 1, 10),
+            width = math.clamp(math.min(maxX - minX, maxZ - minZ) * 1.2, 1.6, 6),
+        }
         shapes[model] = shape
 
         return shape
@@ -5415,16 +5447,19 @@ do
                 end
             end
 
-            local move = resolveMove(position, getShape(model, root), away.Unit, math.min(speed * dt, PUSH_MAX_STEP))
+            local move = resolveMove(position, getShape(model, root, hum), away.Unit, math.min(speed * dt, PUSH_MAX_STEP))
 
-            if move.Magnitude > 0.005 then
+            local moved = move.Magnitude > 0.005
+
+            if moved then
                 root.CFrame += move
                 position += move
             end
 
             state.last = position
 
-            if inRange and not state.active and now - state.notifiedAt > 3 then
+            -- Only announced once the killer was really moved, so the notification always claims a real push
+            if moved and inRange and not state.active and now - state.notifiedAt > 3 then
                 state.active = true
                 state.notifiedAt = now
 
@@ -5454,6 +5489,29 @@ do
 end
 
 -- [Exploits / Killer Controls] Killer Godmode
+local pinheadConnection
+
+local function syncAntiPinhead()
+    local shouldRun = toggles.antiPinhead_Toggle.Value and toggles.killerGodmode_Toggle.Value
+
+    if shouldRun and not pinheadConnection then
+        pinheadConnection = runService.Heartbeat:Connect(function()
+            for _, obj in ipairs(game:GetService("Workspace"):GetChildren()) do
+                if obj:IsA("Model") then
+                    for _, spike in ipairs(obj:GetChildren()) do
+                        if spike:IsA("BasePart") and spike.Name == "Spike" then
+                            spike:Destroy()
+                        end
+                    end
+                end
+            end
+        end)
+    elseif not shouldRun and pinheadConnection then
+        pinheadConnection:Disconnect()
+        pinheadConnection = nil
+    end
+end
+
 do
     -- Remotes fired from your client that report damage, and when a call counts as a hit
     local blockedReports = {
@@ -5472,6 +5530,8 @@ do
         warned = false,
         loopId = 0,
         connections = {},
+        mutedParts = {}, -- [BasePart] = true: CanTouch was switched off by Godmode
+        stashedRemotes = {}, -- [RemoteEvent] = original parent (executors that can not hook __namecall)
     }
 
     local function shouldBlock(remote, ...)
@@ -5533,9 +5593,52 @@ do
         return character ~= nil and instance:IsDescendantOf(character)
     end
 
+    local function setCanTouch(part, value)
+        part.CanTouch = value
+    end
+
+    local function setParent(instance, parent)
+        instance.Parent = parent
+    end
+
+    -- Takes the touch hitbox of a killer part away in a way that can be undone.
+    local function muteTouchHitbox(part)
+        if godmode.active and part and part:IsA("BasePart") and part.CanTouch and pcall(setCanTouch, part, false) then
+            godmode.mutedParts[part] = true
+        end
+    end
+
     local function stripKillerHitbox(instance)
         if instance:IsA("TouchTransmitter") and not isOwnCharacter(instance) then
-            pcall(instance.Destroy, instance)
+            muteTouchHitbox(instance.Parent)
+        end
+    end
+
+    -- Damage remotes can not be blocked without the hook, so they are taken out of the killer for as long as Godmode is on
+    local function stashDamageRemote(remote)
+        local parent = remote.Parent
+
+        if parent and pcall(setParent, remote, nil) then
+            godmode.stashedRemotes[remote] = parent
+        end
+    end
+
+    -- Gives back everything Killer Godmode took away
+    local function restoreKillerState()
+        for part in pairs(godmode.mutedParts) do
+            godmode.mutedParts[part] = nil
+
+            if part.Parent then
+                pcall(setCanTouch, part, true)
+            end
+        end
+
+        for remote, parent in pairs(godmode.stashedRemotes) do
+            godmode.stashedRemotes[remote] = nil
+
+            if parent.Parent then
+                pcall(setParent, remote, parent)
+            end
         end
     end
 
@@ -5551,8 +5654,11 @@ do
         godmode.active = enabled
         godmode.loopId += 1
         disconnectAll()
+        syncAntiPinhead()
 
         if not enabled then
+            restoreKillerState()
+
             return
         end
 
@@ -5566,9 +5672,9 @@ do
         -- Hitboxes: removed the moment they appear instead of waiting for the next sweep
         table.insert(godmode.connections, killersFolder.DescendantAdded:Connect(stripKillerHitbox))
 
-        -- Freddy's nightmare hazards only ever exist on the client. The hole pulls your character with a LineForce, so it goes as well
+        -- Freddy's nightmare hazards only ever exist on the client and are created again for every attack. The hole pulls your character with a LineForce, so it goes as well
         table.insert(godmode.connections, workspace.ChildAdded:Connect(function(child)
-            if child.Name == "HolePart" or child.Name == "FreddyNightmare" then
+            if godmode.active and (child.Name == "HolePart" or child.Name == "FreddyNightmare") then
                 task.defer(pcall, child.Destroy, child)
             end
         end))
@@ -5584,9 +5690,16 @@ do
 
                             -- Without the hook the best that can be done is to take away the remote the damage goes through
                             if not blockerReady and descendant.Name == "DreamDamage" and descendant:IsA("RemoteEvent") then
-                                pcall(descendant.Destroy, descendant)
+                                stashDamageRemote(descendant)
                             end
                         end
+                    end
+                end
+
+                -- mutedParts holds its parts, so let go of the ones that got destroyed
+                for part in pairs(godmode.mutedParts) do
+                    if not part:IsDescendantOf(game) then
+                        godmode.mutedParts[part] = nil
                     end
                 end
 
@@ -5596,25 +5709,7 @@ do
     end)
 end
 
-local pinheadConnection
-toggles.antiPinhead_Toggle:OnChanged(function(enabled)
-    if enabled and not pinheadConnection then
-        pinheadConnection = runService.Heartbeat:Connect(function()
-            for _, obj in ipairs(game:GetService("Workspace"):GetChildren()) do
-                if obj:IsA("Model") then
-                    for _, spike in ipairs(obj:GetChildren()) do
-                        if spike:IsA("BasePart") and spike.Name == "Spike" then
-                            spike:Destroy()
-                        end
-                    end
-                end
-            end
-        end)
-    elseif not enabled and pinheadConnection then
-        pinheadConnection:Disconnect()
-        pinheadConnection = nil
-    end
-end)
+toggles.antiPinhead_Toggle:OnChanged(syncAntiPinhead)
 
 toggles.antiSlendermanJumpscare_Toggle:OnChanged(function(enabled)
     if enabled then
@@ -6079,6 +6174,11 @@ do
 
         expander.killers[model] = nil
 
+        if state.healthConnection then
+            state.healthConnection:Disconnect()
+            state.healthConnection = nil
+        end
+
         for part in pairs(state.records) do
             releasePart(state, part, restore)
         end
@@ -6088,6 +6188,45 @@ do
         end
 
         expander.movesDirty = true
+    end
+
+    -- A dying Killer gets its original sizes and mass back immediately
+    local function releaseNow(model)
+        if expander.killers[model] then
+            deactivateKiller(model, model.Parent ~= nil)
+        end
+
+        if expander.massDirty then
+            refreshMassCompensation()
+        end
+    end
+
+    -- Also used by Disable Aura and Emergency Kill, which give the hit parts back right before they kill a Killer
+    utils.releaseKillerHitbox = releaseNow
+
+    local function isDying(state)
+        local model = state.model
+        local humanoid = state.humanoid
+
+        if not (humanoid and humanoid.Parent == model) then
+            humanoid = model:FindFirstChildOfClass("Humanoid")
+            state.humanoid = humanoid
+        end
+
+        return not model.Parent or not humanoid or humanoid.Health <= 0
+    end
+
+    -- Runs right before every physics step, so no step simulates a dying Killer with enlarged parts
+    local function releaseDying()
+        for model, state in pairs(expander.killers) do
+            if isDying(state) then
+                deactivateKiller(model, model.Parent ~= nil)
+            end
+        end
+
+        if expander.massDirty then
+            refreshMassCompensation()
+        end
     end
 
     -- Only Killers close to the camera are touched; each one is scanned from a cached list of its parts
@@ -6133,6 +6272,18 @@ do
             if not state then
                 state = { model = model, ghost = nil, records = {}, rejected = setmetatable({}, { __mode = "k" }) }
                 expander.killers[model] = state
+
+                local humanoid = model:FindFirstChildOfClass("Humanoid")
+
+                if humanoid then
+                    state.humanoid = humanoid
+
+                    state.healthConnection = humanoid.HealthChanged:Connect(function(health)
+                        if health <= 0 then
+                            releaseNow(model)
+                        end
+                    end)
+                end
             end
 
             local seen = {}
@@ -6180,6 +6331,11 @@ do
             expander.renderConnection = nil
         end
 
+        if expander.physicsConnection then
+            expander.physicsConnection:Disconnect()
+            expander.physicsConnection = nil
+        end
+
         for model in pairs(expander.killers) do
             deactivateKiller(model, true)
         end
@@ -6205,6 +6361,15 @@ do
 
         expander.renderConnection = runService.RenderStepped:Connect(function()
             local success, err = pcall(stepGhosts)
+
+            if not success and err ~= expander.lastRenderError then
+                expander.lastRenderError = err
+                warn("[Hitbox Expander] " .. tostring(err))
+            end
+        end)
+
+        expander.physicsConnection = runService.PreSimulation:Connect(function()
+            local success, err = pcall(releaseDying)
 
             if not success and err ~= expander.lastRenderError then
                 expander.lastRenderError = err
@@ -7138,6 +7303,7 @@ do
 
         return {
             model = model,
+            humanoid = model:FindFirstChildOfClass("Humanoid"),
             proxy = proxy,
             box = box,
             outline = outline,
@@ -7295,8 +7461,18 @@ do
 
         visualizer.lastStep = now
 
-        for _, entry in pairs(visualizer.entries) do
-            if entry.shown then
+        for model, entry in pairs(visualizer.entries) do
+            local humanoid = entry.humanoid
+
+            if not (humanoid and humanoid.Parent == model) then
+                humanoid = model:FindFirstChildOfClass("Humanoid")
+                entry.humanoid = humanoid
+            end
+
+            -- A Killer that dies loses its box.
+            if not model.Parent or not humanoid or humanoid.Health <= 0 then
+                releaseEntry(model)
+            elseif entry.shown then
                 updateEntry(entry, now, dt)
             end
         end
