@@ -1242,7 +1242,7 @@ toggles.autoCloseDoors_Toggle:OnChanged(updateDoorLoop)
 
 -- [Player / Layout] Groupbox registration
 local movementGroup = tabs.player:AddGroupbox({ Side = "Left", Name = "Movement", IconName = assetLib.fetchAsset("Icons/move.png"), Description = "Speed, fly, noclip, phase" })
-local othersGroup3 = tabs.player:AddGroupbox({ Side = "Right", Name = "Other", IconName = assetLib.fetchAsset("Icons/sliders-horizontal.png"), Description = "Freecam, backtrack, guard" })
+local othersGroup3 = tabs.player:AddGroupbox({ Side = "Right", Name = "Other", IconName = assetLib.fetchAsset("Icons/sliders-horizontal.png"), Description = "Freecam, backtrack, guard, lag" })
 
 -- [Player / Movement] Speed, fly, noclip, and jump settings
 
@@ -2981,6 +2981,98 @@ freecamDepbox:AddDivider()
 
 freecamDepbox:SetupDependencies({ { toggles.freecam_Toggle, true } })
 
+-- [Player / Fake Lag] Chokes the client's outgoing network traffic in bursts so other players see you freeze, then jump ahead
+
+othersGroup3:AddToggle("fakeLag_Toggle", { Text = "Fake Lag", Tooltip = "Throttles what your client sends to the server in bursts, so other players see you freeze and then jump ahead while you keep moving normally on your screen. Anything else your client sends is delayed too, so shots and interactions land when each burst ends. Very long lag times can get you rubberbanded or kicked by the server." })
+:AddKeyPicker("fakeLag_KeyPicker", { Text = "Fake Lag", Default = "Z", SyncToggleState = true, Mode = "Hold" })
+
+do
+    local fakeLagDepbox = othersGroup3:AddDependencyBox()
+
+    fakeLagDepbox:AddSlider("fakeLagDuration_Slider", { Text = "Lag Time", Tooltip = "How long each burst holds your movement back before it is released to the server. Keep it short: long bursts are easier for the server to flag.", Default = 0.4, Min = 0.1, Max = 1.5, Rounding = 2, Suffix = " Seconds",
+        Callback = function(val)
+            options.fakeLagDuration_Slider:SetSuffix(getSuffix(options.fakeLagDuration_Slider, "Second"))
+        end
+    })
+
+    fakeLagDepbox:AddSlider("fakeLagRelease_Slider", { Text = "Release Time", Tooltip = "How long your traffic flows normally between two bursts, so the server receives your real position and keeps you in sync.", Default = 0.1, Min = 0.05, Max = 0.5, Rounding = 2, Suffix = " Seconds",
+        Callback = function(val)
+            options.fakeLagRelease_Slider:SetSuffix(getSuffix(options.fakeLagRelease_Slider, "Second"))
+        end
+    })
+
+    fakeLagDepbox:AddDivider()
+
+    fakeLagDepbox:SetupDependencies({ { toggles.fakeLag_Toggle, true } })
+
+    local networkClient = game:GetService("NetworkClient")
+
+    -- The client has no getter for its outgoing limit, so "released" is a limit far above anything the game can send.
+    local CHOKE_KBPS = 1
+    local RELEASED_KBPS = 1000000
+
+    local fakeLag = { token = 0, choking = false }
+
+    -- Only records the new state when the call went through, so a failed release is retried instead of forgotten.
+    local function setChoke(choking)
+        if fakeLag.choking == choking then
+            return
+        end
+
+        local success = pcall(function()
+            networkClient:SetOutgoingKBPSLimit(choking and CHOKE_KBPS or RELEASED_KBPS)
+        end)
+
+        if success then
+            fakeLag.choking = choking
+        end
+    end
+
+    local function stopFakeLag()
+        fakeLag.token += 1
+        setChoke(false)
+    end
+
+    local function startFakeLag()
+        fakeLag.token += 1
+        local token = fakeLag.token
+
+        task.spawn(function()
+            while fakeLag.token == token and not library.Unloaded do
+                -- A dead or respawning character is never choked, so the respawn request is not held back.
+                if isAlive() then
+                    setChoke(true)
+                    task.wait(options.fakeLagDuration_Slider.Value)
+                else
+                    setChoke(false)
+                    task.wait(0.1)
+                end
+
+                if fakeLag.token ~= token or library.Unloaded then
+                    break
+                end
+
+                setChoke(false)
+                task.wait(options.fakeLagRelease_Slider.Value)
+            end
+
+            if fakeLag.token == token then
+                setChoke(false)
+            end
+        end)
+    end
+
+    toggles.fakeLag_Toggle:OnChanged(function(enabled)
+        if enabled then
+            startFakeLag()
+        else
+            stopFakeLag()
+        end
+    end)
+
+    table.insert(teardownTasks, stopFakeLag)
+end
+
 toggles.doorNoclip_Toggle:OnChanged(function(enabled)
     for _, part in ipairs(game.Workspace:GetDescendants()) do
         if part:IsA("Part") and part.Name == "Door" then
@@ -4145,6 +4237,14 @@ killersGroup:AddToggle("killerGodmode_Toggle", { Text = "Killer Godmode", Toolti
 
 local killerGodmodeDepbox = killersGroup:AddDependencyBox()
 killerGodmodeDepbox:AddToggle("antiPinhead_Toggle", { Text = "Anti Pinhead", Tooltip = "Disables (mostly) Pinhead's spikes that he expels upon death." })
+killerGodmodeDepbox:AddToggle("acidDodge_Toggle", { Text = "Acid Dodge", Tooltip = "EXPERIMENTAL. Attempts to dodge the acid Alien spits at you by stepping out of the way before it lands. This isn't guaranteed to work due to the speed of the acid." })
+
+local acidDodgeDepbox = killerGodmodeDepbox:AddDependencyBox()
+acidDodgeDepbox:AddSlider("acidDodgeRange_Slider", { Text = "Alien Range", Tooltip = "Acid Dodge only reacts while an Alien is within this many studs of you.", Default = 9, Min = 5, Max = 20, Suffix = " Studs" })
+acidDodgeDepbox:AddSlider("acidDodgeDistance_Slider", { Text = "Dodge Distance", Tooltip = "How far a dodge moves you. It is shortened automatically when a wall is closer, and a direction without enough room or floor is skipped.", Default = 7, Min = 4, Max = 12, Suffix = " Studs" })
+acidDodgeDepbox:AddToggle("acidDodgeDebugNotifs_Toggle", { Text = "Debug Notifications", Tooltip = "Sends a notification each time Acid Dodge moves you, and when there is no safe room to dodge." })
+acidDodgeDepbox:AddDivider()
+
 killerGodmodeDepbox:AddLabel("Covers what your client reports or detects itself: touch hitboxes, Freddy's nightmare (snakes, bugs and the hole), Chucky's jump attack and Pinhead's spikes. Attacks the server checks on its own, like Alien's arm and Yeti's ice slam, can not be blocked from the client. Use Disable Aura against those.", true)
 killerGodmodeDepbox:AddDivider()
 
@@ -4323,6 +4423,7 @@ do
 end
 
 killerGodmodeDepbox:SetupDependencies({ { toggles.killerGodmode_Toggle, true } })
+acidDodgeDepbox:SetupDependencies({ { toggles.acidDodge_Toggle, true } })
 disableKillersDepbox:SetupDependencies({ { toggles.disableAllKillers_Toggle, true } })
 
 -- [Exploits / Killer Controls] Auto Safe Spot
@@ -5512,6 +5613,493 @@ local function syncAntiPinhead()
     end
 end
 
+-- [Exploits / Killer Controls] Acid Dodge
+local syncAcidDodge
+
+do
+    local ACID_SOUND_ID = "141649183"   -- every acid part carries this sound
+    local MIN_SPEED = 5                 -- studs/s: slower parts are treated as puddles lying still
+    local STEP_TIME = 0.025             -- seconds between two predicted points of an arc
+    local MAX_FLIGHT_TIME = 1.2         -- an arc that has not landed by then is cut off
+    local PATH_RADIUS = 2.4             -- how close a part may pass the character in flight before it counts as a hit
+    local PATH_HEIGHT = 3.6             -- vertical reach of the character around its root part
+    local LANDING_RADIUS = 3.6          -- clearance kept from where a part lands (covers the prediction error and the puddle)
+    local LANDING_HEIGHT = 6            -- landing spots are on the floor, so they get a taller vertical window
+    local PUDDLE_RADIUS = 1.8           -- contact radius of a part lying still
+    local PUDDLE_MARGIN = 0.9           -- extra room asked of a dodge destination around puddles
+    local BODY_CLEARANCE = 1.8          -- wall distance needed beside the character when stepping
+    local MIN_STEP = 3.5                -- a dodge shorter than this would not clear the landing spots
+    local COOLDOWN = 0.12               -- seconds between two dodges
+    local FLOOR_TOLERANCE = 1.5         -- the floor under the destination may differ this much from the floor under you
+    local FLOOR_REACH = 12
+    local ACID_MAX_SIZE = 2             -- every acid part is a small disc or ball, no side is longer than this
+    local SPAWN_RADIUS = 20             -- a new spit starts at the Alien's mouth, so its parts are this close to the Alien's root
+    local REGISTER_WINDOW = 1.5         -- seconds a new Model keeps being checked in case its parts arrive late
+
+    local acidModels = {}               -- [Model] = true
+    local hazards = {}                  -- [BasePart] = { points = { Vector3 }, landed = bool, resting = bool }
+    local connections = {}
+    local active = false
+    local lastDodge = -math.huge
+    local lastWarn = -math.huge
+    local lastNoRoomNotify = -math.huge
+
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = Enum.RaycastFilterType.Exclude
+    rayParams.RespectCanCollide = true
+
+    -- Walls are everything except characters, killers and the acid itself.
+    local function refreshFilter(character)
+        local ignored = { character }
+
+        for _, name in ipairs({ "Killers", "Characters to kill" }) do
+            local folder = workspace:FindFirstChild(name)
+
+            if folder then
+                table.insert(ignored, folder)
+            end
+        end
+
+        for _, player in ipairs(players:GetPlayers()) do
+            if player.Character then
+                table.insert(ignored, player.Character)
+            end
+        end
+
+        for model in pairs(acidModels) do
+            table.insert(ignored, model)
+        end
+
+        rayParams.FilterDescendantsInstances = ignored
+    end
+
+    local function isAcidPart(part)
+        if not part:IsA("Part") then
+            return false
+        end
+
+        if part.Shape ~= Enum.PartType.Cylinder and part.Shape ~= Enum.PartType.Ball then
+            return false
+        end
+
+        local size = part.Size
+
+        return math.max(size.X, size.Y, size.Z) <= ACID_MAX_SIZE
+    end
+
+    local function isNearAlien(position)
+        local folder = workspace:FindFirstChild("Killers")
+
+        if not folder then
+            return false
+        end
+
+        for _, model in ipairs(folder:GetChildren()) do
+            if model.Name == "Alien" then
+                local root = model:FindFirstChild("HumanoidRootPart")
+
+                if root and (root.Position - position).Magnitude <= SPAWN_RADIUS then
+                    return true
+                end
+            end
+        end
+
+        return false
+    end
+
+    -- A spit that is still in the air has no Sound yet, so a Model that just appeared counts when it holds small discs next to
+    -- an Alien. Models that were already lying around (the puddles) are recognised by their Sound
+    local function isAcidModel(model, justAdded)
+        for _, descendant in ipairs(model:GetDescendants()) do
+            if descendant:IsA("Sound") and string.find(descendant.SoundId, ACID_SOUND_ID, 1, true) then
+                return true
+            end
+
+            if justAdded and isAcidPart(descendant) and isNearAlien(descendant.Position) then
+                return true
+            end
+        end
+
+        return false
+    end
+
+    -- Returns true when the Model was taken in right now. A new Model that does not qualify yet keeps being watched for a moment
+    local function considerModel(model, justAdded)
+        if not model:IsA("Model") or model.Name ~= "Model" or acidModels[model] then
+            return false
+        end
+
+        if isAcidModel(model, justAdded) then
+            acidModels[model] = true
+
+            return true
+        end
+
+        if justAdded then
+            task.spawn(function()
+                local deadline = os.clock() + REGISTER_WINDOW
+
+                while os.clock() < deadline and model.Parent == workspace and active do
+                    task.wait()
+
+                    if isAcidModel(model, true) then
+                        acidModels[model] = true
+
+                        return
+                    end
+                end
+            end)
+        end
+
+        return false
+    end
+
+    -- Follows the arc of a part from its launch velocity until it reaches something solid
+    local function simulateArc(position, velocity)
+        local gravity = Vector3.new(0, -workspace.Gravity, 0)
+        local points = { position }
+        local time = 0
+
+        while time < MAX_FLIGHT_TIME do
+            time += STEP_TIME
+
+            local nextPosition = position + velocity * time + gravity * (0.5 * time * time)
+            local previous = points[#points]
+            local hit = workspace:Raycast(previous, nextPosition - previous, rayParams)
+
+            if hit then
+                table.insert(points, hit.Position)
+
+                return points, true
+            end
+
+            table.insert(points, nextPosition)
+        end
+
+        return points, false
+    end
+
+    local function refreshHazards()
+        local seen = {}
+
+        for model in pairs(acidModels) do
+            if model.Parent ~= workspace then
+                acidModels[model] = nil
+            else
+                for _, descendant in ipairs(model:GetDescendants()) do
+                    if descendant:IsA("BasePart") then
+                        seen[descendant] = true
+
+                        local hazard = hazards[descendant]
+                        local velocity = descendant.AssemblyLinearVelocity
+                        local moving = velocity.Magnitude >= MIN_SPEED
+
+                        if moving and (not hazard or hazard.resting) then
+                            -- Launched: its arc is worked out once, from the velocity it was launched with
+                            local points, landed = simulateArc(descendant.Position, velocity)
+
+                            hazards[descendant] = { points = points, landed = landed, resting = false }
+                        elseif not moving and (not hazard or not hazard.resting) then
+                            hazards[descendant] = { points = { descendant.Position }, landed = true, resting = true }
+                        elseif hazard and hazard.resting then
+                            hazard.points[1] = descendant.Position
+                        end
+                    end
+                end
+            end
+        end
+
+        for part in pairs(hazards) do
+            if not seen[part] then
+                hazards[part] = nil
+            end
+        end
+    end
+
+    -- How far a position is from being hit by a hazard: below zero means it is hit
+    local function clearanceFrom(position, hazard, forDestination)
+        if hazard.resting then
+            local point = hazard.points[1]
+
+            if math.abs(point.Y - position.Y) > LANDING_HEIGHT then
+                return math.huge
+            end
+
+            local offset = Vector3.new(point.X - position.X, 0, point.Z - position.Z).Magnitude
+
+            return offset - PUDDLE_RADIUS - (forDestination and PUDDLE_MARGIN or 0)
+        end
+
+        local best = math.huge
+        local count = #hazard.points
+
+        for index, point in ipairs(hazard.points) do
+            local isLanding = hazard.landed and index == count
+            local height = isLanding and LANDING_HEIGHT or PATH_HEIGHT
+
+            if math.abs(point.Y - position.Y) <= height then
+                local offset = Vector3.new(point.X - position.X, 0, point.Z - position.Z).Magnitude
+
+                best = math.min(best, offset - (isLanding and LANDING_RADIUS or PATH_RADIUS))
+            end
+        end
+
+        return best
+    end
+
+    local function worstClearance(position, forDestination)
+        local worst = math.huge
+
+        for _, hazard in pairs(hazards) do
+            worst = math.min(worst, clearanceFrom(position, hazard, forDestination))
+        end
+
+        return worst
+    end
+
+    local function floorDistance(position)
+        local hit = workspace:Raycast(position, Vector3.new(0, -FLOOR_REACH, 0), rayParams)
+
+        return hit and hit.Distance or nil
+    end
+
+    -- Free space in a direction, measured at feet, chest and head height and a stud to both sides of the character
+    local function roomAlong(origin, direction, limit)
+        local sideways = Vector3.new(-direction.Z, 0, direction.X)
+        local room = limit
+
+        for _, height in ipairs({ -2, 0, 1.5 }) do
+            for _, lateral in ipairs({ -1, 0, 1 }) do
+                local start = origin + Vector3.new(0, height, 0) + sideways * lateral
+                local hit = workspace:Raycast(start, direction * (limit + BODY_CLEARANCE), rayParams)
+
+                if hit then
+                    room = math.min(room, hit.Distance - BODY_CLEARANCE)
+                end
+            end
+        end
+
+        return room
+    end
+
+    local function nearestAlien(position, range)
+        local folder = workspace:FindFirstChild("Killers")
+        local closest, closestDistance
+
+        if not folder then
+            return nil
+        end
+
+        for _, model in ipairs(folder:GetChildren()) do
+            if model.Name == "Alien" and model ~= localplayer.Character then
+                local root = model:FindFirstChild("HumanoidRootPart")
+                local humanoid = model:FindFirstChildOfClass("Humanoid")
+
+                if root and humanoid and humanoid.Health > 0 then
+                    local distance = (root.Position - position).Magnitude
+
+                    if distance <= range and (not closestDistance or distance < closestDistance) then
+                        closest, closestDistance = root, distance
+                    end
+                end
+            end
+        end
+
+        return closest
+    end
+
+    -- Picks where to go: a side step when one side is clear, otherwise backwards (away from the Alien)
+    local function planDodge(root, alienPosition)
+        local origin = root.Position
+        local currentFloor = floorDistance(origin)
+
+        if not currentFloor then
+            return nil
+        end
+
+        local away = Vector3.new(origin.X - alienPosition.X, 0, origin.Z - alienPosition.Z)
+
+        if away.Magnitude < 0.5 then
+            local look = root.CFrame.LookVector
+
+            away = -Vector3.new(look.X, 0, look.Z)
+        end
+
+        away = away.Unit
+
+        local sideways = Vector3.new(-away.Z, 0, away.X)
+        local stepDistance = options.acidDodgeDistance_Slider.Value
+        local candidates = {
+            { kind = "side", direction = sideways },
+            { kind = "side", direction = -sideways },
+            { kind = "back", direction = away },
+        }
+
+        local bestSide, back
+
+        for _, candidate in ipairs(candidates) do
+            local distance = math.min(stepDistance, roomAlong(origin, candidate.direction, stepDistance))
+
+            if distance >= MIN_STEP then
+                local destination = origin + candidate.direction * distance
+                local destinationFloor = floorDistance(destination)
+                local middleFloor = floorDistance(origin + candidate.direction * (distance * 0.5))
+
+                -- A destination over a gap, a ledge or a pit is no dodge
+                if destinationFloor and middleFloor
+                    and math.abs(destinationFloor - currentFloor) <= FLOOR_TOLERANCE
+                    and math.abs(middleFloor - currentFloor) <= FLOOR_TOLERANCE then
+                    candidate.distance = distance
+                    candidate.destination = destination
+                    candidate.clearance = worstClearance(destination, true)
+
+                    if candidate.kind == "back" then
+                        candidate.label = "backwards"
+                        back = candidate
+                    else
+                        candidate.label = candidate.direction:Dot(root.CFrame.RightVector) >= 0 and "right" or "left"
+
+                        if not bestSide or candidate.clearance > bestSide.clearance then
+                            bestSide = candidate
+                        end
+                    end
+                end
+            end
+        end
+
+        if bestSide and bestSide.clearance >= 0 then
+            return bestSide
+        end
+
+        if back and back.clearance >= 0 then
+            return back
+        end
+
+        -- Nothing is completely clear: take the best option if it is clearly better than staying put
+        local fallback = bestSide
+
+        if back and (not fallback or back.clearance > fallback.clearance) then
+            fallback = back
+        end
+
+        if fallback and fallback.clearance > worstClearance(origin, false) + 0.5 then
+            return fallback
+        end
+
+        return nil
+    end
+
+    local function step()
+        if next(acidModels) == nil then
+            return
+        end
+
+        local root = getHRP()
+        local humanoid = getHumanoid()
+
+        if not root or not humanoid or humanoid.Health <= 0 then
+            return
+        end
+
+        local alien = nearestAlien(root.Position, options.acidDodgeRange_Slider.Value)
+
+        if not alien then
+            return
+        end
+
+        refreshFilter(root.Parent)
+        refreshHazards()
+
+        if worstClearance(root.Position, false) >= 0 then
+            return
+        end
+
+        local now = os.clock()
+
+        if now - lastDodge < COOLDOWN then
+            return
+        end
+
+        local plan = planDodge(root, alien.Position)
+
+        if not plan then
+            if toggles.acidDodgeDebugNotifs_Toggle.Value and now - lastNoRoomNotify > 1.5 then
+                lastNoRoomNotify = now
+                notify("Error", "Acid Dodge", "No safe room to dodge sideways or backwards.", 2)
+            end
+
+            return
+        end
+
+        lastDodge = now
+        entityLib.teleport(CFrame.new(plan.destination) * root.CFrame.Rotation)
+        root.AssemblyLinearVelocity = Vector3.zero
+
+        if toggles.acidDodgeDebugNotifs_Toggle.Value then
+            notify("Info", "Acid Dodge", string.format("Dodged %s by %.1f studs.", plan.label, plan.distance), 2)
+        end
+    end
+
+    local function protectedStep()
+        local ok, err = pcall(step)
+
+        if not ok and os.clock() - lastWarn > 2 then
+            lastWarn = os.clock()
+            warn("[Acid Dodge] " .. tostring(err))
+        end
+    end
+
+    local function onHeartbeat()
+        if library.Unloaded then
+            syncAcidDodge()
+
+            return
+        end
+
+        protectedStep()
+    end
+
+    -- The discs of a new spit are already flying when it arrives, so it is dodged right away instead of on the next Heartbeat
+    local function onChildAdded(child)
+        if active and considerModel(child, true) then
+            protectedStep()
+        end
+    end
+
+    local function stop()
+        active = false
+
+        for _, connection in ipairs(connections) do
+            connection:Disconnect()
+        end
+
+        table.clear(connections)
+        table.clear(acidModels)
+        table.clear(hazards)
+    end
+
+    local function start()
+        active = true
+        table.insert(connections, workspace.ChildAdded:Connect(onChildAdded))
+
+        for _, child in ipairs(workspace:GetChildren()) do
+            considerModel(child, false)
+        end
+
+        table.insert(connections, runService.Heartbeat:Connect(onHeartbeat))
+    end
+
+    syncAcidDodge = function()
+        local shouldRun = toggles.acidDodge_Toggle.Value and toggles.killerGodmode_Toggle.Value and not library.Unloaded
+
+        if shouldRun and not active then
+            start()
+        elseif not shouldRun and active then
+            stop()
+        end
+    end
+end
+
 do
     -- Remotes fired from your client that report damage, and when a call counts as a hit
     local blockedReports = {
@@ -5655,6 +6243,7 @@ do
         godmode.loopId += 1
         disconnectAll()
         syncAntiPinhead()
+        syncAcidDodge()
 
         if not enabled then
             restoreKillerState()
@@ -5710,6 +6299,7 @@ do
 end
 
 toggles.antiPinhead_Toggle:OnChanged(syncAntiPinhead)
+toggles.acidDodge_Toggle:OnChanged(syncAcidDodge)
 
 toggles.antiSlendermanJumpscare_Toggle:OnChanged(function(enabled)
     if enabled then
