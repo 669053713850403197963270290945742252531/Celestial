@@ -6854,32 +6854,29 @@ end
 -- Map transformations: HalloweenMapTransform() / NormalMapTransform().
 --
 -- Fog, Ground and Paths colours are assigned as absolute values (nothing is stored or read back),
--- so calling either direction repeatedly is harmless. The Halloween decorations are not stored
--- anywhere: going back to Normal destroys them and HalloweenMapTransform() rebuilds them from
--- DECORATION_SPECS, so both directions keep working after the event, when they no longer exist in
--- the place. DeadTrees, a sibling of the decorations, is deliberately left untouched.
 do
 	local Lighting = game:GetService("Lighting")
 
-	local DECORATION_PATH = { "AREA51", "Outside", "OutsideDecoration" }
+	local OUTSIDE_PATH = { "AREA51", "Outside" }
+	local DECORATION_NAME = "OutsideDecoration"
+	local DECORATION_PATH = { "AREA51", "Outside", DECORATION_NAME }
 	local GROUND_PATH = { "AREA51", "Outside", "GroundOutside" }
 	local PATHS_PATH = { "AREA51", "Outside", "Paths" }
 
-	-- Children of OutsideDecoration that only exist in the Halloween map, in the order
-	-- they are built. OutsideDecoration.DeadTrees is a sibling that is deliberately NOT
-	-- listed. Each name is a key of DECORATION_SPECS below.
+	-- Children of OutsideDecoration that only exist in the Halloween map, in the order they are built.
 	local HALLOWEEN_DECORATION_NAMES = { "CandyHolders", "Cobweb", "Eyeballs", "StaticPumpkins" }
 
+	-- Lighting.FogColor
 	local FOG_COLOR_HALLOWEEN = Color3.fromRGB(191, 100, 50)
-	local FOG_COLOR_NORMAL = Color3.fromRGB(255, 255, 255)
+	local FOG_COLOR_NORMAL = Color3.fromRGB(191, 191, 191)
 
 	-- Texture.Color3 of every Texture under GroundOutside (the grass).
 	local GROUND_TEXTURE_HALLOWEEN_COLOR = Color3.fromRGB(200, 127, 0)
-	local GROUND_TEXTURE_NORMAL_COLOR = Color3.fromRGB(15, 127, 0)
+	local GROUND_TEXTURE_NORMAL_COLOR = Color3.fromRGB(245, 245, 195)
 
 	-- Texture.Color3 of every Texture under Paths.
 	local PATHS_TEXTURE_HALLOWEEN_COLOR = Color3.fromRGB(127, 63, 0)
-	local PATHS_TEXTURE_NORMAL_COLOR = Color3.fromRGB(255, 255, 255)
+	local PATHS_TEXTURE_NORMAL_COLOR = Color3.fromRGB(195, 195, 155)
 
 	type MapTransformResult = {
 		-- Halloween: decoration models built. Normal: decoration models destroyed.
@@ -7166,24 +7163,37 @@ do
 		return removed
 	end
 
-	-- Normal map: destroy the Halloween-only Models. Returns how many were removed.
+	-- Normal map: destroy the Halloween-only Models. Returns how many Models were removed.
 	local function removeHalloweenDecorations(): number
 		local decoration = findPath(Workspace, DECORATION_PATH)
 		if not decoration then
-			warn("HalloweenTransformations: Workspace.AREA51.Outside.OutsideDecoration was not found; the decorations were left alone.")
 			return 0
 		end
 
-		return clearHalloweenDecorations(decoration)
+		local removed = clearHalloweenDecorations(decoration)
+		if #decoration:GetChildren() == 0 then
+			decoration:Destroy()
+		end
+
+		return removed
 	end
 
 	-- Halloween map: build the Halloween-only Models from DECORATION_SPECS. Any copy
-	-- already there is replaced rather than stacked on. Returns how many were built.
+	-- already there is replaced. The Normal map has no OutsideDecoration, so it is
+	-- created under Outside when missing. Returns how many were built.
 	local function createHalloweenDecorations(): number
 		local decoration = findPath(Workspace, DECORATION_PATH)
 		if not decoration then
-			warn("HalloweenTransformations: Workspace.AREA51.Outside.OutsideDecoration was not found; the decorations were not created.")
-			return 0
+			local outside = findPath(Workspace, OUTSIDE_PATH)
+			if not outside then
+				warn("HalloweenTransformations: Workspace.AREA51.Outside was not found; the decorations were not created.")
+				return 0
+			end
+
+			local folder = Instance.new("Model")
+			folder.Name = DECORATION_NAME
+			folder.Parent = outside
+			decoration = folder
 		end
 
 		clearHalloweenDecorations(decoration)
@@ -7255,8 +7265,8 @@ do
 		return result
 	end
 
-	-- Halloween -> Normal: destroys the Halloween-only decorations, sets the grass
-	-- Textures to green and the path Textures to white, and turns the fog white.
+	-- Halloween -> Normal: destroys the Halloween-only decorations, sets the grass Textures to
+	-- (245, 245, 195) and the path Textures to (195, 195, 155), and turns the fog gray (191, 191, 191).
 	function HalloweenTransformations.NormalMapTransform(): MapTransformResult
 		local result: MapTransformResult = { decorations = 0, groundTextures = 0, pathTextures = 0, fog = false }
 
