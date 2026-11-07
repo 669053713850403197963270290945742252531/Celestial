@@ -13,7 +13,7 @@
     09. Player: movement, phase, speed handling, freecam, and backtrack
     10. Exploits: Pack-a-Punch, aim controls, collection, killer controls, and Hitbox Expander
     11. Visuals: ESP, FOV, fog, anti-effect handlers, scope overlay removal, Hitbox Visualizer, and grenade trajectory preview
-    12. World: environmental settings and alien / kill-part controls
+    12. World: environmental settings, door noclip, and alien / kill-part controls
     13. Weapons: inventory, Pack-a-Punch queue, defense, gun options, and skin changer
     14. Miscellaneous: utility actions and weapon spam
     15. UI settings, Session Info overlay, teardown, and configuration persistence
@@ -182,7 +182,7 @@ local tabs = {
     player = window:AddTab("Player", assetLib.fetchAsset("Icons/circle-user-round.png"), "Movement, phase, freecam, and backtrack"),
     exploits = window:AddTab("Exploits", assetLib.fetchAsset("Icons/bug.png"), "Aim, collection, killer controls, and hitboxes"),
     visuals = window:AddTab("Visuals", assetLib.fetchAsset("Icons/eye.png"), "ESP, FOV, effects, hitboxes, and trajectory preview"),
-    world = window:AddTab("World", assetLib.fetchAsset("Icons/globe.png"), "Map hazards and Alien controls"),
+    world = window:AddTab("World", assetLib.fetchAsset("Icons/globe.png"), "Map hazards, doors, and Alien controls"),
     weapons = window:AddTab("Weapons", assetLib.fetchAsset("Icons/swords.png"), "Inventory, defense, gun mods, and skins"),
     misc = window:AddTab("Miscellaneous", assetLib.fetchAsset("Icons/circle-ellipsis.png"), "Weapon spam and keycard shortcuts"),
     uiSettings = window:AddTab("UI Settings", assetLib.fetchAsset("Icons/settings.png"), "Menu, overlay, themes, and configs"),
@@ -1063,61 +1063,114 @@ end)
 -- [Utility / Healing] End of the auto-drink control block
 -----------------------------
 
--- [Utility / Sounds] Sound toggles and loop management
+do
+    -- [Utility / Sounds] Sound toggles and event muting
 
-local disabledSounds: {[string]: boolean} = { Lightning = false, Thunder = false, Music = false }
-local runningLoops: {[string]: boolean} = {}
+    local disabledSounds: {[string]: boolean} = { Lightning = false, Thunder = false, Music = false }
 
--- [Utility / Sounds] Reusable sound-loop controller
-local function updateSoundLoop(soundName, isEnabled)
-    if isEnabled and not runningLoops[soundName] then
-        runningLoops[soundName] = true
+    local ambienceSoundNames: {[string]: string} = { Lightning = "LightningSound", Thunder = "ThunderSound", Music = "Music" }
 
-        task.spawn(function()
-            while not library.Unloaded and disabledSounds[soundName] do
-                local soundInstance: Instance? = nil
+    -- [option] = { connections = {RBXScriptConnection}, watched = { [Sound] = true } } while that option is muted
+    local ambienceMuters = {}
 
-                if soundName == "Lightning" then
-                    soundInstance = game.Workspace:FindFirstChild("LightningSound")
-                elseif soundName == "Thunder" then
-                    soundInstance = game.Workspace:FindFirstChild("ThunderSound")
-                elseif soundName == "Music" then
-                    soundInstance = game.Workspace:FindFirstChild("Music")
-                end
-
-                if soundInstance and soundInstance:IsA("Sound") then
-                    local sound = soundInstance :: Sound
-                    sound:Stop()
-                    sound.Playing = false
-                end
-
-                task.wait(0.1)
-            end
-
-            runningLoops[soundName] = nil
-        end)
-
+    -- Playing is checked first, so the Stop() can never re-trigger the signal that called it
+    local function silenceSound(sound: Sound)
+        if sound.Playing then
+            sound:Stop()
+        end
     end
-end
 
-soundsGroup:AddDropdown("disabledSoundsList_Dropdown", { Text = "Disabled Ambience", Values = { "Lightning", "Thunder", "Music" }, Multi = true, AllowNull = true,
-    Callback = function(valueTable)
-        for option in pairs(disabledSounds) do
-            local newState = valueTable[option] or false
+    local function watchAmbienceSound(option: string, muter, sound: Sound)
+        if muter.watched[sound] then
+            return
+        end
 
-            if disabledSounds[option] ~= newState then
-                disabledSounds[option] = newState
-                updateSoundLoop(option, newState)
+        muter.watched[sound] = true
+
+        local function onStarted()
+            if disabledSounds[option] then
+                silenceSound(sound)
             end
         end
-    end,
-})
 
-soundsGroup:AddButton({ Text = "Disable All Ambience",
-    Func = function()
-        options.disabledSoundsList_Dropdown:SetValue({ Lightning = true, Thunder = true, Music = true })
-    end,
-})
+        -- Stops the sound the moment the game starts it
+        table.insert(muter.connections, sound:GetPropertyChangedSignal("Playing"):Connect(onStarted))
+        table.insert(muter.connections, sound.Played:Connect(onStarted))
+
+        silenceSound(sound) -- Already playing when the option was switched on
+    end
+
+    local function stopMutingAmbience(option: string)
+        local muter = ambienceMuters[option]
+
+        if not muter then
+            return
+        end
+
+        ambienceMuters[option] = nil
+
+        for _, connection in ipairs(muter.connections) do
+            connection:Disconnect()
+        end
+    end
+
+    local function startMutingAmbience(option: string)
+        if ambienceMuters[option] then
+            return
+        end
+
+        local muter = { connections = {}, watched = setmetatable({}, { __mode = "k" }) }
+        ambienceMuters[option] = muter
+
+        local soundName = ambienceSoundNames[option]
+
+        local function onChild(child: Instance)
+            if child.Name == soundName and child:IsA("Sound") then
+                watchAmbienceSound(option, muter, child :: Sound)
+            end
+        end
+
+        -- Connected before the scan so a sound created in between is not missed; it also covers a sound the game replaces later
+        table.insert(muter.connections, game.Workspace.ChildAdded:Connect(onChild))
+
+        for _, child in ipairs(game.Workspace:GetChildren()) do
+            onChild(child)
+        end
+    end
+
+    local function setAmbienceMuted(option: string, muted: boolean)
+        if muted then
+            startMutingAmbience(option)
+        else
+            stopMutingAmbience(option)
+        end
+    end
+
+    table.insert(teardownTasks, function()
+        for option in pairs(ambienceMuters) do
+            stopMutingAmbience(option)
+        end
+    end)
+
+    soundsGroup:AddDropdown("disabledSoundsList_Dropdown", { Text = "Disabled Ambience", Values = { "Lightning", "Thunder", "Music" }, Multi = true, AllowNull = true,
+        Callback = function(valueTable)
+            for option in pairs(disabledSounds) do
+                local newState = valueTable[option] or false
+
+                if disabledSounds[option] ~= newState then
+                    disabledSounds[option] = newState
+                    setAmbienceMuted(option, newState)
+                end
+            end
+        end,
+    })
+
+    soundsGroup:AddButton({ Text = "Disable All Ambience",
+        Func = function()
+            options.disabledSoundsList_Dropdown:SetValue({ Lightning = true, Thunder = true, Music = true })
+        end,
+    })
+end
 
 -- [Utility / Interactions] Prompt reach and door interaction helpers
 
@@ -2341,9 +2394,8 @@ do
     buildPhase()
 end
 
--- [Player / Other] Door noclip, backtrack, and freecam
+-- [Player / Other] Backtrack and out-of-bounds guard
 
-othersGroup3:AddToggle("doorNoclip_Toggle", { Text = "Door Noclip" })
 othersGroup3:AddToggle("autoBacktrack_Toggle", { Text = "Backtrack", Tooltip = "Automatically teleports you back to your last death location." })
 
 -- [Player / Out-of-Bounds Guard] Attempts to move you back to a safe spot before the game's out-of-bounds / in-wall kill fires
@@ -3072,34 +3124,6 @@ do
 
     table.insert(teardownTasks, stopFakeLag)
 end
-
-toggles.doorNoclip_Toggle:OnChanged(function(enabled)
-    for _, part in ipairs(game.Workspace:GetDescendants()) do
-        if part:IsA("Part") and part.Name == "Door" then
-            if enabled then
-                entityLib.storeData(part, "Transparency", true)
-                part.CanCollide = false
-                part.Transparency = 0.8
-            else
-                part.CanCollide = true
-                entityLib.restoreData(part, "Transparency")
-            end
-
-            -- Handle decals
-
-            for _, child in ipairs(part:GetChildren()) do
-                if child:IsA("Decal") or child:IsA("Texture") then
-                    if enabled then
-                        entityLib.storeData(child, "Transparency", true)
-                        child.Transparency = 0.8
-                    else
-                        entityLib.restoreData(child, "Transparency")
-                    end
-                end
-            end
-        end
-    end
-end)
 
 -- [Player / Backtrack] Store death location and restore it on respawn
 local backtrackCFrame
@@ -4236,8 +4260,8 @@ disableKillersDepbox:AddDivider()
 killersGroup:AddToggle("killerGodmode_Toggle", { Text = "Killer Godmode", Tooltip = "Makes you invincible to the killers by blocking killer interactions." })
 
 local killerGodmodeDepbox = killersGroup:AddDependencyBox()
-killerGodmodeDepbox:AddToggle("antiPinhead_Toggle", { Text = "Anti Pinhead", Tooltip = "Disables (mostly) Pinhead's spikes that he expels upon death." })
-killerGodmodeDepbox:AddToggle("acidDodge_Toggle", { Text = "Acid Dodge", Tooltip = "EXPERIMENTAL. Attempts to dodge the acid Alien spits at you by stepping out of the way before it lands. This isn't guaranteed to work due to the speed of the acid." })
+killerGodmodeDepbox:AddToggle("antiPinhead_Toggle", { Text = "Anti Pinhead", Default = true, Tooltip = "Disables (mostly) Pinhead's spikes that he expels upon death." })
+killerGodmodeDepbox:AddToggle("acidDodge_Toggle", { Text = "Acid Dodge", Default = true, Tooltip = "EXPERIMENTAL. Attempts to dodge the acid Alien spits at you by stepping out of the way before it lands. This isn't guaranteed to work due to the speed of the acid." })
 
 local acidDodgeDepbox = killerGodmodeDepbox:AddDependencyBox()
 acidDodgeDepbox:AddSlider("acidDodgeRange_Slider", { Text = "Alien Range", Tooltip = "Acid Dodge only reacts while an Alien is within this many studs of you.", Default = 9, Min = 5, Max = 20, Suffix = " Studs" })
@@ -5593,7 +5617,7 @@ end
 local pinheadConnection
 
 local function syncAntiPinhead()
-    local shouldRun = toggles.antiPinhead_Toggle.Value and toggles.killerGodmode_Toggle.Value
+    local shouldRun = toggles.antiPinhead_Toggle.Value and toggles.killerGodmode_Toggle.Value and not library.Unloaded
 
     if shouldRun and not pinheadConnection then
         pinheadConnection = runService.Heartbeat:Connect(function()
@@ -6299,6 +6323,7 @@ do
 end
 
 toggles.antiPinhead_Toggle:OnChanged(syncAntiPinhead)
+table.insert(teardownTasks, syncAntiPinhead)
 toggles.acidDodge_Toggle:OnChanged(syncAcidDodge)
 
 toggles.antiSlendermanJumpscare_Toggle:OnChanged(function(enabled)
@@ -7562,57 +7587,174 @@ options.fieldOfViewValue_Slider:OnChanged(function(val)
 end)
 
 -- [Visuals / Anti-effects] Ink and popup handling
-local function destroyInkEvent()
-    local eyelessJack = killersFolder:FindFirstChild("Eyeless Jack")
-    if eyelessJack then
-        local event = eyelessJack:FindFirstChild("Inked")
-        if event then
-            event:Destroy()
+do
+    local connections = {}
+    local silencedGuis = {} -- [ScreenGui] = true: Ink screens switched off by Anti Ink
+    local active = false
+
+    local function neutralizeInkEvent(event)
+        -- One frame is left for the game to connect its handler, so that handler is cut off instead of waiting on a missing event forever
+        task.wait()
+
+        if not active or not event.Parent then
+            return
         end
-    end
-end
 
-local function disableInkGui()
-    local inkGui = localplayer.PlayerGui:FindFirstChild("Ink")
-
-    if inkGui then
-        local isInked = inkGui:FindFirstChildWhichIsA("ImageLabel", true)
-        if isInked and isInked.Visible then
-            inkGui.Enabled = false
+        if type(getconnections) == "function" then
+            pcall(function()
+                for _, connection in ipairs(getconnections(event.OnClientEvent)) do
+                    connection:Disable()
+                end
+            end)
         end
+
+        pcall(event.Destroy, event)
     end
-end
 
-local killerConnection
-toggles.antiInk_Toggle:OnChanged(function(enabled)
-    if enabled then
-        destroyInkEvent()
-        disableInkGui()
+    local function handleJack(jack)
+        if jack.Name ~= "Eyeless Jack" then
+            return
+        end
 
-        killerConnection = killersFolder.ChildAdded:Connect(function(child)
-            if child.Name == "Eyeless Jack" then
-                task.wait(0.1)
-                destroyInkEvent()
+        task.spawn(function()
+            -- A Jack that just spawned may not have replicated its event yet
+            local event = jack:WaitForChild("Inked", 5)
+
+            if event and event:IsA("RemoteEvent") then
+                neutralizeInkEvent(event)
             end
         end)
+    end
 
-    else
-        if killerConnection then
-            killerConnection:Disconnect()
-            killerConnection = nil
+    local function silenceInkGui(gui)
+        if gui.Name == "Ink" and gui:IsA("ScreenGui") then
+            silencedGuis[gui] = true
+            gui.Enabled = false
         end
     end
-end)
 
-toggles.antiTailsPopup_Toggle:OnChanged(function(enabled)
-    local popupGui = localplayer.PlayerGui:FindFirstChild("TailsPopup")
+    local function stop()
+        active = false
 
-    if popupGui then
-        popupGui.Enabled = not enabled
-    else
-        notify("Error", "Failed to locate", "Failed to find Tails Doll popup.", 100)
+        for _, connection in ipairs(connections) do
+            connection:Disconnect()
+        end
+
+        table.clear(connections)
+
+        for gui in pairs(silencedGuis) do
+            if gui.Parent then
+                gui.Enabled = true
+            end
+        end
+
+        table.clear(silencedGuis)
     end
-end)
+
+    local function start()
+        stop()
+        active = true
+
+        -- The Jack if it is already on the map, and any that spawn later
+        local jack = killersFolder:FindFirstChild("Eyeless Jack")
+
+        if jack then
+            handleJack(jack)
+        end
+
+        table.insert(connections, killersFolder.ChildAdded:Connect(handleJack))
+
+        local playerGui = localplayer:FindFirstChild("PlayerGui")
+
+        if playerGui then
+            for _, child in ipairs(playerGui:GetChildren()) do
+                silenceInkGui(child)
+            end
+
+            table.insert(connections, playerGui.ChildAdded:Connect(silenceInkGui))
+        end
+    end
+
+    toggles.antiInk_Toggle:OnChanged(function(enabled)
+        if enabled then
+            start()
+        else
+            stop()
+        end
+    end)
+
+    table.insert(teardownTasks, stop)
+end
+
+-- [Visuals / Anti Tails Popup]
+do
+    local connections = {}
+    local silenced = {} -- [ScreenGui] = Enabled value the game had
+
+    local function silencePopup(gui: Instance)
+        if gui.Name ~= "TailsPopup" or not gui:IsA("ScreenGui") then
+            return
+        end
+
+        local popup = gui :: ScreenGui
+
+        if silenced[popup] == nil then
+            silenced[popup] = popup.Enabled
+
+            -- Keeps it off if the game ever switches it back on
+            table.insert(connections, popup:GetPropertyChangedSignal("Enabled"):Connect(function()
+                if silenced[popup] ~= nil and popup.Enabled then
+                    popup.Enabled = false
+                end
+            end))
+        end
+
+        popup.Enabled = false
+    end
+
+    local function stop()
+        for _, connection in ipairs(connections) do
+            connection:Disconnect()
+        end
+
+        table.clear(connections)
+
+        for popup, wasEnabled in pairs(silenced) do
+            if popup.Parent then
+                popup.Enabled = wasEnabled
+            end
+        end
+
+        table.clear(silenced)
+    end
+
+    local function start()
+        stop()
+
+        local playerGui = localplayer:FindFirstChildOfClass("PlayerGui")
+
+        if not playerGui then
+            notify("Error", "Failed to locate", "Failed to find PlayerGui.", 100)
+            return
+        end
+
+        table.insert(connections, playerGui.ChildAdded:Connect(silencePopup))
+
+        for _, child in ipairs(playerGui:GetChildren()) do
+            silencePopup(child)
+        end
+    end
+
+    toggles.antiTailsPopup_Toggle:OnChanged(function(enabled)
+        if enabled then
+            start()
+        else
+            stop()
+        end
+    end)
+
+    table.insert(teardownTasks, stop)
+end
 
 -- [Visuals / Scope Overlay]
 do
@@ -8903,104 +9045,250 @@ end
 -- 12 | TAB: WORLD
 -- ============================================================================
 
-local worldGroup = tabs.world:AddGroupbox({ Side = "Left", Name = "World", IconName = assetLib.fetchAsset("Icons/globe.png"), Description = "Map hazard toggles" })
+local worldGroup = tabs.world:AddGroupbox({ Side = "Left", Name = "World", IconName = assetLib.fetchAsset("Icons/globe.png"), Description = "Map hazards and doors" })
 local unlockAlienGroup = tabs.world:AddGroupbox({ Side = "Right", Name = "Alien", IconName = assetLib.fetchAsset("Icons/ghost.png"), Description = "Alien code and door" })
 
--- [World / Environment] Hazards, radioactive area, and kill parts
+-- [World / Environment] Hazards, radioactive area, kill parts, and door noclip
 
 worldGroup:AddToggle("disableCactuses_Toggle", { Text = "Disable Cactuses" })
 worldGroup:AddToggle("removeBearTraps_Toggle", { Text = "Remove Bear Traps" })
 worldGroup:AddToggle("disableRadioactiveZone_Toggle", { Text = "Disable Radioactive Zone" })
 worldGroup:AddToggle("disableKillParts_Toggle", { Text = "Disable Kill Parts", Tooltip = "Disables parts that can damage or kill you such as fans/spinners, polluted water, etc." })
+worldGroup:AddToggle("doorNoclip_Toggle", { Text = "Door Noclip" })
 
-toggles.disableCactuses_Toggle:OnChanged(function(enabled)
-    for _, cactus in pairs(area51.Outside.Cactus:GetDescendants()) do
-        if cactus:IsA("BasePart") then
-            cactus.CanTouch = not enabled
+-- Every part changed is recorded first, so switching a toggle off puts back exactly what the map had.
+
+-- [World / Cactuses] Only the parts the server listens to are changed
+do
+    local originals = {} -- [BasePart] = CanTouch the map gave it
+    local connection: RBXScriptConnection? = nil
+
+    local function disarm(instance: Instance)
+        if not instance:IsA("TouchTransmitter") then
+            return
+        end
+
+        local part = instance.Parent
+
+        if part and part:IsA("BasePart") then
+            if originals[part] == nil then
+                originals[part] = part.CanTouch
+            end
+
+            part.CanTouch = false
         end
     end
-end)
 
-toggles.removeBearTraps_Toggle:OnChanged(function(enabled)
-    if enabled then
-        task.spawn(function()
-            while toggles.removeBearTraps_Toggle.Value do
+    local function stop()
+        if connection then
+            connection:Disconnect()
+            connection = nil
+        end
 
-                    for _, bearTrap in ipairs(game:GetService("Workspace"):GetChildren()) do
-                        if bearTrap:IsA("BasePart") and bearTrap.Name == "BearTrap" then
-                            bearTrap:Destroy()
-                        end
-                    end
-
-                task.wait(0.1)
+        for part, canTouch in pairs(originals) do
+            if part.Parent then
+                part.CanTouch = canTouch
             end
+        end
+
+        table.clear(originals)
+    end
+
+    local function start()
+        stop()
+
+        local outside = area51:FindFirstChild("Outside")
+        local cactusFolder = outside and outside:FindFirstChild("Cactus")
+
+        if not cactusFolder then
+            notify("Error", "Failed to locate", "Failed to find the cactuses.", 100)
+            return
+        end
+
+        -- Catches a touch listener the server adds after the toggle is on
+        connection = cactusFolder.DescendantAdded:Connect(disarm)
+
+        for _, descendant in ipairs(cactusFolder:GetDescendants()) do
+            disarm(descendant)
+        end
+    end
+
+    toggles.disableCactuses_Toggle:OnChanged(function(enabled)
+        if enabled then
+            start()
+        else
+            stop()
+        end
+    end)
+
+    table.insert(teardownTasks, stop)
+end
+
+-- [World / Bear Traps] Granny's traps are made by the server, so each one is caught the moment it replicates
+do
+    local connection: RBXScriptConnection? = nil
+
+    local function neutralize(instance: Instance)
+        if instance.Name ~= "BearTrap" then
+            return
+        end
+
+        -- Done immediately, before the trap can register a touch from the local character
+        if instance:IsA("BasePart") then
+            instance.CanTouch = false
+        elseif instance:IsA("Model") then
+            for _, descendant in ipairs(instance:GetDescendants()) do
+                if descendant:IsA("BasePart") then
+                    descendant.CanTouch = false
+                end
+            end
+        else
+            return
+        end
+
+        -- Deferred: an instance cannot be re-parented from inside the signal that announced it
+        task.defer(function()
+            pcall(instance.Destroy, instance)
         end)
     end
-end)
 
-toggles.disableRadioactiveZone_Toggle:OnChanged(function(enabled)
-    -- Disable damage
-
-    for _, obj in ipairs(area51.RadioactiveArea:GetChildren()) do
-        if obj.Name == "Entrance" and obj:IsA("BasePart") then
-            obj.CanTouch = not enabled
+    local function stop()
+        if connection then
+            connection:Disconnect()
+            connection = nil
         end
     end
 
-    -- Disable radioactive smoke/fog
+    local function start()
+        stop()
 
-    area51.RadioactiveArea.RadioactiveDrop.Part.Smoke.Enabled = not enabled
+        connection = game.Workspace.DescendantAdded:Connect(neutralize)
 
-    if enabled then
-        -- Disable color change
+        -- Traps that were already placed. QueryDescendants is several times faster than searching the whole map via GetDescendants
+        local success, existing = pcall(function()
+            return game.Workspace:QueryDescendants("#BearTrap")
+        end)
 
-        local script = area51.RadioactiveArea.RadioactiveDrop.Drops:FindFirstChild("Color change")
-
-        if script then
-            script.Parent = game:GetService("Teams")
-        end
-
-        -- Remove barriers
-
-        for _, barriers in ipairs(area51.RadioactiveArea.Floor1.Barrier:GetChildren()) do
-            barriers.Parent = game:GetService("Chat")
-        end
-
-        -- Remove entrance
-
-        for _, entrance in ipairs(area51.RadioactiveArea.Floor1.Entrance:GetChildren()) do
-            entrance.Parent = game:GetService("Lighting")
-        end
-
-        for _, dirt in ipairs(area51.RadioactiveArea.Floor1.Dirt:GetChildren()) do
-            dirt.Parent = game:GetService("StarterGui")
-        end
-    else
-        -- Disable color change
-
-        local script = game:GetService("Teams"):FindFirstChild("Color change")
-
-        if script then
-            script.Parent = area51.RadioactiveArea.RadioactiveDrop.Drops
-        end
-
-        -- Remove barriers
-
-        for _, barriers in ipairs(game:GetService("Chat"):GetChildren()) do
-            barriers.Parent = area51.RadioactiveArea.Floor1.Barrier
-        end
-
-        -- Remove entrance
-
-        for _, entrance in ipairs(game:GetService("Lighting"):GetChildren()) do
-            entrance.Parent = area51.RadioactiveArea.Floor1.Entrance
-        end
-
-        for _, dirt in ipairs(game:GetService("StarterGui"):GetChildren()) do
-            dirt.Parent = area51.RadioactiveArea.Floor1.Dirt
+        if success then
+            for _, trap in ipairs(existing) do
+                neutralize(trap)
+            end
+        else
+            for _, child in ipairs(game.Workspace:GetChildren()) do
+                neutralize(child)
+            end
         end
     end
-end)
+
+    toggles.removeBearTraps_Toggle:OnChanged(function(enabled)
+        if enabled then
+            start()
+        else
+            stop()
+        end
+    end)
+
+    table.insert(teardownTasks, stop)
+end
+
+-- [World / Radioactive Zone] Damage triggers, smoke, and the blocking geometry
+do
+    local touchOriginals = {} -- [BasePart] = CanTouch the map gave it
+    local emitterOriginals = {} -- [Smoke / ParticleEmitter] = Enabled the map gave it
+    local removedParents = {} -- [Instance] = the parent it was taken out of
+
+    local function disarm(part: BasePart)
+        if touchOriginals[part] == nil then
+            touchOriginals[part] = part.CanTouch
+        end
+
+        part.CanTouch = false
+    end
+
+    local function stop()
+        for part, canTouch in pairs(touchOriginals) do
+            if part.Parent then
+                part.CanTouch = canTouch
+            end
+        end
+
+        for emitter, wasEnabled in pairs(emitterOriginals) do
+            if emitter.Parent then
+                emitter.Enabled = wasEnabled
+            end
+        end
+
+        for instance, parent in pairs(removedParents) do
+            pcall(function()
+                instance.Parent = parent
+            end)
+        end
+
+        table.clear(touchOriginals)
+        table.clear(emitterOriginals)
+        table.clear(removedParents)
+    end
+
+    local function start()
+        stop()
+
+        local zone = area51:FindFirstChild("RadioactiveArea")
+
+        if not zone then
+            notify("Error", "Failed to locate", "Failed to find the Radioactive Zone.", 100)
+            return
+        end
+
+        -- The two Entrance trigger parts carry the damage script
+        for _, child in ipairs(zone:GetChildren()) do
+            if child.Name == "Entrance" and child:IsA("BasePart") then
+                disarm(child)
+            end
+        end
+
+        -- The liquid and drip parts also have touch listeners, and the smoke over them is the fog
+        local drop = zone:FindFirstChild("RadioactiveDrop")
+
+        if drop then
+            for _, descendant in ipairs(drop:GetDescendants()) do
+                if descendant:IsA("BasePart") then
+                    if descendant:FindFirstChildOfClass("TouchTransmitter") then
+                        disarm(descendant)
+                    end
+                elseif descendant:IsA("Smoke") or descendant:IsA("ParticleEmitter") then
+                    emitterOriginals[descendant] = descendant.Enabled
+                    descendant.Enabled = false
+                end
+            end
+        end
+
+        -- Barriers, entrance walls, and dirt are taken out of the map and put back into the same container afterwards
+        local floor1 = zone:FindFirstChild("Floor1")
+
+        if floor1 then
+            for _, containerName in ipairs({ "Barrier", "Entrance", "Dirt" }) do
+                local container = floor1:FindFirstChild(containerName)
+
+                if container then
+                    for _, child in ipairs(container:GetChildren()) do
+                        removedParents[child] = container
+                        child.Parent = nil
+                    end
+                end
+            end
+        end
+    end
+
+    toggles.disableRadioactiveZone_Toggle:OnChanged(function(enabled)
+        if enabled then
+            start()
+        else
+            stop()
+        end
+    end)
+
+    table.insert(teardownTasks, stop)
+end
 
 -- [World / Kill Parts] Discovery, highlighting, and state restoration
 local function getKillParts()
@@ -9084,6 +9372,35 @@ toggles.disableKillParts_Toggle:OnChanged(function(enabled)
     end
 end)
 
+
+-- [World / Door Noclip] Doors turn transparent and stop colliding
+toggles.doorNoclip_Toggle:OnChanged(function(enabled)
+    for _, part in ipairs(game.Workspace:GetDescendants()) do
+        if part:IsA("Part") and part.Name == "Door" then
+            if enabled then
+                entityLib.storeData(part, "Transparency", true)
+                part.CanCollide = false
+                part.Transparency = 0.8
+            else
+                part.CanCollide = true
+                entityLib.restoreData(part, "Transparency")
+            end
+
+            -- Handle decals
+
+            for _, child in ipairs(part:GetChildren()) do
+                if child:IsA("Decal") or child:IsA("Texture") then
+                    if enabled then
+                        entityLib.storeData(child, "Transparency", true)
+                        child.Transparency = 0.8
+                    else
+                        entityLib.restoreData(child, "Transparency")
+                    end
+                end
+            end
+        end
+    end
+end)
 
 -- [World / Alien] Code display and navigation actions
 
