@@ -5011,6 +5011,12 @@ do
     utils.emergencyControl = newTracker("Emergency Kill")
 end
 
+-- [Exploits / Killer Controls] Disable Aura: killers it never touches
+utils.auraIgnoredKillers = {
+    ["Giant"] = true,
+    ["Jane"] = true,
+}
+
 local function updateKiller(hum, model, root, method, inRange, visible)
     if hum.Health <= 0 then
         if affectedKillers[hum] then
@@ -5075,6 +5081,12 @@ local function updateKiller(hum, model, root, method, inRange, visible)
         end
 
         hum.Health = 0
+
+        -- Session Info counts this as a Synthetic Kill (see the Kills line in Session Info)
+        if utils.sessionInfoSyntheticKill then
+            pcall(utils.sessionInfoSyntheticKill)
+        end
+
         if toggles.disableAuraDebugNotifs_Toggle.Value then
             notify("Info", "Disable Aura", "Killed " .. model.Name, 3)
         end
@@ -5095,6 +5107,11 @@ local function updateKiller(hum, model, root, method, inRange, visible)
         if toggles.disableAuraDebugNotifs_Toggle.Value then
             notify("Info", "Disable Aura", "Disabled " .. model.Name .. "'s humanoid.", 3)
         end
+    end
+
+    -- Session Info counts this killer as affected (see the Affected Killers line in Session Info)
+    if utils.sessionInfoAffectedKiller then
+        pcall(utils.sessionInfoAffectedKiller, model)
     end
 
     affectedKillers[hum] = method
@@ -5149,6 +5166,15 @@ do
                     end
 
                     hum.Health = 0
+
+                    -- Session Info counts this as a Synthetic Kill (see the Kills line in Session Info)
+                    if utils.sessionInfoSyntheticKill then
+                        pcall(utils.sessionInfoSyntheticKill)
+                    end
+
+                    if utils.sessionInfoAffectedKiller then
+                        pcall(utils.sessionInfoAffectedKiller, model)
+                    end
 
                     if toggles.disableAuraDebugNotifs_Toggle.Value then
                         notify("Info", "Emergency Kill", "Killed " .. model.Name, 3)
@@ -5236,7 +5262,7 @@ do
             end
             local hum = model:FindFirstChildOfClass("Humanoid")
             local root = model:FindFirstChild("HumanoidRootPart")
-            if hum and root then
+            if hum and root and not utils.auraIgnoredKillers[model.Name] then
                 local distance = entityLib.getEntityDistance(hrp, root)
                 local inRange = distance <= range
                 local visible = true
@@ -5497,8 +5523,8 @@ do
             local hum = model:IsA("Model") and model:FindFirstChildOfClass("Humanoid")
             local root = hum and model:FindFirstChild("HumanoidRootPart")
 
-            -- Dead killers (and ones whose humanoid is gone) are left alone
-            if not (root and root:IsA("BasePart")) or hum.Health <= 0 then
+            -- Ignored killers, dead killers (and ones whose humanoid is gone) are skipped
+            if utils.auraIgnoredKillers[model.Name] or not (root and root:IsA("BasePart")) or hum.Health <= 0 then
                 pushStates[model] = nil
                 utils.auraControl.clear(model)
                 continue
@@ -5582,6 +5608,11 @@ do
             end
 
             state.last = position
+
+            -- Session Info counts a killer that was really pushed
+            if moved and inRange and utils.sessionInfoAffectedKiller then
+                utils.sessionInfoAffectedKiller(model)
+            end
 
             -- Only announced once the killer was really moved, so the notification always claims a real push
             if moved and inRange and not state.active and now - state.notifiedAt > 3 then
@@ -11315,6 +11346,10 @@ do
             killStat = nil,
             killBaseline = nil,
             killsAvailable = true,
+            syntheticKills = 0, -- Kills made through Disable Aura (and its Emergency Kill)
+            syntheticPending = {}, -- When each Synthetic Kill happened, until the server credits it or the window runs out
+            affectedKillers = 0, -- Different killers Disable Aura has affected
+            affectedSeen = setmetatable({}, { __mode = "k" }), -- Killers already counted, so none is counted twice
             deaths = 0,
             bullets = 0,
             bulletsAvailable = true,
@@ -11358,24 +11393,57 @@ do
             return tostring(math.floor(value + 0.5))
         end
 
+        -- How long the server has to credit a Synthetic Kill to Killers Killed. A credited one is the same kill, so it is never counted twice.
+        local SYNTHETIC_CREDIT_WINDOW = 3
+
+        -- Takes the kills the server credited right after a Synthetic Kill out of the normal count, and returns how many were taken.
+        local function claimSyntheticCredits(gained)
+            local pending = sessionInfo.syntheticPending
+            local now = os.clock()
+
+            while pending[1] and now - pending[1] > SYNTHETIC_CREDIT_WINDOW do
+                table.remove(pending, 1)
+            end
+
+            local claimed = math.min(gained, #pending)
+
+            for _ = 1, claimed do
+                table.remove(pending, 1)
+            end
+
+            return claimed
+        end
+
+        -- Kills and K/D Ratio both use this, so they always agree. Synthetic Kills are only added while their option is on.
+        local function getSessionInfoKills()
+            local kills = sessionInfo.kills
+            local syntheticToggle = toggles.sessionInfoSyntheticKills_Toggle
+
+            if syntheticToggle and syntheticToggle.Value == true then
+                kills += sessionInfo.syntheticKills
+            end
+
+            return kills
+        end
+
         -- Order here is the order the lines appear in. "needs" lists the trackers a line depends on.
         local sessionInfoItems = {
             { id = "Elapsed", text = "Elapsed Time", default = true, tooltip = "How long the script has been running.",
                 value = function() return formatSessionTime(os.clock() - sessionInfo.startTime) end },
 
             { id = "Kills", text = "Kills", default = true, needs = { "kills" }, tooltip = "Killers you killed this session (not your lifetime Killers Killed).",
-                value = function() return sessionInfo.killsAvailable and tostring(sessionInfo.kills) or "N/A" end },
+                value = function() return sessionInfo.killsAvailable and tostring(getSessionInfoKills()) or "N/A" end },
 
             { id = "Deaths", text = "Deaths", default = true, needs = { "deaths" }, tooltip = "Times you died this session.",
                 value = function() return tostring(sessionInfo.deaths) end },
 
-            { id = "KD", text = "K/D Ratio", needs = { "kills", "deaths" }, tooltip = "Session kills divided by session deaths.",
+            { id = "KD", text = "K/D Ratio", needs = { "kills", "deaths" }, tooltip = "Session kills divided by session deaths. Follows the Synthetic Kills option under Kills.",
                 value = function()
                     if not sessionInfo.killsAvailable then
                         return "N/A"
                     end
 
-                    return string.format("%.2f", sessionInfo.kills / math.max(sessionInfo.deaths, 1))
+                    return string.format("%.2f", getSessionInfoKills() / math.max(sessionInfo.deaths, 1))
                 end },
 
             { id = "Bullets", text = "Bullets Fired", needs = { "bullets" }, tooltip = "Bullets you fired this session. Every pellet of a shotgun blast counts.",
@@ -11416,6 +11484,9 @@ do
             { id = "SimulatedKillers", text = "Simulated Killers", needs = { "owned" }, tooltip = "How many living killers your client owns the physics of. Those are the ones your client can control and can be affected via Disable Aura.",
                 value = function() return sessionInfo.scan.owned ~= nil and tostring(sessionInfo.scan.owned) or "N/A" end },
 
+            { id = "AffectedKillers", text = "Affected Killers", needs = { "affected" }, tooltip = "How many different killers Disable Aura has affected this session, whatever the method (killed, slowed, disabled or pushed). Emergency Kill counts too. A killer is only counted once, even if it is affected again.",
+                value = function() return tostring(sessionInfo.affectedKillers) end },
+
             { id = "FPS", text = "FPS", default = true, needs = { "fps" },
                 value = function() return sessionInfo.fps > 0 and roundSessionNumber(sessionInfo.fps) or "..." end },
 
@@ -11423,13 +11494,21 @@ do
                 value = function() return roundSessionNumber(localplayer:GetNetworkPing() * 1000) end },
         }
 
+        local sessionInfoSyntheticKillsDepbox
+
         for _, item in ipairs(sessionInfoItems) do
             item.toggleId = "sessionInfo" .. item.id .. "_Toggle"
             sessionInfoDepbox:AddToggle(item.toggleId, { Text = item.text, Tooltip = item.tooltip, Default = item.default })
+
+            if item.id == "Kills" then
+                sessionInfoSyntheticKillsDepbox = sessionInfoDepbox:AddDependencyBox()
+                sessionInfoSyntheticKillsDepbox:AddToggle("sessionInfoSyntheticKills_Toggle", { Text = "Synthetic Kills", Default = false, Tooltip = "Also counts the kills Disable Aura makes itself (the Kill method and Emergency Kill) in Kills and K/D Ratio. Off by default, so only kills you get yourself are counted." })
+            end
         end
 
         sessionInfoDepbox:SetupDependencies({ { toggles.sessionInfo_Toggle, true } })
         sessionInfoSeparatorDepbox:SetupDependencies({ { toggles.sessionInfoCompact_Toggle, true } })
+        sessionInfoSyntheticKillsDepbox:SetupDependencies({ { toggles.sessionInfoKills_Toggle, true } })
 
         local function isSessionInfoItemEnabled(item)
             local toggle = toggles[item.toggleId]
@@ -11486,7 +11565,10 @@ do
                     if baseline == nil or total < baseline then
                         sessionInfo.killBaseline = total
                     elseif total > baseline then
-                        sessionInfo.kills += total - baseline
+                        local gained = total - baseline
+
+                        -- A kill the server credits right after a Synthetic Kill is that same kill, so it is not also counted as a normal one
+                        sessionInfo.kills += gained - claimSyntheticCredits(gained)
                         sessionInfo.killBaseline = total
                     end
                 else
@@ -11793,6 +11875,7 @@ do
             -- A tracker that was off starts from a clean baseline so nothing from the gap is counted.
             if needs.kills and not previous.kills then
                 sessionInfo.killBaseline = nil
+                table.clear(sessionInfo.syntheticPending)
             end
 
             if needs.fps and not previous.fps then
@@ -11862,7 +11945,31 @@ do
             end
         end)
 
+        -- Disable Aura and Emergency Kill call this for every kill they make. It only counts while the Kills line is being tracked.
+        utils.sessionInfoSyntheticKill = function()
+            if not sessionInfo.needs.kills then
+                return
+            end
+
+            sessionInfo.syntheticKills += 1
+            table.insert(sessionInfo.syntheticPending, os.clock())
+        end
+
         table.insert(teardownTasks, stopSessionInfo)
+        -- Disable Aura, Emergency Kill and Push call this for every killer they affect. It only counts while the Affected Killers line is being tracked.
+        utils.sessionInfoAffectedKiller = function(model)
+            if not sessionInfo.needs.affected or sessionInfo.affectedSeen[model] then
+                return
+            end
+
+            sessionInfo.affectedSeen[model] = true
+            sessionInfo.affectedKillers += 1
+        end
+
+        table.insert(teardownTasks, function()
+            utils.sessionInfoSyntheticKill = nil
+            utils.sessionInfoAffectedKiller = nil
+        end)
     end
 
     buildSessionInfoOverlay()
