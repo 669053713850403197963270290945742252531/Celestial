@@ -1121,7 +1121,7 @@ do
         table.insert(muter.connections, sound:GetPropertyChangedSignal("Playing"):Connect(onStarted))
         table.insert(muter.connections, sound.Played:Connect(onStarted))
 
-        silenceSound(sound) -- Already playing when the option was switched on
+        silenceSound(sound) -- Already playing when the option was enabled
     end
 
     local function stopMutingAmbience(option: string)
@@ -3040,7 +3040,7 @@ do
         end
     end)
 
-    -- Runs from unloadModules() after every toggle has been switched off; this is the safety net.
+    -- Runs from unloadModules() after every toggle has been disabled.
     table.insert(teardownTasks, stopGuard)
 end
 
@@ -3150,39 +3150,57 @@ do
 end
 
 -- [Player / Backtrack] Store death location and restore it on respawn
-local backtrackCFrame
-local function connectDied(humanoid)
-    humanoid.Died:Connect(function()
-        if toggles.autoBacktrack_Toggle.Value then
-            local hrp = getHRP()
-            backtrackCFrame = hrp.CFrame
-            entityLib.storeData(hrp, "CFrame", true)
-        end
+do
+    local backtrackCFrame: CFrame? = nil
+    local backtrackUnloaded = false
 
-        toggles.autoBacktrack_Toggle:SetDisabled(true)
+    local function watchBacktrackDeath(char: Model)
+        task.spawn(function()
+            local humanoid = char:WaitForChild("Humanoid", 10)
+            if not humanoid or backtrackUnloaded then return end
+
+            humanoid.Died:Connect(function()
+                if backtrackUnloaded then return end
+
+                if toggles.autoBacktrack_Toggle.Value then
+                    local hrp = char:FindFirstChild("HumanoidRootPart")
+                    if hrp and hrp:IsA("BasePart") then
+                        backtrackCFrame = hrp.CFrame
+                        entityLib.storeData(hrp, "CFrame", true)
+                    end
+                end
+
+                toggles.autoBacktrack_Toggle:SetDisabled(true)
+            end)
+        end)
+    end
+
+    if localplayer.Character then
+        watchBacktrackDeath(localplayer.Character)
+    end
+
+    local backtrackCharacterAdded = localplayer.CharacterAdded:Connect(function(char)
+        watchBacktrackDeath(char)
+
+        -- Unlock the toggle first so a failed or slow teleport can never leave it stuck disabled.
+        toggles.autoBacktrack_Toggle:SetDisabled(false)
+
+        local savedCFrame = backtrackCFrame
+        backtrackCFrame = nil
+
+        if savedCFrame then
+            local hrp = char:WaitForChild("HumanoidRootPart", 10)
+            if hrp and not backtrackUnloaded then
+                entityLib.teleport(savedCFrame)
+            end
+        end
+    end)
+
+    table.insert(teardownTasks, function()
+        backtrackUnloaded = true
+        backtrackCharacterAdded:Disconnect()
     end)
 end
-
-if localplayer.Character then
-    local characterHumanoid = localplayer.Character:FindFirstChildOfClass("Humanoid")
-    if characterHumanoid then
-        connectDied(characterHumanoid)
-    end
-end
-
-localplayer.CharacterAdded:Connect(function(char)
-    local characterHumanoid = char:FindFirstChildOfClass("Humanoid")
-    if characterHumanoid then
-        connectDied(characterHumanoid)
-    end
-
-    if backtrackCFrame then
-        entityLib.teleport(backtrackCFrame)
-        backtrackCFrame = nil
-    end
-
-    toggles.autoBacktrack_Toggle:SetDisabled(false)
-end)
 
 do
     -- Calling disable() then make the camera library restore a camera state it never saved (CameraType = nil), so only disable what was actually enabled.
@@ -3934,7 +3952,7 @@ local function requestSilentAimScan(delaySeconds)
     task.delay(delaySeconds or 0, function()
         silentAimScanQueued = false
 
-        -- While Silent Aim is off the scan stays owed and runs the moment it is switched on.
+        -- While Silent Aim is off the scan stays owed and runs the moment it is enabled.
         if library.Unloaded or not silentAimScanOwed or not isSilentAimEnabled() then
             return
         end
@@ -4347,7 +4365,7 @@ do
 
     local facing = {
         connection = nil,
-        humanoid = nil,     -- the humanoid whose AutoRotate was switched off by this feature
+        humanoid = nil,     -- the humanoid whose AutoRotate was disabled by this feature
         autoRotate = nil,   -- the AutoRotate value to give back
         lastError = nil,
     }
@@ -4987,44 +5005,81 @@ do
     end
 
     local function newTracker(source)
-        local waits = setmetatable({}, { __mode = "k" })
+        -- model -> { startedAt = number, note = notification? }
+        local waits = {}
         local tracker = {}
 
-        -- True while the killer can be affected. When it can not, the wait starts (and is announced) once. When control arrives, how long it took is announced.
+        -- Ends the wait for a killer and dismisses its notification. If there is a wait, return it.
+        local function drop(model)
+            local wait = waits[model]
+
+            if wait then
+                waits[model] = nil
+                utils.dismissNotify(wait.note)
+            end
+
+            return wait
+        end
+
+        -- True while the killer can be affected. When it's not, the wait starts (and is announced, persistently) once.
+        -- When control begins, the waiting notification is dismissed and how long it took is announced.
         function tracker.check(model, root)
             if ownsKiller(root) then
-                local startedAt = waits[model]
+                local wait = drop(model)
 
-                if startedAt then
-                    waits[model] = nil
-
-                    if toggles.disableAuraDebugNotifs_Toggle.Value then
-                        notify("Info", source, string.format("Took control of %s after %.1f s", model.Name, os.clock() - startedAt), 3)
-                    end
+                if wait and toggles.disableAuraDebugNotifs_Toggle.Value then
+                    notify("Info", source, string.format("Took control of %s after %.1f s", model.Name, os.clock() - wait.startedAt), 3)
                 end
 
                 return true
             end
 
-            if not waits[model] then
-                waits[model] = os.clock()
+            local wait = waits[model]
 
-                if toggles.disableAuraDebugNotifs_Toggle.Value then
-                    notify("Info", source, "Waiting for control of " .. model.Name, 3)
-                end
+            if not wait then
+                wait = { startedAt = os.clock() }
+                waits[model] = wait
+            end
+
+            -- Also covers Debug Notifications being enabled in the middle of a wait. A notification closed manually stays closed.
+            if not wait.note and toggles.disableAuraDebugNotifs_Toggle.Value then
+                wait.note = notify("Info", source, "Waiting for control of " .. model.Name, 3, true)
             end
 
             return false
         end
 
-        -- The killer no longer needs to be affected (out of range, behind a wall, dead or gone), so its wait is dropped without a notification
+        -- The killer no longer needs to be affected (out of range, behind a wall, dead or gone), so its wait ends and its notification is dismissed
         function tracker.clear(model)
-            waits[model] = nil
+            drop(model)
+        end
+
+        -- Ends the waits of killers that are no longer in the Killers folder, have no humanoid or are dead, because the loops never reach those
+        function tracker.prune()
+            if not next(waits) then
+                return
+            end
+
+            for model in pairs(waits) do
+                local hum = model:IsDescendantOf(killersFolder) and model:FindFirstChildOfClass("Humanoid")
+
+                if not hum or hum.Health <= 0 then
+                    drop(model)
+                end
+            end
+        end
+
+        -- Dismisses the notifications but keeps the waits (Debug Notifications disabled)
+        function tracker.dismissNotes()
+            for _, wait in pairs(waits) do
+                utils.dismissNotify(wait.note)
+                wait.note = nil
+            end
         end
 
         function tracker.reset()
-            if next(waits) then
-                table.clear(waits)
+            for model in pairs(waits) do
+                drop(model)
             end
         end
 
@@ -5033,6 +5088,24 @@ do
 
     utils.auraControl = newTracker("Disable Aura")
     utils.emergencyControl = newTracker("Emergency Kill")
+
+    -- Disabled Debug Notifications dismisses the persistent "Waiting for control" and "Pushing" notifications that are still up.
+    -- A toggle only has one OnChanged callback, so Push (defined further down) registers its part through utils.pushDismissNotes.
+    toggles.disableAuraDebugNotifs_Toggle:OnChanged(function(enabled)
+        if not enabled then
+            utils.auraControl.dismissNotes()
+            utils.emergencyControl.dismissNotes()
+
+            if utils.pushDismissNotes then
+                utils.pushDismissNotes()
+            end
+        end
+    end)
+
+    table.insert(teardownTasks, function()
+        utils.auraControl.reset()
+        utils.emergencyControl.reset()
+    end)
 end
 
 -- [Exploits / Killer Controls] Disable Aura: killers it never touches
@@ -5108,7 +5181,7 @@ local function updateKiller(hum, model, root, method, inRange, visible)
 
         -- Session Info counts this as a Synthetic Kill (see the Kills line in Session Info)
         if utils.sessionInfoSyntheticKill then
-            pcall(utils.sessionInfoSyntheticKill)
+            pcall(utils.sessionInfoSyntheticKill, model)
         end
 
         if toggles.disableAuraDebugNotifs_Toggle.Value then
@@ -5168,8 +5241,11 @@ do
 
         local hrp = getHRP()
         if not hrp then
+            utils.emergencyControl.reset()
             return
         end
+
+        utils.emergencyControl.prune()
 
         local range = proximityRange or 30
 
@@ -5193,7 +5269,7 @@ do
 
                     -- Session Info counts this as a Synthetic Kill (see the Kills line in Session Info)
                     if utils.sessionInfoSyntheticKill then
-                        pcall(utils.sessionInfoSyntheticKill)
+                        pcall(utils.sessionInfoSyntheticKill, model)
                     end
 
                     if utils.sessionInfoAffectedKiller then
@@ -5255,9 +5331,13 @@ do
     local function step()
         local hrp = getHRP()
 
+        -- Without a character, nothing can be done to a killer, so no wait is pending either
         if not hrp then
+            utils.auraControl.reset()
             return
         end
+
+        utils.auraControl.prune()
 
         local method = tostring(options.disableAuraMethod_Dropdown.Value)
         local range = proximityRange or 30
@@ -5482,9 +5562,40 @@ do
         return move, first
     end
 
-    local pushStates = setmetatable({}, { __mode = "k" })
+    -- model -> { speed, last, active, notifiedAt, note }
+    local pushStates = {}
     local pushConnection = nil
     local pushLastError = nil
+
+    -- The push on a killer is over: its notification is dismissed
+    local function endPush(state)
+        state.active = false
+        utils.dismissNotify(state.note)
+        state.note = nil
+    end
+
+    local function dropPushState(model)
+        local state = pushStates[model]
+
+        if state then
+            pushStates[model] = nil
+            endPush(state)
+        end
+    end
+
+    local function clearPushStates()
+        for model in pairs(pushStates) do
+            dropPushState(model)
+        end
+    end
+
+    -- Debug Notifications disabled: the notifications dismissed, the pushes continue
+    utils.pushDismissNotes = function()
+        for _, state in pairs(pushStates) do
+            utils.dismissNotify(state.note)
+            state.note = nil
+        end
+    end
 
     -- Everything the wall checks must look straight through: killers, and every character (the LocalPlayer and the other players')
     local function buildFilter()
@@ -5511,8 +5622,10 @@ do
             pushConnection = nil
         end
 
-        table.clear(pushStates)
+        clearPushStates()
     end
+
+    table.insert(teardownTasks, stopPush)
 
     local function pushStep(deltaTime)
         if library.Unloaded or not toggles.disableAllKillers_Toggle.Value then
@@ -5522,7 +5635,7 @@ do
 
         if tostring(options.disableAuraMethod_Dropdown.Value) ~= "Push" then
             if next(pushStates) then
-                table.clear(pushStates)
+                clearPushStates()
                 utils.auraControl.reset()
             end
 
@@ -5531,8 +5644,23 @@ do
 
         local hrp = getHRP()
 
+        -- Without a character, nothing is being pushed, so no push is announced either
         if not hrp then
+            for _, state in pairs(pushStates) do
+                endPush(state)
+            end
+
+            utils.auraControl.reset()
             return
+        end
+
+        utils.auraControl.prune()
+
+        -- Killers that left the Killers folder are never reached by the loop
+        for model in pairs(pushStates) do
+            if not model:IsDescendantOf(killersFolder) then
+                dropPushState(model)
+            end
         end
 
         local dt = math.min(deltaTime, 0.05)
@@ -5549,7 +5677,7 @@ do
 
             -- Ignored killers, dead killers (and ones whose humanoid is gone) are skipped
             if utils.auraIgnoredKillers[model.Name] or not (root and root:IsA("BasePart")) or hum.Health <= 0 then
-                pushStates[model] = nil
+                dropPushState(model)
                 utils.auraControl.clear(model)
                 continue
             end
@@ -5590,7 +5718,7 @@ do
             if speed < 1 then
                 state.speed = 0
                 state.last = position
-                state.active = false
+                endPush(state)
                 utils.auraControl.clear(model)
                 continue
             end
@@ -5599,7 +5727,7 @@ do
             if not utils.auraControl.check(model, root) then
                 state.speed = 0
                 state.last = position
-                state.active = false
+                endPush(state)
                 continue
             end
 
@@ -5642,10 +5770,11 @@ do
             if moved and inRange and not state.active and now - state.notifiedAt > 3 then
                 state.active = true
                 state.notifiedAt = now
+            end
 
-                if toggles.disableAuraDebugNotifs_Toggle.Value then
-                    notify("Info", "Disable Aura", "Pushing " .. model.Name, 3)
-                end
+            -- Notification is displayed for as long as the push lasts (see endPush for every way it ends), also while the killer leaves the range.
+            if state.active and not state.note and toggles.disableAuraDebugNotifs_Toggle.Value then
+                state.note = notify("Info", "Disable Aura", "Pushing " .. model.Name, 3, true)
             end
         end
     end
@@ -6197,7 +6326,7 @@ do
         warned = false,
         loopId = 0,
         connections = {} :: { RBXScriptConnection },
-        mutedParts = {}, -- [BasePart] = true: CanTouch was switched off by Godmode
+        mutedParts = {}, -- [BasePart] = true: CanTouch was disabled by Godmode
         stashedRemotes = {}, -- [RemoteEvent] = original parent (executors that can not hook __namecall)
     }
 
@@ -7647,7 +7776,7 @@ end)
 -- [Visuals / Anti-effects] Ink and popup handling
 do
     local connections: { RBXScriptConnection } = {}
-    local silencedGuis = {} -- [ScreenGui] = true: Ink screens switched off by Anti Ink
+    local silencedGuis = {} -- [ScreenGui] = true: Ink screens disabled by Anti Ink
     local active = false
 
     local function neutralizeInkEvent(event)
@@ -9463,9 +9592,7 @@ end)
 -- [World / Alien] Code display and navigation actions
 
 local alienCode = area51.CodeModel.Code.Value
-
 unlockAlienGroup:AddLabel("Code: " .. alienCode, true)
-unlockAlienGroup:AddToggle("viewAlienCode_Toggle", { Text = "View Code" })
 unlockAlienGroup:AddDropdown("codeRevealMethod_Dropdown", { Text = "Code Reveal Method", Values = { "Announce", "Silent" }, Default = 2 })
 unlockAlienGroup:AddButton({ Text = "Reveal Code",
     Func = function()
@@ -9490,21 +9617,6 @@ unlockAlienGroup:AddButton({ Text = "Alien Door",
         entityLib.teleport(CFrame.new(226.598221, 333.499939, 472.223358))
     end,
 })
-
-toggles.viewAlienCode_Toggle:OnChanged(function(enabled)
-    if enabled then
-        camera.CameraSubject = area51.CodeModel
-    else
-        local hum = getHumanoid()
-        camera.CameraSubject = hum
-    end
-end)
-
-localplayer.CharacterAdded:Connect(function(char)
-    if toggles.viewAlienCode_Toggle.Value then
-        toggles.viewAlienCode_Toggle:SetValue(false)
-    end
-end)
 
 -- ============================================================================
 -- 13 | TAB: WEAPONS
@@ -10353,7 +10465,7 @@ do
             end
         end)
 
-        -- A weapon may already be lying around from before the toggle was switched on
+        -- A weapon may already be lying around from before the toggle was enabled
         for _, child in ipairs(workspace:GetChildren()) do
             if child.Name == "StolenWeapon" and child:IsA("Model") then
                 pickupStolenWeapon(child)
@@ -10586,7 +10698,7 @@ local function applyNoOverheat(weapon)
 
     gunModHeatHooks[weapon] = record
 
-    -- Already hot when the mod was switched on: cool it down immediately.
+    -- Already hot when the mod was enabled: cool it down immediately.
     if (rawget(weapon, "heat") or 0) > 0 then
         rawset(weapon, "heat", 0)
         pcall(originalUpdate, weapon)
@@ -10720,7 +10832,7 @@ local gunModCharacterConnection = localplayer.CharacterAdded:Connect(function()
     task.defer(setupBackpackListener)
 end)
 
--- Runs from unloadModules() after every toggle has been switched off; the final reconcile is for safety.
+-- Runs from unloadModules() after every toggle has been disabled; the final reconcile is for safety.
 table.insert(teardownTasks, function()
     gunModsUnloaded = true
 
@@ -11353,7 +11465,7 @@ do
             renderConnection = nil,
             characterTracker = nil,
             characterSignature = nil,
-            bulletTracker = nil,
+            bulletTracker = nil :: any,
 
             -- FPS
             frames = 0,
@@ -11383,10 +11495,17 @@ do
             syntheticPending = {}, -- When each Synthetic Kill happened, until the server credits it or the window runs out
             affectedKillers = 0, -- Different killers Disable Aura has affected
             affectedSeen = setmetatable({}, { __mode = "k" }), -- Killers already counted, so none is counted twice
+            streakPeak = 0, -- Highest number of kills in one life (only the kills you made yourself)
+            streakPeakCombined = 0, -- The same, with the Synthetic Kills of that life added
+            syntheticModels = setmetatable({}, { __mode = "k" }), -- When Disable Aura last killed each killer, so that kill is not counted as Damage Dealt
             deaths = 0,
             bullets = 0, -- Every pellet that was fired
             shots = 0, -- Shots fired, where a whole shotgun blast adds exactly 1
             bulletsAvailable = true,
+            lastShot = -math.huge, -- When your last shot or explosive hit was sent, for Damage Dealt
+            damageDealt = 0,
+            dealtTracker = nil :: any,
+            dealtAvailable = true,
             damage = 0,
             mostDamage = 0,
             damageByKiller = {} :: { [string]: number }, -- Health lost near each Killer, for the Top Killer mode
@@ -11546,6 +11665,12 @@ do
             return kills
         end
 
+        -- Highest Kill Streak: the best kill count of any single life. Called whenever a life's kills go up.
+        local function updateKillStreakPeaks()
+            sessionInfo.streakPeak = math.max(sessionInfo.streakPeak, sessionInfo.lifeKills)
+            sessionInfo.streakPeakCombined = math.max(sessionInfo.streakPeakCombined, sessionInfo.lifeKills + sessionInfo.lifeSyntheticKills)
+        end
+
         local function getElapsedSeconds()
             local now = os.clock()
 
@@ -11703,6 +11828,15 @@ do
                     return string.format("%." .. decimals .. "f", ratio)
                 end },
 
+            { id = "KillStreak", text = "Highest Kill Streak", needs = { "kills", "deaths" }, tooltip = "The most kills you made in a single life this session. Every death ends the streak, but the highest one is kept.",
+                value = function()
+                    if not sessionInfo.killsAvailable then
+                        return "N/A"
+                    end
+
+                    return tostring(getToggle("sessionInfoSyntheticKills_Toggle", false) and sessionInfo.streakPeakCombined or sessionInfo.streakPeak)
+                end },
+
             { id = "Bullets", text = "Bullets Fired", needs = function()
                     return getOption("sessionInfoBulletsMode_Dropdown", "") == "Bullets per kill" and { "bullets", "kills" } or { "bullets" }
                 end,
@@ -11736,6 +11870,18 @@ do
                     end
 
                     return tostring(getSessionInfoBullets())
+                end },
+
+            { id = "DamageDealt", text = "Damage Dealt", needs = { "dealt" }, tooltip = "Health the Killers lost from your shots this session. Damage that other players deal at the same moment can be included, and the kills Disable Aura makes itself are left out.",
+                settings = function(settings)
+                    settings:AddDropdown("sessionInfoDamageDealtRounding_Dropdown", { Text = "Rounding", Values = { "Whole numbers", "One decimal" }, Default = 1 })
+                end,
+                value = function()
+                    if not sessionInfo.bulletsAvailable or not sessionInfo.dealtAvailable then
+                        return "N/A"
+                    end
+
+                    return formatDamageNumber(sessionInfo.damageDealt, "sessionInfoDamageDealtRounding_Dropdown")
                 end },
 
             { id = "Damage", text = "Damage Taken", needs = { "damage" }, tooltip = "Total health you lost this session.",
@@ -11990,6 +12136,7 @@ do
                         local normal = gained - claimSyntheticCredits(gained)
                         sessionInfo.kills += normal
                         sessionInfo.lifeKills += normal
+                        updateKillStreakPeaks()
                         sessionInfo.killBaseline = total
                     end
                 else
@@ -12148,8 +12295,10 @@ do
                 tracker.active = false
 
                 -- If something else wrapped the function after this did, leave it be; the inactive wrapper just passes calls through.
-                if rawget(tracker.channel, "send") == tracker.counted then
-                    rawset(tracker.channel, "send", tracker.original)
+                for _, wrapped in ipairs(tracker.wrapped) do
+                    if rawget(wrapped.channel, "send") == wrapped.counted then
+                        rawset(wrapped.channel, "send", wrapped.original)
+                    end
                 end
 
                 sessionInfo.bulletTracker = nil
@@ -12168,36 +12317,166 @@ do
                 return weaponModule and require(weaponModule)
             end)
             local packets = loaded and type(weaponClass) == "table" and weaponClass.weapon_packets
-            local channel = type(packets) == "table" and packets.fire
-            local original = type(channel) == "table" and rawget(channel, "send")
+            local fireChannel = type(packets) == "table" and packets.fire
+            local fireOriginal = type(fireChannel) == "table" and rawget(fireChannel, "send")
 
-            if type(original) ~= "function" then
+            if type(fireOriginal) ~= "function" then
                 sessionInfo.bulletsAvailable = false
                 return
             end
 
             sessionInfo.bulletsAvailable = true
 
-            local tracker = { active = true, channel = channel, original = original }
+            local tracker = { active = true, wrapped = {} }
 
-            tracker.counted = function(...)
+            local fireWrapper = { channel = fireChannel, original = fireOriginal }
+
+            fireWrapper.counted = function(...)
                 if tracker.active then
-                    local packet = ...
-                    local pellets = type(packet) == "table" and tonumber(packet.bullet_count) or 1
+                    sessionInfo.lastShot = os.clock()
 
-                    if not pellets or pellets < 1 then
-                        pellets = 1
+                    if sessionInfo.needs.bullets then
+                        local packet = ...
+                        local pellets = type(packet) == "table" and tonumber(packet.bullet_count) or 1
+
+                        if not pellets or pellets < 1 then
+                            pellets = 1
+                        end
+
+                        sessionInfo.bullets += 1
+                        sessionInfo.shots += 1 / pellets
                     end
-
-                    sessionInfo.bullets += 1
-                    sessionInfo.shots += 1 / pellets
                 end
 
-                return original(...)
+                return fireOriginal(...)
             end
 
-            rawset(channel, "send", tracker.counted)
+            rawset(fireChannel, "send", fireWrapper.counted)
+            table.insert(tracker.wrapped, fireWrapper)
+
+            -- Grenades and missiles report where they landed through this one; their damage comes after it, not after the shot.
+            local touchChannel = type(packets) == "table" and packets.touch
+            local touchOriginal = type(touchChannel) == "table" and rawget(touchChannel, "send")
+
+            if type(touchOriginal) == "function" then
+                local touchWrapper = { channel = touchChannel, original = touchOriginal }
+
+                touchWrapper.counted = function(...)
+                    if tracker.active then
+                        sessionInfo.lastShot = os.clock()
+                    end
+
+                    return touchOriginal(...)
+                end
+
+                rawset(touchChannel, "send", touchWrapper.counted)
+                table.insert(tracker.wrapped, touchWrapper)
+            end
+
             sessionInfo.bulletTracker = tracker
+        end
+
+        -- [Session Info / Damage Dealt] Health a Killer loses shortly after you fire counts as damage you dealt
+        local function getDamageDealtWindow()
+            local success, ping = pcall(function()
+                return localplayer:GetNetworkPing()
+            end)
+
+            -- Your shot has to reach the server and the lost health has to come back, so the window increases with the ping
+            return math.clamp(0.35 + (success and ping or 0.1) * 2, 0.35, 1.5)
+        end
+
+        local function stopSessionInfoDealtTracker()
+            local tracker = sessionInfo.dealtTracker
+
+            if tracker then
+                for _, connection in ipairs(tracker.connections) do
+                    connection:Disconnect()
+                end
+
+                sessionInfo.dealtTracker = nil
+            end
+        end
+
+        local function startSessionInfoDealtTracker()
+            if sessionInfo.dealtTracker then
+                return
+            end
+
+            local folder = killersFolder
+
+            if not folder or not folder.Parent then
+                folder = workspace:FindFirstChild("Killers")
+            end
+
+            if not folder then
+                sessionInfo.dealtAvailable = false
+                return
+            end
+
+            sessionInfo.dealtAvailable = true
+
+            local tracker = {
+                connections = {} :: { RBXScriptConnection },
+                watched = setmetatable({}, { __mode = "k" }) :: any, -- Humanoids that are already being watched
+            }
+            sessionInfo.dealtTracker = tracker
+
+            local function watch(killer: Instance)
+                task.spawn(function()
+                    local humanoid = (killer:FindFirstChildOfClass("Humanoid") or killer:WaitForChild("Humanoid", 10))
+
+                    if not humanoid or sessionInfo.dealtTracker ~= tracker or tracker.watched[humanoid] then
+                        return
+                    end
+
+                    tracker.watched[humanoid] = true
+
+                    local lastHealth: number = humanoid.Health
+                    local healthConnection: RBXScriptConnection
+                    local ancestryConnection: RBXScriptConnection
+
+                    healthConnection = humanoid.HealthChanged:Connect(function(health: number)
+                        local lost = lastHealth - health
+                        lastHealth = health
+
+                        if lost <= 0 then
+                            return
+                        end
+
+                        local now = os.clock()
+
+                        if now - sessionInfo.lastShot > getDamageDealtWindow() then
+                            return
+                        end
+
+                        -- Disable Aura sets the health of the killer it kills to 0 and reports it right after, so the check waits for that report
+                        task.defer(function()
+                            local stamp = sessionInfo.syntheticModels[killer]
+
+                            if sessionInfo.dealtTracker == tracker and not (stamp and now - stamp < 0.5) then
+                                sessionInfo.damageDealt += lost
+                            end
+                        end)
+                    end)
+
+                    ancestryConnection = killer.AncestryChanged:Connect(function(_: Instance, parent: Instance?)
+                        if not parent then
+                            healthConnection:Disconnect()
+                            ancestryConnection:Disconnect()
+                        end
+                    end)
+
+                    table.insert(tracker.connections, healthConnection)
+                    table.insert(tracker.connections, ancestryConnection)
+                end)
+            end
+
+            for _, killer in ipairs(folder:GetChildren()) do
+                watch(killer)
+            end
+
+            table.insert(tracker.connections, folder.ChildAdded:Connect(watch))
         end
 
         -- [Session Info / Killer scan] Nearest living killer and how many living killers this client owns
@@ -12354,6 +12633,7 @@ do
 
             stopSessionInfoCharacterTracker()
             stopSessionInfoBulletTracker()
+            stopSessionInfoDealtTracker()
 
             if sessionInfo.label then
                 pcall(function()
@@ -12416,10 +12696,17 @@ do
                 stopSessionInfoCharacterTracker()
             end
 
-            if needs.bullets then
+            -- Damage Dealt needs the shot hook as well, to know when you fired
+            if needs.bullets or needs.dealt then
                 startSessionInfoBulletTracker()
             else
                 stopSessionInfoBulletTracker()
+            end
+
+            if needs.dealt then
+                startSessionInfoDealtTracker()
+            else
+                stopSessionInfoDealtTracker()
             end
 
             if not sessionInfo.loopToken then
@@ -12452,6 +12739,7 @@ do
 
             sessionInfo.kills, sessionInfo.lifeKills = 0, 0
             sessionInfo.syntheticKills, sessionInfo.lifeSyntheticKills = 0, 0
+            sessionInfo.streakPeak, sessionInfo.streakPeakCombined = 0, 0
             sessionInfo.killTrackedTime = 0
             sessionInfo.killBaseline = nil -- Counted from the Killers Killed it has right now
             table.clear(sessionInfo.syntheticPending)
@@ -12462,6 +12750,7 @@ do
             sessionInfo.deaths = 0
             sessionInfo.bullets, sessionInfo.shots = 0, 0
             sessionInfo.damage, sessionInfo.mostDamage = 0, 0
+            sessionInfo.damageDealt = 0
             table.clear(sessionInfo.damageByKiller)
 
             local character = localplayer.Character
@@ -12496,8 +12785,8 @@ do
         for _, id in ipairs({
             "sessionInfoSeparator_Dropdown", "sessionInfoElapsedFormat_Dropdown", "sessionInfoKillsMode_Dropdown",
             "sessionInfoKDDecimals_Dropdown", "sessionInfoKDMode_Dropdown", "sessionInfoDamageRounding_Dropdown",
-            "sessionInfoMostDamageMode_Dropdown", "sessionInfoMostDamageRounding_Dropdown", "sessionInfoSurvivalMode_Dropdown",
-            "sessionInfoHealthDisplay_Dropdown",
+            "sessionInfoMostDamageMode_Dropdown", "sessionInfoMostDamageRounding_Dropdown", "sessionInfoDamageDealtRounding_Dropdown",
+            "sessionInfoSurvivalMode_Dropdown", "sessionInfoHealthDisplay_Dropdown",
         }) do
             options[id]:OnChanged(rebuildSessionInfoText)
         end
@@ -12511,13 +12800,19 @@ do
         end
 
         -- Disable Aura and Emergency Kill call this for every kill they make. It only counts while the Kills line is being tracked.
-        utils.sessionInfoSyntheticKill = function()
+        utils.sessionInfoSyntheticKill = function(model)
+            -- Remembered even when Kills is not shown, so Damage Dealt can leave this kill out
+            if model then
+                sessionInfo.syntheticModels[model] = os.clock()
+            end
+
             if not sessionInfo.needs.kills then
                 return
             end
 
             sessionInfo.syntheticKills += 1
             sessionInfo.lifeSyntheticKills += 1
+            updateKillStreakPeaks()
             table.insert(sessionInfo.syntheticPending, os.clock())
         end
 
