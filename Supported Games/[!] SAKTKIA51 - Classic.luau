@@ -192,7 +192,11 @@ local tabs = {
 
 -- [Shared Helpers / Notifications] Volume and notification formatting
 local function getAlertVolume()
-    return window.notifSoundEnabled and (tonumber(window.alertVolume) or 3) or 0
+    if not window.notifSoundEnabled then
+        return 0
+    end
+
+    return math.max(0, tonumber(window.alertVolume) or 3)
 end
 
 local function notify(notificationType: string, title: string, desc: string, duration: number?, persist: boolean?)
@@ -213,6 +217,7 @@ local function notify(notificationType: string, title: string, desc: string, dur
 
     duration = duration or 5
 
+    local volume = getAlertVolume()
     local notification = nil
 
     if notificationType == "Success" then
@@ -223,7 +228,8 @@ local function notify(notificationType: string, title: string, desc: string, dur
             Time = duration,
             Persist = persist == true,
             Priority = 1,
-            SoundId = assetLib.fetchAsset("Sounds/notify.mp3", getAlertVolume()),
+            SoundId = volume > 0 and assetLib.fetchAsset("Sounds/new/success.wav") or nil,
+            Volume = volume,
             BigIcon = assetLib.fetchAsset("Icons/circle-check.png"),
             IconColor = Color3.fromRGB(21, 140, 49),
             Closable = true,
@@ -236,7 +242,24 @@ local function notify(notificationType: string, title: string, desc: string, dur
             Time = duration,
             Persist = persist == true,
             Priority = 0,
-            SoundId = assetLib.fetchAsset("Sounds/notify.mp3", getAlertVolume()),
+            SoundId = volume > 0 and assetLib.fetchAsset("Sounds/new/error.wav") or nil,
+            Volume = volume,
+            BigIcon = assetLib.fetchAsset("Icons/circle-x.png"),
+            IconColor = Color3.fromRGB(140, 21, 21),
+            Closable = true,
+        })
+    elseif notificationType == "Warning" then
+        notification = library:Notify({
+            Title = title,
+            TitleColor = Color3.fromRGB(247, 92, 20),
+            Description = desc,
+            Time = duration,
+            Persist = persist == true,
+            Priority = 0,
+            SoundId = volume > 0 and assetLib.fetchAsset("Sounds/new/warning.wav") or nil,
+            Volume = volume,
+            BigIcon = assetLib.fetchAsset("Icons/octagon-exclamation-point.png"),
+            IconColor = Color3.fromRGB(247, 92, 20),
             Closable = true,
         })
     elseif notificationType == "Info" then
@@ -246,7 +269,8 @@ local function notify(notificationType: string, title: string, desc: string, dur
             Time = duration,
             Persist = persist == true,
             Priority = 2,
-            SoundId = assetLib.fetchAsset("Sounds/notify.mp3", getAlertVolume()),
+            SoundId = volume > 0 and assetLib.fetchAsset("Sounds/new/info.wav") or nil,
+            Volume = volume,
             BigIcon = assetLib.fetchAsset("Icons/info.png"),
             Closable = true,
         })
@@ -299,7 +323,7 @@ local function toggleRainbow(enabled, colorPickerName)
 
     if enabled then
         if not options[colorPickerName] or not defaults[colorPickerName] then
-            notify("Error", "Invalid object", "Invalid colorpicker object and/or no valid default was found.", 99999)
+            notify("Error", "Invalid object", "Invalid colorpicker object and/or no valid default was found.", 15)
             return
         end
 
@@ -333,7 +357,7 @@ local function toggleRainbow(enabled, colorPickerName)
         if window.autoResetRainbowColor then
             if not options[colorPickerName] or not defaults[colorPickerName] then
 
-                notify("Error", "Invalid object", "Invalid colorpicker object and/or no valid default was found.", 99999)
+                notify("Error", "Invalid object", "Invalid colorpicker object and/or no valid default was found.", 15)
                 return
             else
                 options[colorPickerName]:SetValueRGB(defaults[colorPickerName])
@@ -629,12 +653,12 @@ end
 
 local function getSuffix(sliderObj, suffixString)
     if typeof(sliderObj) ~= "table" then
-        notify("Error", "Invalid instance", "Argument #1 (sliderObj) did not return a table instance.", 1000)
+        notify("Error", "Invalid instance", "Argument #1 (sliderObj) did not return a table instance.", 15)
         return
     end
 
     if typeof(suffixString) ~= "string" then
-        notify("Error", "Invalid instance", "Argument #2 (suffixString) did not return a string value.", 1000)
+        notify("Error", "Invalid instance", "Argument #2 (suffixString) did not return a string value.", 15)
         return
     end
 
@@ -11311,23 +11335,15 @@ menuGroup:AddSlider("cornerRadius_Slider", { Text = "Corner Radius", Default = l
 menuGroup:AddSlider("rainbowSpeed_Slider", { Text = "Rainbow Speed", Default = window.rainbowSpeed, Min = 0.1, Max = 1, Rounding = 1 })
 menuGroup:AddLabel("Menu bind"):AddKeyPicker("menuKeybind_KeyPicker", { Text = "Menu keybind", Default = "RightControl", NoUI = true })
 
-sessionInfoGroup:AddToggle("sessionInfo_Toggle", { Text = "Session Info", Tooltip = "Shows a draggable overlay with live stats for this session. Only the lines you enable below are tracked." })
-
-local sessionInfoDepbox = sessionInfoGroup:AddDependencyBox()
-sessionInfoDepbox:AddToggle("sessionInfoCompact_Toggle", { Text = "Compact Mode", Tooltip = "Shows everything on a single line, split up by the separator, instead of one line per stat." })
-
-local sessionInfoSeparatorDepbox = sessionInfoDepbox:AddDependencyBox()
-sessionInfoSeparatorDepbox:AddDropdown("sessionInfoSeparator_Dropdown", { Text = "Separator", Tooltip = "What goes between each stat in Compact Mode.", Values = { "•  | Bullet point", "■  | Black square", "- | Hyphen",
-"►  | Black Pointer", "→  | Rightwards Arrow", }, Default = 1 })
-sessionInfoDepbox:AddDropdown("sessionInfoIconPosition_Dropdown", { Text = "Icon Position", Values = { "Left", "Right" }, Default = 1 })
-sessionInfoDepbox:AddDivider()
-sessionInfoDepbox:AddLabel("Displayed information")
-
 -- [UI Settings / Session Info] Draggable overlay with live stats for the current session
 do
+    local sessionInfoToggle = sessionInfoGroup:AddToggle("sessionInfo_Toggle", { Text = "Session Info", Tooltip = "Shows a draggable overlay with live stats for this session." })
+    local sessionInfoSettings = sessionInfoToggle:AddSettings({ Width = 300 })
+
     local function buildSessionInfoOverlay()
         local sessionInfo = {
-            startTime = os.clock(), -- Elapsed Time counts from when the script loaded
+            loadStart = os.clock(), -- Elapsed Time counts from here (script load, or the last Reset Timer / Reset Session)
+            deathStart = nil, -- When the last death happened, for Elapsed Time's "Since last death" mode
             label = nil,
             loopToken = nil,
             lastText = nil,
@@ -11343,34 +11359,127 @@ do
             frames = 0,
             frameStamp = os.clock(),
             fps = 0,
+            fpsPeak = nil,
+            fpsLow = nil,
+            fpsBelow = false, -- Already told the player about the current FPS drop
+            fpsNotifyStamp = 0,
+
+            -- Ping
+            ping = nil,
+            pingPeak = nil,
+            pingLow = nil,
+            pingAbove = false, -- Already told the player about the current ping spike
+            pingNotifyStamp = 0,
 
             -- Session stats
             kills = 0,
             killStat = nil,
             killBaseline = nil,
             killsAvailable = true,
+            killTrackedTime = 0, -- Seconds the Kills tracker has been running, for Kills per Minute
+            lifeKills = 0, -- Kills since the last death
             syntheticKills = 0, -- Kills made through Disable Aura (and its Emergency Kill)
+            lifeSyntheticKills = 0,
             syntheticPending = {}, -- When each Synthetic Kill happened, until the server credits it or the window runs out
             affectedKillers = 0, -- Different killers Disable Aura has affected
             affectedSeen = setmetatable({}, { __mode = "k" }), -- Killers already counted, so none is counted twice
             deaths = 0,
-            bullets = 0,
+            bullets = 0, -- Every pellet that was fired
+            shots = 0, -- Shots fired, where a whole shotgun blast adds exactly 1
             bulletsAvailable = true,
             damage = 0,
             mostDamage = 0,
+            damageByKiller = {} :: { [string]: number }, -- Health lost near each Killer, for the Top Killer mode
             lifeStart = nil,
+            livesCompleted = 0, -- Lives that ended while Survival Time was tracked
+            livesTotal = 0, -- Seconds survived across those lives
 
             -- Killer scan results (refreshed every update while a killer line is shown)
             scan = { nearestName = nil, nearestDistance = nil, owned = nil },
         }
 
-        -- Only the units that are not zero are shown, e.g. "36s", "12m, 36s" or "1h, 5s".
-        local function formatSessionTime(totalSeconds)
+        local COLOR_GOOD = Color3.fromRGB(90, 220, 120)
+        local COLOR_WARN = Color3.fromRGB(255, 205, 80)
+        local COLOR_BAD = Color3.fromRGB(255, 95, 95)
+
+        -- Thresholds for the Adaptive colors
+        local FPS_GOOD, FPS_WARN = 60, 30
+        local PING_GOOD, PING_WARN = 80, 150
+        local HEALTH_GOOD, HEALTH_WARN = 0.6, 0.3
+
+        -- How long between two notifications of the same kind, and how far away a Killer can be and still be blamed for damage.
+        local NOTIFY_COOLDOWN = 4
+        local DAMAGE_SOURCE_RANGE = 40
+
+        -- Forward declarations, assigned below once everything they use exists.
+        local updateSessionInfoLabel
+        local rebuildSessionInfoText
+        local refreshSessionInfo
+
+        local function getOption(id, fallback)
+            local option = options[id]
+
+            if option ~= nil and option.Value ~= nil then
+                return option.Value
+            end
+
+            return fallback
+        end
+
+        local function getToggle(id, fallback)
+            local toggle = toggles[id]
+
+            if toggle ~= nil and toggle.Value ~= nil then
+                return toggle.Value == true
+            end
+
+            return fallback
+        end
+
+        local function escapeRichText(text)
+            return (tostring(text):gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;"))
+        end
+
+        local function paint(text, color)
+            return string.format("<font color=\"#%s\">%s</font>", color:ToHex(), text)
+        end
+
+        local function colorHigherIsBetter(value, goodAt, warnAt)
+            if value >= goodAt then
+                return COLOR_GOOD
+            elseif value >= warnAt then
+                return COLOR_WARN
+            end
+
+            return COLOR_BAD
+        end
+
+        local function colorLowerIsBetter(value, goodAt, warnAt)
+            if value <= goodAt then
+                return COLOR_GOOD
+            elseif value <= warnAt then
+                return COLOR_WARN
+            end
+
+            return COLOR_BAD
+        end
+
+        -- "short" shows only the units that are not zero (36s, 12m, 36s, 1h, 5s), "clock" is 00:12:36 and "compact" is the total seconds.
+        local function formatSessionTime(totalSeconds, style)
             totalSeconds = math.max(0, math.floor(totalSeconds))
 
             local hours = totalSeconds // 3600
             local minutes = (totalSeconds % 3600) // 60
             local seconds = totalSeconds % 60
+
+            if style == "clock" then
+                return string.format("%02d:%02d:%02d", hours, minutes, seconds)
+            end
+
+            if style == "compact" then
+                return totalSeconds .. "s"
+            end
+
             local parts = {}
 
             if hours > 0 then
@@ -11396,6 +11505,15 @@ do
             return tostring(math.floor(value + 0.5))
         end
 
+        -- Rounding dropdown shared by the damage lines: "Whole numbers" or "One decimal"
+        local function formatDamageNumber(value, optionId)
+            if getOption(optionId, "Whole numbers") == "One decimal" then
+                return string.format("%.1f", value)
+            end
+
+            return roundSessionNumber(value)
+        end
+
         -- How long the server has to credit a Synthetic Kill to Killers Killed. A credited one is the same kill, so it is never counted twice.
         local SYNTHETIC_CREDIT_WINDOW = 3
 
@@ -11417,51 +11535,250 @@ do
             return claimed
         end
 
-        -- Kills and K/D Ratio both use this, so they always agree. Synthetic Kills are only added while their option is on.
-        local function getSessionInfoKills()
-            local kills = sessionInfo.kills
-            local syntheticToggle = toggles.sessionInfoSyntheticKills_Toggle
+        -- Kills, Kills per Minute, K/D Ratio and Bullets Per Kill all use this. Synthetic Kills are only added while their option is on.
+        local function getSessionInfoKills(thisLifeOnly)
+            local kills = thisLifeOnly and sessionInfo.lifeKills or sessionInfo.kills
 
-            if syntheticToggle and syntheticToggle.Value == true then
-                kills += sessionInfo.syntheticKills
+            if getToggle("sessionInfoSyntheticKills_Toggle", false) then
+                kills += thisLifeOnly and sessionInfo.lifeSyntheticKills or sessionInfo.syntheticKills
             end
 
             return kills
         end
 
+        local function getElapsedSeconds()
+            local now = os.clock()
+
+            if getOption("sessionInfoElapsedMode_Dropdown", "") == "Since last death" and sessionInfo.deathStart then
+                return now - sessionInfo.deathStart
+            end
+
+            return now - sessionInfo.loadStart
+        end
+
+        local function getTimeStyle()
+            local value = tostring(getOption("sessionInfoElapsedFormat_Dropdown", "Short"))
+
+            return (value:match("^(%a+)") or "short"):lower()
+        end
+
+        local function getCurrentLifeSeconds()
+            return sessionInfo.lifeStart and (os.clock() - sessionInfo.lifeStart) or 0
+        end
+
+        -- Pellets or whole blasts, depending on the Count Every Pellet option.
+        local function getSessionInfoBullets()
+            if getToggle("sessionInfoBulletsPellets_Toggle", true) then
+                return sessionInfo.bullets
+            end
+
+            -- A blast adds 1 / pellets per pellet, so the sum can be slightly under a whole number
+            return math.floor(sessionInfo.shots + 0.0001)
+        end
+
+        local function getTopKiller()
+            local topName, topDamage = nil, 0
+
+            for name, total in pairs(sessionInfo.damageByKiller) do
+                if total > topDamage then
+                    topName, topDamage = name, total
+                end
+            end
+
+            return topName
+        end
+
+        -- Value of an FPS / Ping line: the current reading, and the highest and lowest of this session when they are enabled.
+        local function buildReadingValue(prefix, current, peak, low, colorFor)
+            local adaptive = getToggle(prefix .. "Adaptive_Toggle", false)
+            local showMax = getToggle(prefix .. "Max_Toggle", false)
+            local showMin = getToggle(prefix .. "Min_Toggle", false)
+            -- With nothing else enabled on the line, we still have to show something
+            local showCurrent = getToggle(prefix .. "Current_Toggle", true) or (not showMax and not showMin)
+
+            local function reading(value)
+                if not value then
+                    return "..."
+                end
+
+                local text = roundSessionNumber(value)
+
+                return adaptive and paint(text, colorFor(value)) or text
+            end
+
+            local parts = {}
+
+            if showCurrent then
+                table.insert(parts, reading(current))
+            end
+
+            if showMax then
+                table.insert(parts, "↑" .. reading(peak))
+            end
+
+            if showMin then
+                table.insert(parts, "↓" .. reading(low))
+            end
+
+            return table.concat(parts, " ")
+        end
+
+        local function fpsColor(value)
+            return colorHigherIsBetter(value, FPS_GOOD, FPS_WARN)
+        end
+
+        local function pingColor(value)
+            return colorLowerIsBetter(value, PING_GOOD, PING_WARN)
+        end
+
         -- Order here is the order the lines appear in. "needs" lists the trackers a line depends on.
         local sessionInfoItems = {
-            { id = "Elapsed", text = "Elapsed Time", default = true, tooltip = "How long the script has been running.",
-                value = function() return formatSessionTime(os.clock() - sessionInfo.startTime) end },
+            { id = "Elapsed", text = "Elapsed Time", default = true, tooltip = "How long the script has been running, or how long since your last death.",
+                needs = function()
+                    return getOption("sessionInfoElapsedMode_Dropdown", "") == "Since last death" and { "deaths" } or {}
+                end,
+                settings = function(settings)
+                    settings:AddDropdown("sessionInfoElapsedMode_Dropdown", { Text = "Tracking Mode", Values = { "Since script load", "Since last death" }, Default = 1,
+                        Tooltip = "Since script load counts from when the script started (or from the last reset). Since last death restarts every time you die." })
+                    settings:AddDropdown("sessionInfoElapsedFormat_Dropdown", { Text = "Time Format", Values = { "Short (12m, 36s)", "Clock (00:12:36)", "Compact (756s)" }, Default = 1 })
+                    settings:AddButton({ Text = "Reset Timer", Tooltip = "Restarts only the timer. Reset Session restarts everything.", Func = function()
+                        sessionInfo.loadStart = os.clock()
+                        sessionInfo.deathStart = nil
+                        rebuildSessionInfoText()
+                    end })
+                end,
+                value = function() return formatSessionTime(getElapsedSeconds(), getTimeStyle()) end },
 
-            { id = "Kills", text = "Kills", default = true, needs = { "kills" }, tooltip = "Killers you killed this session (not your lifetime Killers Killed).",
-                value = function() return sessionInfo.killsAvailable and tostring(getSessionInfoKills()) or "N/A" end },
-
-            { id = "Deaths", text = "Deaths", default = true, needs = { "deaths" }, tooltip = "Times you died this session.",
-                value = function() return tostring(sessionInfo.deaths) end },
-
-            { id = "KD", text = "K/D Ratio", needs = { "kills", "deaths" }, tooltip = "Session kills divided by session deaths. Follows the Synthetic Kills option under Kills.",
+            { id = "Kills", text = "Kills", default = true, needs = { "kills" }, tooltip = "Killers you killed this session.",
+                getText = function()
+                    return getOption("sessionInfoKillsMode_Dropdown", "") == "Kills per minute" and "Kills/Min" or "Kills"
+                end,
+                settings = function(settings)
+                    settings:AddDropdown("sessionInfoKillsMode_Dropdown", { Text = "Tracking Mode", Values = { "Session kills", "Kills per minute" }, Default = 1,
+                        Tooltip = "Kills per minute is your kills divided by the time Kills has been tracked." })
+                    settings:AddToggle("sessionInfoSyntheticKills_Toggle", { Text = "Synthetic Kills", Default = false, Tooltip = "Also counts the kills Disable Aura makes itself (the Kill method and Emergency Kill) in Kills, K/D Ratio and Bullets Per Kill. Off by default, so only kills you get yourself are counted." })
+                end,
                 value = function()
                     if not sessionInfo.killsAvailable then
                         return "N/A"
                     end
 
-                    return string.format("%.2f", getSessionInfoKills() / math.max(sessionInfo.deaths, 1))
+                    if getOption("sessionInfoKillsMode_Dropdown", "") == "Kills per minute" then
+                        local minutes = sessionInfo.killTrackedTime / 60
+
+                        if minutes <= 0 then
+                            return "0.00"
+                        end
+
+                        return string.format("%.2f", getSessionInfoKills(false) / minutes)
+                    end
+
+                    return tostring(getSessionInfoKills(false))
                 end },
 
-            { id = "Bullets", text = "Bullets Fired", needs = { "bullets" }, tooltip = "Bullets you fired this session. Every pellet of a shotgun blast counts.",
-                value = function() return sessionInfo.bulletsAvailable and tostring(sessionInfo.bullets) or "N/A" end },
+            { id = "Deaths", text = "Deaths", default = true, needs = { "deaths" }, tooltip = "Times you died this session.",
+                value = function() return tostring(sessionInfo.deaths) end },
+
+            { id = "KD", text = "K/D Ratio", needs = { "kills", "deaths" }, tooltip = "Kills divided by deaths. Follows the Synthetic Kills option under Kills.",
+                settings = function(settings)
+                    settings:AddDropdown("sessionInfoKDDecimals_Dropdown", { Text = "Decimal Places", Values = { "0", "1", "2" }, Default = 3 })
+                    settings:AddDropdown("sessionInfoKDMode_Dropdown", { Text = "Tracking Mode", Values = { "This session", "This life" }, Default = 1,
+                        Tooltip = "This life only counts the kills you made since your last death, and every death starts a new one." })
+                end,
+                value = function()
+                    if not sessionInfo.killsAvailable then
+                        return "N/A"
+                    end
+
+                    local decimals = tonumber(getOption("sessionInfoKDDecimals_Dropdown", "2")) or 2
+                    local ratio
+
+                    if getOption("sessionInfoKDMode_Dropdown", "") == "This life" then
+                        -- A life ends with exactly one death, so its ratio is simply the kills made in it
+                        ratio = getSessionInfoKills(true)
+                    else
+                        ratio = getSessionInfoKills(false) / math.max(sessionInfo.deaths, 1)
+                    end
+
+                    return string.format("%." .. decimals .. "f", ratio)
+                end },
+
+            { id = "Bullets", text = "Bullets Fired", needs = function()
+                    return getOption("sessionInfoBulletsMode_Dropdown", "") == "Bullets per kill" and { "bullets", "kills" } or { "bullets" }
+                end,
+                tooltip = "Bullets you fired this session.",
+                getText = function()
+                    return getOption("sessionInfoBulletsMode_Dropdown", "") == "Bullets per kill" and "Bullets Per Kill" or "Bullets Fired"
+                end,
+                settings = function(settings)
+                    settings:AddToggle("sessionInfoBulletsPellets_Toggle", { Text = "Count Every Pellet", Default = true,
+                        Tooltip = "On: every pellet of a shotgun blast counts as a bullet. Off: a whole blast counts as one shot." })
+                    settings:AddDropdown("sessionInfoBulletsMode_Dropdown", { Text = "Tracking Mode", Values = { "Bullets fired", "Bullets per kill" }, Default = 1,
+                        Tooltip = "Bullets per kill is your bullets divided by your kills, a rough accuracy-style stat. Follows the Synthetic Kills option under Kills." })
+                end,
+                value = function()
+                    if not sessionInfo.bulletsAvailable then
+                        return "N/A"
+                    end
+
+                    if getOption("sessionInfoBulletsMode_Dropdown", "") == "Bullets per kill" then
+                        if not sessionInfo.killsAvailable then
+                            return "N/A"
+                        end
+
+                        local kills = getSessionInfoKills(false)
+
+                        if kills <= 0 then
+                            return "N/A"
+                        end
+
+                        return string.format("%.1f", getSessionInfoBullets() / kills)
+                    end
+
+                    return tostring(getSessionInfoBullets())
+                end },
 
             { id = "Damage", text = "Damage Taken", needs = { "damage" }, tooltip = "Total health you lost this session.",
-                value = function() return roundSessionNumber(sessionInfo.damage) end },
+                settings = function(settings)
+                    settings:AddDropdown("sessionInfoDamageRounding_Dropdown", { Text = "Rounding", Values = { "Whole numbers", "One decimal" }, Default = 1 })
+                end,
+                value = function() return formatDamageNumber(sessionInfo.damage, "sessionInfoDamageRounding_Dropdown") end },
 
-            { id = "MostDamage", text = "Most Damage Taken", needs = { "damage" }, tooltip = "The most health you lost in a single hit this session.",
-                value = function() return roundSessionNumber(sessionInfo.mostDamage) end },
+            { id = "MostDamage", text = "Most Damage Taken", needs = { "damage" }, tooltip = "The most health you lost in a single hit this session, or the Killer that dealt you the most damage.",
+                settings = function(settings)
+                    settings:AddDropdown("sessionInfoMostDamageMode_Dropdown", { Text = "Tracking Mode", Values = { "Biggest hit", "Top Killer" }, Default = 1,
+                        Tooltip = "Top Killer shows the name of the Killer that dealt you the most damage. Damage is given to the closest living Killer within " .. DAMAGE_SOURCE_RANGE .. " studs (one that is attacking comes first), so damage from anything else is not counted." })
+                    settings:AddDropdown("sessionInfoMostDamageRounding_Dropdown", { Text = "Rounding", Values = { "Whole numbers", "One decimal" }, Default = 1 })
+                end,
+                value = function()
+                    if getOption("sessionInfoMostDamageMode_Dropdown", "") == "Top Killer" then
+                        return escapeRichText(getTopKiller() or "None")
+                    end
 
-            { id = "Survival", text = "Survival Time", needs = { "survival" }, tooltip = "How long you have been alive since your last death.",
-                value = function() return formatSessionTime(sessionInfo.lifeStart and (os.clock() - sessionInfo.lifeStart) or 0) end },
+                    return formatDamageNumber(sessionInfo.mostDamage, "sessionInfoMostDamageRounding_Dropdown")
+                end },
 
-            { id = "Health", text = "Health", tooltip = "Your current health out of your max health.",
+            { id = "Survival", text = "Survival Time", needs = { "survival" }, tooltip = "How long you have been alive since your last death, or your average across lives.",
+                getText = function()
+                    return getOption("sessionInfoSurvivalMode_Dropdown", "") == "Average across lives" and "Avg. Survival Time" or "Survival Time"
+                end,
+                settings = function(settings)
+                    settings:AddDropdown("sessionInfoSurvivalMode_Dropdown", { Text = "Tracking Mode", Values = { "Current life", "Average across lives" }, Default = 1,
+                        Tooltip = "Average across lives is the average time you survived in the lives that ended. Until you die for the first time it shows your current life." })
+                end,
+                value = function()
+                    if getOption("sessionInfoSurvivalMode_Dropdown", "") == "Average across lives" and sessionInfo.livesCompleted > 0 then
+                        return formatSessionTime(sessionInfo.livesTotal / sessionInfo.livesCompleted)
+                    end
+
+                    return formatSessionTime(getCurrentLifeSeconds())
+                end },
+
+            { id = "Health", text = "Health", tooltip = "Your current health.",
+                settings = function(settings)
+                    settings:AddDropdown("sessionInfoHealthDisplay_Dropdown", { Text = "Health Display", Values = { "Current / Max", "Percentage" }, Default = 1 })
+                    settings:AddToggle("sessionInfoHealthAdaptive_Toggle", { Text = "Adaptive", Default = false, Tooltip = "Colors the text green, yellow or red by how much health you have left." })
+                end,
                 value = function()
                     local character = localplayer.Character
                     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -11470,7 +11787,20 @@ do
                         return "N/A"
                     end
 
-                    return roundSessionNumber(humanoid.Health) .. "/" .. roundSessionNumber(humanoid.MaxHealth)
+                    local fraction = humanoid.MaxHealth > 0 and (humanoid.Health / humanoid.MaxHealth) or 0
+                    local text
+
+                    if getOption("sessionInfoHealthDisplay_Dropdown", "") == "Percentage" then
+                        text = roundSessionNumber(fraction * 100) .. "%"
+                    else
+                        text = roundSessionNumber(humanoid.Health) .. "/" .. roundSessionNumber(humanoid.MaxHealth)
+                    end
+
+                    if getToggle("sessionInfoHealthAdaptive_Toggle", false) then
+                        return paint(text, colorHigherIsBetter(fraction, HEALTH_GOOD, HEALTH_WARN))
+                    end
+
+                    return text
                 end },
 
             { id = "NearestKiller", text = "Nearest Killer", needs = { "nearest" }, tooltip = "The closest living killer and how far away it is.",
@@ -11481,37 +11811,61 @@ do
                         return "None"
                     end
 
-                    return scan.nearestName .. " (" .. roundSessionNumber(scan.nearestDistance) .. " studs)"
+                    return escapeRichText(scan.nearestName) .. " (" .. roundSessionNumber(scan.nearestDistance) .. " studs)"
                 end },
 
             { id = "SimulatedKillers", text = "Simulated Killers", needs = { "owned" }, tooltip = "How many living killers your client owns the physics of. Those are the ones your client can control and can be affected via Disable Aura.",
                 value = function() return sessionInfo.scan.owned ~= nil and tostring(sessionInfo.scan.owned) or "N/A" end },
 
-            { id = "AffectedKillers", text = "Affected Killers", needs = { "affected" }, tooltip = "How many different killers Disable Aura has affected this session, whatever the method (killed, slowed, disabled or pushed). Emergency Kill counts too. A killer is only counted once, even if it is affected again.",
+            { id = "AffectedKillers", text = "Affected Killers", needs = { "affected" }, tooltip = "How many different killers Disable Aura has affected this session, whatever the method (killed, slowed, disabled or pushed).",
                 value = function() return tostring(sessionInfo.affectedKillers) end },
 
-            { id = "FPS", text = "FPS", default = true, needs = { "fps" },
-                value = function() return sessionInfo.fps > 0 and roundSessionNumber(sessionInfo.fps) or "..." end },
+            { id = "FPS", text = "FPS", default = true, needs = { "fps" }, tooltip = "Frames per second, measured over the update interval.",
+                settings = function(settings)
+                    settings:AddSlider("sessionInfoFPSInterval_Slider", { Text = "Update Interval", Default = 1, Min = 0.5, Max = 2, Rounding = 1, Suffix = "s",
+                        Tooltip = "How often the FPS is measured. A longer interval is smoother, a shorter one reacts faster." })
+                    settings:AddToggle("sessionInfoFPSAdaptive_Toggle", { Text = "Adaptive", Default = false, Tooltip = "Colors the numbers green, yellow or red by how high the FPS is." })
+                    settings:AddToggle("sessionInfoFPSCurrent_Toggle", { Text = "Show Current", Default = true, Tooltip = "Shows the current FPS. Turn it off to only show the highest and lowest." })
+                    settings:AddToggle("sessionInfoFPSMax_Toggle", { Text = "Maximum", Default = false, Tooltip = "Shows the highest FPS of this session, like ↑304." })
+                    settings:AddToggle("sessionInfoFPSMin_Toggle", { Text = "Minimum", Default = false, Tooltip = "Shows the lowest FPS of this session, like ↓54." })
 
-            { id = "Ping", text = "Ping", default = true, tooltip = "Round-trip time to the server in milliseconds.",
-                value = function() return roundSessionNumber(localplayer:GetNetworkPing() * 1000) end },
+                    local notifyToggle = settings:AddToggle("sessionInfoFPSNotify_Toggle", { Text = "Notify on Low FPS", Default = false, Tooltip = "Sends a notification when the FPS drops below the threshold, so you can spot big FPS drops." })
+                    local notifySettings = notifyToggle:AddSettings({ Width = 240 })
+                    notifySettings:AddSlider("sessionInfoFPSThreshold_Slider", { Text = "Threshold", Default = 30, Min = 5, Max = 240, Rounding = 0, Suffix = " FPS" })
+                end,
+                value = function() return buildReadingValue("sessionInfoFPS", sessionInfo.fps > 0 and sessionInfo.fps or nil, sessionInfo.fpsPeak, sessionInfo.fpsLow, fpsColor) end },
+
+            { id = "Ping", text = "Ping", default = true, needs = { "ping" }, tooltip = "Round-trip time to the server in milliseconds.",
+                settings = function(settings)
+                    settings:AddToggle("sessionInfoPingAdaptive_Toggle", { Text = "Adaptive", Default = false, Tooltip = "Colors the numbers green, yellow or red by how low the ping is." })
+                    settings:AddToggle("sessionInfoPingCurrent_Toggle", { Text = "Show Current", Default = true, Tooltip = "Shows the current ping. Turn it off to only show the highest and lowest." })
+                    settings:AddToggle("sessionInfoPingMax_Toggle", { Text = "Maximum", Default = false, Tooltip = "Shows the highest ping of this session, like ↑56." })
+                    settings:AddToggle("sessionInfoPingMin_Toggle", { Text = "Minimum", Default = false, Tooltip = "Shows the lowest ping of this session, like ↓12." })
+
+                    local notifyToggle = settings:AddToggle("sessionInfoPingNotify_Toggle", { Text = "Notify on High Ping", Default = false, Tooltip = "Sends a notification when the ping goes above the threshold, so you can spot ping spikes." })
+                    local notifySettings = notifyToggle:AddSettings({ Width = 240 })
+                    notifySettings:AddSlider("sessionInfoPingThreshold_Slider", { Text = "Threshold", Default = 200, Min = 50, Max = 1000, Rounding = 0, Suffix = " ms" })
+                end,
+                value = function() return buildReadingValue("sessionInfoPing", sessionInfo.ping, sessionInfo.pingPeak, sessionInfo.pingLow, pingColor) end },
         }
 
-        local sessionInfoSyntheticKillsDepbox
+        -- [Session Info / Menu]
+        local compactToggle = sessionInfoSettings:AddToggle("sessionInfoCompact_Toggle", { Text = "Compact Mode", Tooltip = "Shows everything on a single line, split up by the separator, instead of one line per stat." })
+        local compactSettings = compactToggle:AddSettings({ Width = 260 })
+        compactSettings:AddDropdown("sessionInfoSeparator_Dropdown", { Text = "Separator", Tooltip = "What goes between each stat in Compact Mode.", Values = { "•  | Bullet point", "■  | Black square", "- | Hyphen",
+            "►  | Black Pointer", "→  | Rightwards Arrow", }, Default = 1 })
+
+        sessionInfoSettings:AddDivider()
+        sessionInfoSettings:AddLabel("Displayed information")
 
         for _, item in ipairs(sessionInfoItems) do
             item.toggleId = "sessionInfo" .. item.id .. "_Toggle"
-            sessionInfoDepbox:AddToggle(item.toggleId, { Text = item.text, Tooltip = item.tooltip, Default = item.default })
+            local itemToggle = sessionInfoSettings:AddToggle(item.toggleId, { Text = item.text, Tooltip = item.tooltip, Default = item.default })
 
-            if item.id == "Kills" then
-                sessionInfoSyntheticKillsDepbox = sessionInfoDepbox:AddDependencyBox()
-                sessionInfoSyntheticKillsDepbox:AddToggle("sessionInfoSyntheticKills_Toggle", { Text = "Synthetic Kills", Default = false, Tooltip = "Also counts the kills Disable Aura makes itself (the Kill method and Emergency Kill) in Kills and K/D Ratio. Off by default, so only kills you get yourself are counted." })
+            if item.settings then
+                item.settings(itemToggle:AddSettings({ Width = 280 }))
             end
         end
-
-        sessionInfoDepbox:SetupDependencies({ { toggles.sessionInfo_Toggle, true } })
-        sessionInfoSeparatorDepbox:SetupDependencies({ { toggles.sessionInfoCompact_Toggle, true } })
-        sessionInfoSyntheticKillsDepbox:SetupDependencies({ { toggles.sessionInfoKills_Toggle, true } })
 
         local function isSessionInfoItemEnabled(item)
             local toggle = toggles[item.toggleId]
@@ -11524,7 +11878,9 @@ do
 
             for _, item in ipairs(sessionInfoItems) do
                 if item.needs and isSessionInfoItemEnabled(item) then
-                    for _, need in ipairs(item.needs) do
+                    local list = type(item.needs) == "function" and item.needs() or item.needs
+
+                    for _, need in ipairs(list) do
                         needs[need] = true
                     end
                 end
@@ -11533,24 +11889,84 @@ do
             return needs
         end
 
+        -- [Session Info / Notifications]
+        local function notifyReading(kind, title, description)
+            local stampKey = kind .. "NotifyStamp"
+            local now = os.clock()
+
+            if now - sessionInfo[stampKey] < NOTIFY_COOLDOWN then
+                return
+            end
+
+            sessionInfo[stampKey] = now
+            pcall(notify, "Warning", title, description, 10)
+        end
+
+        -- A notification is sent once when the reading crosses the threshold, and again only after it has recovered.
+        local function checkFpsThreshold(value)
+            if not getToggle("sessionInfoFPSNotify_Toggle", false) then
+                sessionInfo.fpsBelow = false
+                return
+            end
+
+            local threshold = tonumber(getOption("sessionInfoFPSThreshold_Slider", 30)) or 30
+
+            if value < threshold then
+                if not sessionInfo.fpsBelow then
+                    notifyReading("fps", "Low FPS", string.format("FPS dropped to %s (below %s).", roundSessionNumber(value), roundSessionNumber(threshold)))
+                end
+
+                sessionInfo.fpsBelow = true
+            else
+                sessionInfo.fpsBelow = false
+            end
+        end
+
+        local function checkPingThreshold(value)
+            if not getToggle("sessionInfoPingNotify_Toggle", false) then
+                sessionInfo.pingAbove = false
+                return
+            end
+
+            local threshold = tonumber(getOption("sessionInfoPingThreshold_Slider", 200)) or 200
+
+            if value > threshold then
+                if not sessionInfo.pingAbove then
+                    notifyReading("ping", "High Ping", string.format("Ping spiked to %s ms (above %s ms).", roundSessionNumber(value), roundSessionNumber(threshold)))
+                end
+
+                sessionInfo.pingAbove = true
+            else
+                sessionInfo.pingAbove = false
+            end
+        end
+
         -- [Session Info / Trackers]
 
         -- FPS and kills share one RenderStepped connection, and each only does its work while its line is shown.
-        local function sessionInfoRenderStep()
+        local function sessionInfoRenderStep(deltaTime)
             if sessionInfo.needs.fps then
                 local now = os.clock()
                 sessionInfo.frames += 1
 
                 local elapsed = now - sessionInfo.frameStamp
+                local interval = tonumber(getOption("sessionInfoFPSInterval_Slider", 1)) or 1
 
-                if elapsed >= 1 then
-                    sessionInfo.fps = sessionInfo.frames / elapsed
+                if elapsed >= interval then
+                    local fps = sessionInfo.frames / elapsed
+                    sessionInfo.fps = fps
                     sessionInfo.frames = 0
                     sessionInfo.frameStamp = now
+
+                    sessionInfo.fpsPeak = math.max(sessionInfo.fpsPeak or fps, fps)
+                    sessionInfo.fpsLow = math.min(sessionInfo.fpsLow or fps, fps)
+                    checkFpsThreshold(fps)
                 end
             end
 
             if sessionInfo.needs.kills then
+                sessionInfo.killTrackedTime += deltaTime
+
                 local killStat = sessionInfo.killStat
 
                 if not killStat or not killStat.Parent then
@@ -11571,7 +11987,9 @@ do
                         local gained = total - baseline
 
                         -- A kill the server credits right after a Synthetic Kill is that same kill, so it is not also counted as a normal one
-                        sessionInfo.kills += gained - claimSyntheticCredits(gained)
+                        local normal = gained - claimSyntheticCredits(gained)
+                        sessionInfo.kills += normal
+                        sessionInfo.lifeKills += normal
                         sessionInfo.killBaseline = total
                     end
                 else
@@ -11598,13 +12016,59 @@ do
             sessionInfo.characterSignature = nil
         end
 
+        -- Health lost can only be blamed on a Killer that is close enough; one that is attacking comes before one that is merely near.
+        local function findDamageSource()
+            local folder = killersFolder
+
+            if not folder or not folder.Parent then
+                folder = workspace:FindFirstChild("Killers")
+            end
+
+            local character = localplayer.Character
+            local root = character and character:FindFirstChild("HumanoidRootPart")
+
+            if not folder or not root then
+                return nil
+            end
+
+            local nearestName, nearestDistance
+            local attackingName, attackingDistance
+
+            for _, killer in ipairs(folder:GetChildren()) do
+                local humanoid = killer:FindFirstChildOfClass("Humanoid")
+                local killerRoot = killer:FindFirstChild("HumanoidRootPart") or killer.PrimaryPart
+
+                if humanoid and humanoid.Health > 0 and killerRoot then
+                    local distance = (killerRoot.Position - root.Position).Magnitude
+
+                    if distance <= DAMAGE_SOURCE_RANGE then
+                        local attacking = killer:FindFirstChild("Attacking")
+
+                        if attacking and attacking:IsA("BoolValue") and attacking.Value and (not attackingDistance or distance < attackingDistance) then
+                            attackingName, attackingDistance = killer.Name, distance
+                        end
+
+                        if not nearestDistance or distance < nearestDistance then
+                            nearestName, nearestDistance = killer.Name, distance
+                        end
+                    end
+                end
+            end
+
+            return attackingName or nearestName
+        end
+
         -- Deaths, damage and survival time all hang off the character, so they share one tracker that is rebuilt when the set changes.
+        local function getCharacterSignature(needs)
+            return (needs.deaths and "d" or "") .. (needs.damage and "a" or "") .. (needs.survival and "s" or "")
+        end
+
         local function startSessionInfoCharacterTracker(needs)
             stopSessionInfoCharacterTracker()
 
             local tracker = { connections = {}, humanoidConnections = {} }
             sessionInfo.characterTracker = tracker
-            sessionInfo.characterSignature = (needs.deaths and "d" or "") .. (needs.damage and "a" or "") .. (needs.survival and "s" or "")
+            sessionInfo.characterSignature = getCharacterSignature(needs)
 
             local function attach(character: any, newLife: boolean?)
                 for _, connection in ipairs(tracker.humanoidConnections) do
@@ -11638,15 +12102,32 @@ do
                             if lost > sessionInfo.mostDamage then
                                 sessionInfo.mostDamage = lost
                             end
+
+                            local source = findDamageSource()
+
+                            if source then
+                                sessionInfo.damageByKiller[source] = (sessionInfo.damageByKiller[source] or 0) + lost
+                            end
                         end
                     end))
                 end
 
                 table.insert(tracker.humanoidConnections, humanoid.Died:Connect(function()
+                    local now = os.clock()
+
                     if needs.deaths then
                         sessionInfo.deaths += 1
                     end
 
+                    if needs.survival and sessionInfo.lifeStart then
+                        sessionInfo.livesCompleted += 1
+                        sessionInfo.livesTotal += now - sessionInfo.lifeStart
+                    end
+
+                    -- Elapsed Time (Since last death) and K/D Ratio (This life) both start over here
+                    sessionInfo.deathStart = now
+                    sessionInfo.lifeKills = 0
+                    sessionInfo.lifeSyntheticKills = 0
                     sessionInfo.lifeStart = nil
                 end))
             end
@@ -11675,7 +12156,8 @@ do
             end
         end
 
-        -- Every bullet goes through the game's fire packet, so wrapping its send counts exactly the bullets this client fires.
+        -- A shotgun blast sends one packet per pellet and every one of them says how many pellets the blast has (bullet_count),
+        -- so each packet adds 1 / bullet_count to the shots and a whole blast adds exactly 1.
         local function startSessionInfoBulletTracker()
             if sessionInfo.bulletTracker then
                 return
@@ -11700,7 +12182,15 @@ do
 
             tracker.counted = function(...)
                 if tracker.active then
+                    local packet = ...
+                    local pellets = type(packet) == "table" and tonumber(packet.bullet_count) or 1
+
+                    if not pellets or pellets < 1 then
+                        pellets = 1
+                    end
+
                     sessionInfo.bullets += 1
+                    sessionInfo.shots += 1 / pellets
                 end
 
                 return original(...)
@@ -11757,6 +12247,22 @@ do
             end
         end
 
+        -- Ping is read on every overlay update, which is also where its highest, lowest and spike notification come from.
+        local function sampleSessionInfoPing()
+            local success, ping = pcall(function()
+                return localplayer:GetNetworkPing() * 1000
+            end)
+
+            if not success then
+                return
+            end
+
+            sessionInfo.ping = ping
+            sessionInfo.pingPeak = math.max(sessionInfo.pingPeak or ping, ping)
+            sessionInfo.pingLow = math.min(sessionInfo.pingLow or ping, ping)
+            checkPingThreshold(ping)
+        end
+
         -- [Session Info / Label]
         local function getSessionInfoSeparator()
             local dropdown = options.sessionInfoSeparator_Dropdown
@@ -11765,7 +12271,7 @@ do
             return value:match("^(%S+)") or "•"
         end
 
-        local function updateSessionInfoLabel()
+        updateSessionInfoLabel = function()
             local label = sessionInfo.label
 
             if not label then
@@ -11778,12 +12284,20 @@ do
                 scanSessionInfoKillers(needs.nearest, needs.owned)
             end
 
+            if needs.ping then
+                sampleSessionInfoPing()
+            end
+
             local lines = {}
 
             for _, item in ipairs(sessionInfoItems) do
                 if isSessionInfoItemEnabled(item) then
                     local success, value = pcall(item.value)
-                    table.insert(lines, item.text .. ": " .. (success and value or "N/A"))
+                    local nameSuccess, name = pcall(function()
+                        return item.getText and item.getText() or item.text
+                    end)
+
+                    table.insert(lines, (nameSuccess and name or item.text) .. ": " .. (success and value or "N/A"))
                 end
             end
 
@@ -11804,26 +12318,24 @@ do
         end
 
         local function createSessionInfoLabel()
-            local iconPosition = options.sessionInfoIconPosition_Dropdown and options.sessionInfoIconPosition_Dropdown.Value or "Left"
-
             local created, label = pcall(function()
                 return library:AddDraggableLabel({
                     Text = "Session Info",
                     Icon = assetLib.fetchAsset("Icons/Celestial.png"),
-                    IconPosition = iconPosition,
                 })
             end)
 
             if not created or not label then
                 -- The icon could not be loaded; the overlay still works without it.
                 created, label = pcall(function()
-                    return library:AddDraggableLabel({ Text = "Session Info", IconPosition = iconPosition })
+                    return library:AddDraggableLabel({ Text = "Session Info" })
                 end)
             end
 
             if created and label then
                 pcall(function()
                     label.Label.TextXAlignment = Enum.TextXAlignment.Left
+                    label.Label.RichText = true -- Adaptive colors
                 end)
 
                 sessionInfo.label = label
@@ -11854,8 +12366,8 @@ do
             sessionInfo.lastText = nil
         end
 
-        -- Runs whenever the overlay or any of its lines is switched, and only keeps running what the shown lines need.
-        local function refreshSessionInfo()
+        -- Runs whenever the overlay, any of its lines or a mode that changes what a line tracks is switched, and only keeps running what the shown lines need.
+        refreshSessionInfo = function()
             local overlayToggle = toggles.sessionInfo_Toggle
 
             if library.Unloaded or not overlayToggle or overlayToggle.Value ~= true then
@@ -11897,9 +12409,7 @@ do
             local needsCharacter = needs.deaths or needs.damage or needs.survival
 
             if needsCharacter then
-                local signature = (needs.deaths and "d" or "") .. (needs.damage and "a" or "") .. (needs.survival and "s" or "")
-
-                if sessionInfo.characterSignature ~= signature then
+                if sessionInfo.characterSignature ~= getCharacterSignature(needs) then
                     startSessionInfoCharacterTracker(needs)
                 end
             else
@@ -11927,26 +12437,78 @@ do
             pcall(updateSessionInfoLabel)
         end
 
+        -- Everything except the timer is read on every update, so most options only need the text rebuilt.
+        rebuildSessionInfoText = function()
+            sessionInfo.lastText = nil
+            pcall(updateSessionInfoLabel)
+        end
+
+        -- [Session Info / Reset] Sets every stat back to zero at once
+        local function resetSessionInfo()
+            local now = os.clock()
+
+            sessionInfo.loadStart = now
+            sessionInfo.deathStart = nil
+
+            sessionInfo.kills, sessionInfo.lifeKills = 0, 0
+            sessionInfo.syntheticKills, sessionInfo.lifeSyntheticKills = 0, 0
+            sessionInfo.killTrackedTime = 0
+            sessionInfo.killBaseline = nil -- Counted from the Killers Killed it has right now
+            table.clear(sessionInfo.syntheticPending)
+
+            sessionInfo.affectedKillers = 0
+            sessionInfo.affectedSeen = setmetatable({}, { __mode = "k" })
+
+            sessionInfo.deaths = 0
+            sessionInfo.bullets, sessionInfo.shots = 0, 0
+            sessionInfo.damage, sessionInfo.mostDamage = 0, 0
+            table.clear(sessionInfo.damageByKiller)
+
+            local character = localplayer.Character
+            local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+            sessionInfo.lifeStart = (sessionInfo.needs.survival and humanoid and humanoid.Health > 0) and now or nil
+            sessionInfo.livesCompleted, sessionInfo.livesTotal = 0, 0
+
+            sessionInfo.frames, sessionInfo.frameStamp = 0, now
+            sessionInfo.fpsPeak, sessionInfo.fpsLow, sessionInfo.fpsBelow = nil, nil, false
+            sessionInfo.pingPeak, sessionInfo.pingLow, sessionInfo.pingAbove = nil, nil, false
+
+            rebuildSessionInfoText()
+        end
+
+        sessionInfoGroup:AddButton({ Text = "Reset Session", Tooltip = "Sets every Session Info stat back to zero at once, including the timer.", Func = function()
+            resetSessionInfo()
+            pcall(notify, "Info", "Session Info", "Every stat was reset.", 3)
+        end })
+
         toggles.sessionInfo_Toggle:OnChanged(refreshSessionInfo)
 
         for _, item in ipairs(sessionInfoItems) do
             toggles[item.toggleId]:OnChanged(refreshSessionInfo)
         end
 
-        -- Compact Mode and the separator are read on every update, so they only need the text rebuilt.
-        local function rebuildSessionInfoText()
-            sessionInfo.lastText = nil
-            pcall(updateSessionInfoLabel)
+        -- These change what a line needs to track
+        for _, id in ipairs({ "sessionInfoElapsedMode_Dropdown", "sessionInfoBulletsMode_Dropdown" }) do
+            options[id]:OnChanged(refreshSessionInfo)
         end
 
-        toggles.sessionInfoCompact_Toggle:OnChanged(rebuildSessionInfoText)
-        options.sessionInfoSeparator_Dropdown:OnChanged(rebuildSessionInfoText)
+        -- These are only read when the text is built
+        for _, id in ipairs({
+            "sessionInfoSeparator_Dropdown", "sessionInfoElapsedFormat_Dropdown", "sessionInfoKillsMode_Dropdown",
+            "sessionInfoKDDecimals_Dropdown", "sessionInfoKDMode_Dropdown", "sessionInfoDamageRounding_Dropdown",
+            "sessionInfoMostDamageMode_Dropdown", "sessionInfoMostDamageRounding_Dropdown", "sessionInfoSurvivalMode_Dropdown",
+            "sessionInfoHealthDisplay_Dropdown",
+        }) do
+            options[id]:OnChanged(rebuildSessionInfoText)
+        end
 
-        options.sessionInfoIconPosition_Dropdown:OnChanged(function(position)
-            if sessionInfo.label then
-                pcall(sessionInfo.label.SetIconPosition, sessionInfo.label, position)
-            end
-        end)
+        for _, id in ipairs({
+            "sessionInfoCompact_Toggle", "sessionInfoSyntheticKills_Toggle", "sessionInfoBulletsPellets_Toggle", "sessionInfoHealthAdaptive_Toggle",
+            "sessionInfoFPSAdaptive_Toggle", "sessionInfoFPSCurrent_Toggle", "sessionInfoFPSMax_Toggle", "sessionInfoFPSMin_Toggle",
+            "sessionInfoPingAdaptive_Toggle", "sessionInfoPingCurrent_Toggle", "sessionInfoPingMax_Toggle", "sessionInfoPingMin_Toggle",
+        }) do
+            toggles[id]:OnChanged(rebuildSessionInfoText)
+        end
 
         -- Disable Aura and Emergency Kill call this for every kill they make. It only counts while the Kills line is being tracked.
         utils.sessionInfoSyntheticKill = function()
@@ -11955,6 +12517,7 @@ do
             end
 
             sessionInfo.syntheticKills += 1
+            sessionInfo.lifeSyntheticKills += 1
             table.insert(sessionInfo.syntheticPending, os.clock())
         end
 
