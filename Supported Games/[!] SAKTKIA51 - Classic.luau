@@ -784,46 +784,484 @@ gameTab:AddLabel("Classic Mode: " .. getMode(), true)
 gameTab:AddLabel("Creator ID: " .. game.CreatorId, true)
 gameTab:AddLabel("Creator Type: " .. game.CreatorType.Name, true)
 
-gameTab:AddButton({ Text = "Serverhop",
-    Func = function()
-        local reload
-        window:AddDialog("reloadConfirmation_Dialog", { Title = "Reload", Description = "Would you like to reload the script when you join the new server?", OutsideClickDismiss = true,
-            FooterButtons = {
-                Cancel = { Title = "No", Variant = "Ghost", Order = 1,
-                    Callback = function(self)
-                        reload = false
-                    end
-                },
+-- [Home / Serverhop] Filters, reliable teleport pipeline, and post-join filter check
+do
+    local httpService = game:GetService("HttpService")
 
-                Confirm = { Title = "Yes", Variant = "Primary", Order = 2,
-                    Callback = function(self)
-                        reload = true
-                    end
-                }
-            }
-        })
+    local SCRIPT_PATH = "Celestial/Supported Games/[!] SAKTKIA51 - Classic.luau"
+    local TAG = "[Celestial Serverhop]"
 
-        -- Wait for the user to interact with the dialog
-        repeat task.wait() until typeof(reload) == "boolean"
+    -- How long to wait for the game to actually start the teleport before asking again
+    local MENU_EXIT_WAIT = 15
+    local MENU_EXIT_TRIES = 4
 
-        local requestedMode = getModeRequestName()
+    local serverhopBusy = false
 
-        game:GetService("ReplicatedStorage")["Remote Events"].TeleportToMenu:FireServer()
+    -- Reads/writes executor globals (getgenv()) by key, so the linter does not mistake them for script globals.
+    local shEnv: any = setmetatable({}, {
+        __index = function(_, key) return getgenv()[key] end,
+        __newindex = function(_, key, value) getgenv()[key] = value end,
+    })
 
-        queue_on_teleport(string.format([[
-            repeat task.wait() until game:IsLoaded()
+    -- Runs inside the lobby. Everything is retried because the server silently drops a
+    -- TeleportRequested that arrives before it has finished loading the player's menu data.
+    -- REQUEST and RELOAD_SCRIPT are written in front of this body by buildLobbyScript.
+    local LOBBY_BODY = [==[
+local TAG = "[Celestial Serverhop]"
+local MENU_READY_TIMEOUT = 30
+local ATTEMPT_TIMEOUT = 12
+local MAX_ATTEMPTS = 6
 
-            if %s then
+local function log(...)
+    warn(TAG, ...)
+end
 
-                queue_on_teleport([=[
-                    loadstring(readfile("Celestial/Supported Games/[!] SAKTKIA51 - Classic.luau"))()
-                ]=])
+-- A second copy of this script in the same lobby (an earlier hop that never left) must not run twice.
+local env = getgenv()
+if env.CelestialServerhopLobbyJob == game.JobId then
+    return
+end
+env.CelestialServerhopLobbyJob = game.JobId
+
+if not game:IsLoaded() then
+    game.Loaded:Wait()
+end
+
+local players = game:GetService("Players")
+local replicatedStorage = game:GetService("ReplicatedStorage")
+
+local localPlayer = players.LocalPlayer
+while not localPlayer do
+    task.wait()
+    localPlayer = players.LocalPlayer
+end
+
+local teleportEvents = replicatedStorage:WaitForChild("TeleportEvents", 20)
+local requestEvent = teleportEvents and teleportEvents:WaitForChild("TeleportRequested", 20)
+
+if not requestEvent then
+    log("this is not the main menu (TeleportEvents is missing), nothing to request")
+    return
+end
+
+-- Queue the reload first: even if every request below fails, a manual Play still reloads the script.
+if RELOAD_SCRIPT then
+    local queueFunction = queue_on_teleport or queueonteleport
+    local queued, queueError = pcall(queueFunction, RELOAD_SCRIPT)
+
+    if not queued then
+        log("could not queue the reload script:", queueError)
+    end
+end
+
+-- Menu readiness: the game fires MenuDataLoaded once the player's data is loaded, then fades the black screen out.
+local menuDataLoaded = false
+local menuDataEvent = replicatedStorage:FindFirstChild("MenuDataLoaded")
+
+if menuDataEvent then
+    menuDataEvent.OnClientEvent:Connect(function()
+        menuDataLoaded = true
+    end)
+end
+
+local lastFailure = nil
+local failedEvent = teleportEvents:FindFirstChild("TeleportFailed")
+
+if failedEvent then
+    failedEvent.OnClientEvent:Connect(function(result)
+        lastFailure = { result = result }
+    end)
+end
+
+local function menuLooksReady()
+    local gui = localPlayer:FindFirstChild("PlayerGui")
+    local menu = gui and gui:FindFirstChild("Menu")
+    local main = menu and menu:FindFirstChild("Main")
+
+    if not main then
+        return false
+    end
+
+    local blackScreen = gui:FindFirstChild("BlackScreen")
+    local blackFrame = blackScreen and blackScreen:FindFirstChild("BlackFrame")
+    local loading = main:FindFirstChild("Loading")
+
+    if blackFrame and blackFrame.BackgroundTransparency < 0.99 then
+        return false
+    end
+
+    if loading and loading.TextTransparency < 0.99 then
+        return false
+    end
+
+    return true
+end
+
+local waitStart = os.clock()
+
+while not (menuDataLoaded or menuLooksReady()) and os.clock() - waitStart < MENU_READY_TIMEOUT do
+    task.wait(0.1)
+end
+
+log(string.format("menu ready after %.1fs (data event: %s)", os.clock() - waitStart, tostring(menuDataLoaded)))
+
+-- Give the server a moment to finish registering the player before the first request
+task.wait(1)
+
+for attempt = 1, MAX_ATTEMPTS do
+    lastFailure = nil
+    log("requesting '" .. REQUEST .. "' (attempt " .. attempt .. "/" .. MAX_ATTEMPTS .. ")")
+    requestEvent:FireServer(REQUEST)
+
+    local sentAt = os.clock()
+
+    while not lastFailure and os.clock() - sentAt < ATTEMPT_TIMEOUT do
+        task.wait(0.2)
+    end
+
+    if lastFailure then
+        log("teleport failed:", tostring(lastFailure.result))
+        task.wait(lastFailure.result == Enum.TeleportResult.Flooded and 8 or 3)
+    else
+        log("no teleport started after " .. ATTEMPT_TIMEOUT .. "s, asking again")
+    end
+end
+
+log("gave up asking for a server; press Play manually (the script will still reload)")
+]==]
+
+    -- The script that runs in the NEW game server: restores the filter state and loads Celestial again.
+    local function buildReloadScript(resume)
+        local resumeLiteral = "nil"
+
+        if resume then
+            resumeLiteral = string.format("%q", httpService:JSONEncode(resume))
+        end
+
+        return "if not game:IsLoaded() then game.Loaded:Wait() end\n"
+            .. "getgenv().CelestialServerhopResume = " .. resumeLiteral .. "\n"
+            .. "local ok, err = pcall(function() loadstring(readfile(" .. string.format("%q", SCRIPT_PATH) .. "))() end)\n"
+            .. "if not ok then warn(" .. string.format("%q", TAG) .. ", 'reload failed:', err) end\n"
+    end
+
+    local function buildLobbyScript(requestedMode, reloadScript)
+        return "local REQUEST = " .. string.format("%q", requestedMode) .. "\n"
+            .. "local RELOAD_SCRIPT = " .. (reloadScript and string.format("%q", reloadScript) or "nil") .. "\n"
+            .. LOBBY_BODY
+    end
+
+    -- Queues the lobby script FIRST, then asks the game to send you to the menu (re-asking if it ignores).
+    local function performServerhop(reload: boolean, resume)
+        if serverhopBusy then
+            return false
+        end
+
+        local queueFunction = queue_on_teleport or shEnv.queueonteleport
+        local remoteEvents = game:GetService("ReplicatedStorage"):FindFirstChild("Remote Events")
+        local teleportToMenu = remoteEvents and remoteEvents:FindFirstChild("TeleportToMenu")
+
+        if not queueFunction or not teleportToMenu then
+            notify("Error", "Serverhop failed", "Your executor has no queue_on_teleport, or the game's TeleportToMenu remote is missing.", 8)
+            return false
+        end
+
+        serverhopBusy = true
+
+        local queued, queueError = pcall(queueFunction, buildLobbyScript(getModeRequestName(), reload and buildReloadScript(resume) or nil))
+
+        if not queued then
+            serverhopBusy = false
+            notify("Error", "Serverhop failed", "Could not queue the teleport script: " .. tostring(queueError), 8)
+            return false
+        end
+
+        local jobId = game.JobId
+
+        task.spawn(function()
+            for _ = 1, MENU_EXIT_TRIES do
+                if library.Unloaded or game.JobId ~= jobId then
+                    return
+                end
+
+                teleportToMenu:FireServer()
+                task.wait(MENU_EXIT_WAIT)
             end
 
-            game:GetService("ReplicatedStorage").TeleportEvents.TeleportRequested:FireServer("%s")
-        ]], tostring(reload), requestedMode))
-    end,
-})
+            serverhopBusy = false
+            notify("Error", "Serverhop failed", "The game never teleported you to the main menu. Try again in a moment.", 8)
+        end)
+
+        return true
+    end
+
+    -- ========================================================================
+    -- Filters UI
+    -- ========================================================================
+
+    local filterGroup = tabs.home:AddGroupbox({ Side = "Right", Name = "Serverhop Filters", IconName = assetLib.fetchAsset("Icons/globe.png"), Description = "Only stay in servers that match" })
+
+    filterGroup:AddToggle("serverhopLowPlayers_Toggle", { Text = "Prefer Low-Player Servers", Tooltip = "Serverhop keeps hopping until it lands in a server with at least this many players." })
+
+    local lowPlayersDepbox = filterGroup:AddDependencyBox()
+    lowPlayersDepbox:AddSlider("serverhopMaxPlayers_Slider", { Text = "Max Players", Tooltip = "Servers with more players than this (counting you) are skipped. A server holds 12.", Default = 6, Min = 1, Max = 11 })
+    lowPlayersDepbox:SetupDependencies({ { toggles.serverhopLowPlayers_Toggle, true } })
+
+    filterGroup:AddToggle("serverhopKillerFilter_Toggle", { Text = "Skip Servers With Dead Killers", Tooltip = "Serverhop keeps hopping when the killers you care about are already dead in the server you land in." })
+
+    local killerFilterDepbox = filterGroup:AddDependencyBox()
+    killerFilterDepbox:AddDropdown("serverhopKillers_Dropdown", { Text = "Killers I Care About", Tooltip = "Killers that are not in the server at all are ignored.", Values = killerNames, Multi = true, Searchable = true, AllowNull = true })
+    killerFilterDepbox:AddDropdown("serverhopKillerMode_Dropdown", { Text = "Skip When", Values = { "Any selected is dead", "All selected are dead" }, Default = 1 })
+    killerFilterDepbox:SetupDependencies({ { toggles.serverhopKillerFilter_Toggle, true } })
+
+    filterGroup:AddSlider("serverhopMaxHops_Slider", { Text = "Max Hops", Tooltip = "After this many servers Serverhop stops and stays in the last one, even if it does not match.", Default = 10, Min = 1, Max = 30 })
+
+    -- Collects the active filters into a plain table (also the state that travels to the next server).
+    local function readFilters()
+        local killers = {}
+        local ignoredKillerFilter = false
+
+        if toggles.serverhopKillerFilter_Toggle.Value then
+            for name, enabled in pairs(options.serverhopKillers_Dropdown.Value or {}) do
+                if enabled then
+                    table.insert(killers, name)
+                end
+            end
+
+            table.sort(killers)
+            ignoredKillerFilter = #killers == 0
+        end
+
+        local lowPlayers = toggles.serverhopLowPlayers_Toggle.Value
+
+        if not lowPlayers and #killers == 0 then
+            return nil, ignoredKillerFilter
+        end
+
+        return {
+            attempt = 1,
+            maxAttempts = options.serverhopMaxHops_Slider.Value,
+            lowPlayers = lowPlayers,
+            maxPlayers = options.serverhopMaxPlayers_Slider.Value,
+            killers = killers,
+            killerMode = options.serverhopKillerMode_Dropdown.Value == "All selected are dead" and "all" or "any",
+        }, ignoredKillerFilter
+    end
+
+    -- ========================================================================
+    -- Serverhop button
+    -- ========================================================================
+
+    filterGroup:AddButton({ Text = "Serverhop", Tooltip = "Leaves through the main menu and joins a new server.",
+        Func = function()
+            if serverhopBusy then
+                notify("Warning", "Serverhop", "A Serverhop is already in progress.", 4)
+                return
+            end
+
+            local filters, ignoredKillerFilter = readFilters()
+
+            if ignoredKillerFilter then
+                notify("Warning", "Serverhop filters", "Dead-killer filter is on but no killers are selected, so it was ignored.", 6)
+            end
+
+            local reload = true
+
+            if filters then
+                -- The filters are checked by the script itself once it is inside the new server, so it has to reload.
+                shEnv.CelestialServerhopCancel = false
+                notify("Info", "Filtered Serverhop", "Hopping with filters on. The script will reload in every server it checks.", 6)
+            else
+                serverhopBusy = true
+
+                local choice = nil
+                local dialog = window:AddDialog("reloadConfirmation_Dialog", { Title = "Reload", Description = "Would you like to reload the script when you join the new server?", OutsideClickDismiss = true,
+                    FooterButtons = {
+                        Cancel = { Title = "No", Variant = "Ghost", Order = 1,
+                            Callback = function()
+                                choice = false
+                            end
+                        },
+
+                        Confirm = { Title = "Yes", Variant = "Primary", Order = 2,
+                            Callback = function()
+                                choice = true
+                            end
+                        }
+                    }
+                })
+
+                repeat task.wait() until choice ~= nil or (dialog and dialog.Destroyed) or library.Unloaded
+                serverhopBusy = false
+
+                if choice == nil then
+                    return
+                end
+
+                reload = choice
+            end
+
+            performServerhop(reload, filters)
+        end,
+    })
+
+    filterGroup:AddButton({ Text = "Stop Filtered Serverhop", Tooltip = "Stops a filtered Serverhop after the server it is currently checking.", Func = function()
+        shEnv.CelestialServerhopCancel = true
+        notify("Info", "Serverhop", "Filtered Serverhop will stop after the current server check.", 5)
+    end })
+
+    -- ========================================================================
+    -- Runs in the NEW server when a filtered Serverhop is in progress
+    -- ========================================================================
+
+    -- Waits until the killers have replicated so their health can be trusted.
+    local function waitForKillers()
+        local startedAt = os.clock()
+        local lastCount, stableSince = -1, os.clock()
+
+        while os.clock() - startedAt < 25 do
+            local folder = workspace:FindFirstChild("Killers")
+            local count = 0
+
+            if folder then
+                for _, model in ipairs(folder:GetChildren()) do
+                    if model:FindFirstChildOfClass("Humanoid") then
+                        count += 1
+                    end
+                end
+            end
+
+            if count ~= lastCount then
+                lastCount = count
+                stableSince = os.clock()
+            end
+
+            if count > 0 and os.clock() - stableSince >= 1.5 then
+                return true
+            end
+
+            task.wait(0.25)
+        end
+
+        return false
+    end
+
+    -- Returns the reasons this server does not match (empty = keep it) and a short description of it.
+    local function checkServer(cfg, killersKnown)
+        local reasons = {}
+        local playerCount = #players:GetPlayers()
+
+        if cfg.lowPlayers and playerCount > cfg.maxPlayers then
+            table.insert(reasons, playerCount .. " players (max " .. cfg.maxPlayers .. ")")
+        end
+
+        if #cfg.killers > 0 and killersKnown then
+            local folder = workspace:FindFirstChild("Killers")
+            local judged, dead = 0, {}
+
+            for _, name in ipairs(cfg.killers) do
+                local model = folder and folder:FindFirstChild(name)
+                local humanoid = model and model:FindFirstChildOfClass("Humanoid")
+
+                if humanoid then
+                    judged += 1
+
+                    if humanoid.Health <= 0 then
+                        table.insert(dead, name)
+                    end
+                end
+            end
+
+            local skip = false
+
+            if cfg.killerMode == "all" then
+                skip = judged > 0 and #dead == judged
+            else
+                skip = #dead > 0
+            end
+
+            if skip then
+                table.insert(reasons, table.concat(dead, ", ") .. " already dead")
+            end
+        end
+
+        return reasons, playerCount .. " players"
+    end
+
+    utils.serverhopResume = function()
+        local resumeJson = shEnv.CelestialServerhopResume
+        shEnv.CelestialServerhopResume = nil
+
+        if type(resumeJson) ~= "string" then
+            return
+        end
+
+        local decoded, cfg = pcall(function()
+            return httpService:JSONDecode(resumeJson)
+        end)
+
+        if not decoded or type(cfg) ~= "table" or type(cfg.killers) ~= "table" then
+            warn(TAG, "ignored an unreadable resume state")
+            return
+        end
+
+        local progress = cfg.attempt .. "/" .. cfg.maxAttempts
+        notify("Info", "Filtered Serverhop", "Checking server " .. progress .. "...", 4)
+
+        local killersKnown = true
+
+        if #cfg.killers > 0 then
+            killersKnown = waitForKillers()
+
+            if not killersKnown then
+                warn(TAG, "killers never replicated, skipping the dead-killer check for this server")
+            end
+        else
+            task.wait(1.5)
+        end
+
+        if library.Unloaded then
+            return
+        end
+
+        if shEnv.CelestialServerhopCancel then
+            shEnv.CelestialServerhopCancel = false
+            notify("Info", "Filtered Serverhop", "Stopped. Staying in this server.", 6)
+            return
+        end
+
+        local reasons, description = checkServer(cfg, killersKnown)
+
+        if #reasons == 0 then
+            notify("Success", "Filtered Serverhop", "Staying here (" .. description .. ") after " .. cfg.attempt .. " server" .. (cfg.attempt == 1 and "" or "s") .. ".", 8)
+            return
+        end
+
+        local reasonText = table.concat(reasons, "; ")
+
+        if cfg.attempt >= cfg.maxAttempts then
+            notify("Warning", "Filtered Serverhop", "Hop limit reached, staying here. This server: " .. reasonText .. ".", 10)
+            return
+        end
+
+        notify("Warning", "Skipping server " .. progress, reasonText .. ". Hopping again...", 5)
+        cfg.attempt += 1
+
+        -- A short pause so Stop Filtered Serverhop can still be pressed
+        task.wait(1.5)
+
+        if shEnv.CelestialServerhopCancel then
+            shEnv.CelestialServerhopCancel = false
+            notify("Info", "Filtered Serverhop", "Stopped. Staying in this server.", 6)
+            return
+        end
+
+        performServerhop(true, cfg)
+    end
+
+    table.insert(teardownTasks, function()
+        utils.serverhopResume = nil
+    end)
+end
 
 -- ============================================================================
 -- 08 | TAB: UTILITY
@@ -12936,3 +13374,8 @@ saveManager:SetSubFolder("Classic Mode")
 saveManager:BuildConfigSection(tabs.uiSettings, "folder-cog")
 themeManager:ApplyToTab(tabs.uiSettings, "paintbrush")
 saveManager:LoadAutoloadConfig()
+
+-- [Home / Serverhop] Continue a filtered Serverhop now that the whole UI exists
+if utils.serverhopResume then
+    task.spawn(utils.serverhopResume)
+end
