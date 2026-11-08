@@ -80,7 +80,7 @@ local killerNames = {
 local cancelPAPQueue = false
 local wasTeleporterBusy = false
 
-local rainbowConnections = {}
+local rainbowConnections: { [string]: any } = {}
 -- Every rainbow color picker follows this ONE hue (advanced once per frame), so rainbow colors can never drift apart.
 local rainbowState = { hue = 0, active = {} }
 
@@ -1422,7 +1422,7 @@ do
     local noclip = {
         Enabled = false,
         Connection = nil,
-        Original = setmetatable({}, { __mode = "k" }), -- part -> CanCollide before noclip first touched it
+        Original = setmetatable({}, { __mode = "k" }) :: any, -- part -> CanCollide before noclip first touched it
     }
 
     function noclip.step()
@@ -2460,8 +2460,8 @@ do
 
     local guard = {
         Token = 0, -- incremented on every start/stop so a stale bounds measurement can tell it was cancelled
-        Heartbeat = nil,
-        CharacterAdded = nil,
+        Heartbeat = nil :: RBXScriptConnection?,
+        CharacterAdded = nil :: RBXScriptConnection?,
         SolidElapsed = 0,
         InsideSolid = false, -- result of the last inside-a-wall check
         Bounds = nil, -- { Min = Vector3, Max = Vector3, VoidY = number }
@@ -3920,7 +3920,7 @@ local function requestSilentAimScan(delaySeconds)
     end)
 end
 
-local function watchSilentAimContainer(container)
+local function watchSilentAimContainer(container: Instance?)
     if container then
         table.insert(silentAimConnections, container.ChildAdded:Connect(function(child)
             if child:IsA("Tool") then
@@ -5693,7 +5693,7 @@ do
 
     local acidModels = {}               -- [Model] = true
     local hazards = {}                  -- [BasePart] = { points = { Vector3 }, landed = bool, resting = bool }
-    local connections = {}
+    local connections: { RBXScriptConnection } = {}
     local active = false
     local lastDodge = -math.huge
     local lastWarn = -math.huge
@@ -6115,7 +6115,7 @@ do
     end
 
     -- The discs of a new spit are already flying when it arrives, so it is dodged right away instead of on the next Heartbeat
-    local function onChildAdded(child)
+    local function onChildAdded(child: any)
         if active and considerModel(child, true) then
             protectedStep()
         end
@@ -6172,7 +6172,7 @@ do
         hookInstalled = false,
         warned = false,
         loopId = 0,
-        connections = {},
+        connections = {} :: { RBXScriptConnection },
         mutedParts = {}, -- [BasePart] = true: CanTouch was switched off by Godmode
         stashedRemotes = {}, -- [RemoteEvent] = original parent (executors that can not hook __namecall)
     }
@@ -6251,7 +6251,7 @@ do
         end
     end
 
-    local function stripKillerHitbox(instance)
+    local function stripKillerHitbox(instance: any)
         if instance:IsA("TouchTransmitter") and not isOwnCharacter(instance) then
             muteTouchHitbox(instance.Parent)
         end
@@ -6416,7 +6416,8 @@ do
         massDirty = false,
         token = nil,
         folder = nil,
-        renderConnection = nil,
+        renderConnection = nil :: RBXScriptConnection?,
+        physicsConnection = nil :: RBXScriptConnection?,
         excluded = {},
         lastError = nil,
         lastRenderError = nil,
@@ -7197,7 +7198,7 @@ do
 
     -- boxCache[killer] = { size = Vector3, offset = Vector3 }. size is the fixed box size, offset is the box center
     -- relative to the killer's HumanoidRootPart.
-    local boxCache: { [Instance]: any } = setmetatable({}, { __mode = "k" })
+    local boxCache: { [Instance]: any } = setmetatable({}, { __mode = "k" }) :: any
 
     local function destroyDrawing(drawing: any)
         if drawing then
@@ -7423,12 +7424,14 @@ do
 
         if need3D then
             local half = size / 2
-            points = {}
+            local projected: { any } = {}
 
             for index, corner in ipairs(boxCorners) do
                 local screen = cam:WorldToViewportPoint(boxCFrame:PointToWorldSpace(corner * half))
-                points[index] = screen.Z > 0 and Vector2.new(screen.X, screen.Y) or false
+                projected[index] = screen.Z > 0 and Vector2.new(screen.X, screen.Y) or false
             end
+
+            points = projected
         end
 
         return {
@@ -7619,7 +7622,7 @@ end)
 
 -- [Visuals / Anti-effects] Ink and popup handling
 do
-    local connections = {}
+    local connections: { RBXScriptConnection } = {}
     local silencedGuis = {} -- [ScreenGui] = true: Ink screens switched off by Anti Ink
     local active = false
 
@@ -7642,7 +7645,7 @@ do
         pcall(event.Destroy, event)
     end
 
-    local function handleJack(jack)
+    local function handleJack(jack: any)
         if jack.Name ~= "Eyeless Jack" then
             return
         end
@@ -7657,7 +7660,7 @@ do
         end)
     end
 
-    local function silenceInkGui(gui)
+    local function silenceInkGui(gui: any)
         if gui.Name == "Ink" and gui:IsA("ScreenGui") then
             silencedGuis[gui] = true
             gui.Enabled = false
@@ -10051,7 +10054,7 @@ do
         table.insert(morphAppearanceConnections, inst:GetPropertyChangedSignal("Transparency"):Connect(enforce))
     end
 
-    local function refreshMorphAppearance(char)
+    local function refreshMorphAppearance(char: any)
         task.spawn(function()
             -- The server builds the morph after the button is touched, so wait for it to show up.
             -- Without a morph there is nothing to swap, so the normal body is left untouched.
@@ -10147,7 +10150,7 @@ do
         end
     end
 
-    local function watchDeath(char)
+    local function watchDeath(char: any)
         task.spawn(function()
             local humanoid = char:WaitForChild("Humanoid", 10)
             if humanoid then
@@ -10246,7 +10249,7 @@ do
         return typeof(value) == "Instance" and (value == localplayer or value.Name == localplayer.Name)
     end
 
-    local function pickupStolenWeapon(model)
+    local function pickupStolenWeapon(model: any)
         if pickupTracked[model] then
             return
         end
@@ -10719,7 +10722,7 @@ task.spawn(function()
     local skinUtilities: any, skinList: any
     local loaded, loadError = pcall(function()
         skinUtilities = require(replicatedStorage:WaitForChild("Utilities", 10))
-        skinList = require(replicatedStorage:WaitForChild("Constants", 10):WaitForChild("Skins", 10)).SKINS
+        skinList = (require(replicatedStorage:WaitForChild("Constants", 10):WaitForChild("Skins", 10)) :: any).SKINS
     end)
 
     if not loaded or type(skinList) ~= "table" or type(skinUtilities.apply_skin) ~= "function" then
@@ -11328,7 +11331,7 @@ do
             label = nil,
             loopToken = nil,
             lastText = nil,
-            needs = {},
+            needs = {} :: { [string]: boolean },
 
             -- Trackers
             renderConnection = nil,
@@ -11603,7 +11606,7 @@ do
             sessionInfo.characterTracker = tracker
             sessionInfo.characterSignature = (needs.deaths and "d" or "") .. (needs.damage and "a" or "") .. (needs.survival and "s" or "")
 
-            local function attach(character, newLife)
+            local function attach(character: any, newLife: boolean?)
                 for _, connection in ipairs(tracker.humanoidConnections) do
                     connection:Disconnect()
                 end
