@@ -12,7 +12,7 @@
     08. Utility: teleport, healing, sounds, and interactions
     08b. Waypoints: custom saved positions with one-click teleport and file persistence
     09. Player: movement, phase, speed handling, freecam, and backtrack
-    10. Exploits: Pack-a-Punch, aim controls, collection, killer controls, and Hitbox Expander
+    10. Exploits: Pack-a-Punch, aim controls, Triggerbot, collection, killer controls, and Hitbox Expander
     11. Visuals: ESP, FOV, fog, anti-effect handlers, scope overlay removal, Hitbox Visualizer, Killer Portrait, and grenade trajectory preview
     12. World: environmental settings, door noclip, and alien / kill-part controls
     13. Weapons: inventory, Pack-a-Punch queue, defense, gun options, and skin changer
@@ -218,7 +218,7 @@ ui.player = {
 }
 
 ui.exploits = {
-    aim = tabs.exploits:AddGroupbox({ Side = "Left", Name = "Aim", IconName = assetLib.fetchAsset("Icons/crosshair.png"), Description = "Aimbot, silent aim, and hitboxes" }),
+    aim = tabs.exploits:AddGroupbox({ Side = "Left", Name = "Aim", IconName = assetLib.fetchAsset("Icons/crosshair.png"), Description = "Aimbot, silent aim, triggerbot, and hitboxes" }),
     killers = tabs.exploits:AddGroupbox({ Side = "Right", Name = "Killers", IconName = assetLib.fetchAsset("Icons/skull.png"), Description = "Aura, godmode, and Slenderman safety" }),
 }
 
@@ -5010,6 +5010,380 @@ toggles.enableAimbot_Toggle:OnChanged(function(state)
         end
     end
 end)
+
+-- [Exploits / Triggerbot] Auto-fire while the aim point is over a Killer
+do
+    local triggerbotToggle = ui.exploits.aim:AddToggle("enableTriggerbot_Toggle", { Text = "Enable Triggerbot", Tooltip = "Fires automatically while your aim is on a Killer." })
+    triggerbotToggle:AddKeyPicker("triggerbot_KeyPicker", { Text = "Triggerbot", Default = "None", Mode = "Always", NoUI = false })
+
+    local triggerbotDepbox = ui.exploits.aim:AddDependencyBox()
+    triggerbotDepbox:AddDropdown("triggerbotFireMode_Dropdown", { Text = "Fire Mode", Tooltip = "Click: clicks the mouse repeatedly (semi-auto weapons).\nHold: keeps the mouse button down while on target (automatic weapons).", Values = { "Click", "Hold" }, Default = 1 })
+    triggerbotDepbox:AddDropdown("triggerbotAimSource_Dropdown", { Text = "Aim Source", Tooltip = "Where the check ray starts on screen. Use Screen Center for third person / shift lock.", Values = { "Cursor", "Screen Center" }, Default = 1 })
+    triggerbotDepbox:AddDropdown("triggerbotHitPart_Dropdown", { Text = "Target Part", Tooltip = "Only fire when the aim point is on this part of the Killer.", Values = { "Any", "Head", "HumanoidRootPart" }, Default = 1 })
+    triggerbotDepbox:AddDropdown("triggerbotExcludedKillers_Dropdown", { Text = "Excluded Killers", Values = killerNames, Default = { "Jane" }, Multi = true, Searchable = true })
+    triggerbotDepbox:AddSlider("triggerbotRange_Slider", { Text = "Range", Tooltip = "Killers farther than this distance will not trigger.", Default = 200, Min = 30, Max = 2000, Suffix = " Studs", Rounding = 0 })
+    triggerbotDepbox:AddSlider("triggerbotTolerance_Slider", { Text = "Tolerance", Tooltip = "Also checks points this many pixels around the aim point, so you do not have to be pixel perfect. 0 = exact.", Default = 5, Min = 0, Max = 50, Suffix = " px", Rounding = 0 })
+    triggerbotDepbox:AddSlider("triggerbotDelay_Slider", { Text = "Reaction Delay", Tooltip = "How long the aim point must stay on a Killer before firing.", Default = 0, Min = 0, Max = 500, Suffix = " ms", Rounding = 0 })
+    triggerbotDepbox:AddSlider("triggerbotJitter_Slider", { Text = "Delay Randomness", Tooltip = "Adds a random extra 0 - X ms to the reaction delay for every new target.", Default = 0, Min = 0, Max = 250, Suffix = " ms", Rounding = 0 })
+    triggerbotDepbox:AddSlider("triggerbotInterval_Slider", { Text = "Click Interval", Tooltip = "Time between clicks in Click mode.", Default = 80, Min = 10, Max = 1000, Suffix = " ms", Rounding = 0 })
+    triggerbotDepbox:AddToggle("triggerbotVisibility_Toggle", { Text = "Visibility Check", Tooltip = "Only fire when nothing solid is between you and the Killer.", Default = true })
+    triggerbotDepbox:AddToggle("triggerbotRequireTool_Toggle", { Text = "Require Weapon", Tooltip = "Only fire while you are holding a weapon.", Default = true })
+    triggerbotDepbox:AddToggle("triggerbotExcludeProjectiles_Toggle", { Text = "Exclude Projectiles", Tooltip = "Does not fire while you hold a projectile weapon: the Crossbow and the M16A2/M203 in grenade mode.", Default = true })
+    triggerbotDepbox:AddDivider()
+
+    triggerbotDepbox:SetupDependencies({ { toggles.enableTriggerbot_Toggle, true } })
+
+    local virtualInput = nil
+    pcall(function()
+        virtualInput = game:GetService("VirtualInputManager")
+    end)
+
+    local triggerbot = {
+        connection = nil,
+        holding = false,
+        lastClick = 0,
+        target = nil,
+        targetSince = 0,
+        reaction = 0,
+        lastError = nil,
+        excluded = {},
+        params = RaycastParams.new(),
+    }
+
+    local sampleDirections = { Vector2.new(1, 0), Vector2.new(-1, 0), Vector2.new(0, 1), Vector2.new(0, -1) }
+
+    -- Mouse output: executor functions first, VirtualInputManager as the fallback.
+    local function pressMouse()
+        if type(mouse1press) == "function" then
+            mouse1press()
+        elseif virtualInput then
+            local position = uis:GetMouseLocation()
+            virtualInput:SendMouseButtonEvent(position.X, position.Y, 0, true, game, 0)
+        end
+    end
+
+    local function releaseMouse()
+        if type(mouse1release) == "function" then
+            mouse1release()
+        elseif virtualInput then
+            local position = uis:GetMouseLocation()
+            virtualInput:SendMouseButtonEvent(position.X, position.Y, 0, false, game, 0)
+        end
+    end
+
+    local function clickMouse()
+        if type(mouse1click) == "function" then
+            mouse1click()
+        else
+            pressMouse()
+            releaseMouse()
+        end
+    end
+
+    local function releaseHeld()
+        if triggerbot.holding then
+            triggerbot.holding = false
+            pcall(releaseMouse)
+        end
+    end
+
+    local function readExcluded(value)
+        table.clear(triggerbot.excluded)
+
+        if type(value) == "table" then
+            for name, enabled in pairs(value) do
+                if enabled then
+                    triggerbot.excluded[name] = true
+                end
+            end
+        end
+    end
+
+    local function getKillerFromPart(part)
+        local current = part
+
+        while current do
+            if current.Parent == killersFolder then
+                return current
+            end
+
+            current = current.Parent
+        end
+
+        return nil
+    end
+
+    -- Held tools with a slow, arcing or delayed shot. Names are matched as substrings, so PAP variants are covered too.
+    local projectileToolNames = { "Crossbow" }
+    local launcherToolName = "M16A2/M203"
+
+    -- True while the equipped weapon fires projectiles: any tool in projectileToolNames, or the M203 in grenade mode.
+    local function isProjectileWeaponHeld(character)
+        local tool = character:FindFirstChildOfClass("Tool")
+
+        if not tool then
+            return false
+        end
+
+        for _, name in ipairs(projectileToolNames) do
+            if string.find(tool.Name, name, 1, true) then
+                return true
+            end
+        end
+
+        if string.find(tool.Name, launcherToolName, 1, true) then
+            local getActiveLauncher = utils.getActiveGrenadeLauncher
+
+            if type(getActiveLauncher) == "function" then
+                return getActiveLauncher(character) ~= nil
+            end
+
+            -- Fallback: the crosshair shows a grenade icon in grenade mode.
+            local mouseGui = localplayer.PlayerGui:FindFirstChild("Mouse")
+            local icon = mouseGui and mouseGui:FindFirstChild("Grenade", true)
+
+            return icon ~= nil and icon.Visible == true
+        end
+
+        return false
+    end
+
+    -- True while the keybind (if any), menu state, health and weapon requirements allow firing.
+    local function canFire()
+        if library.Unloaded or library.Toggled or uis:GetFocusedTextBox() then
+            return false
+        end
+
+        local keypicker = options.triggerbot_KeyPicker
+
+        if keypicker and not keypicker:GetState() then
+            return false
+        end
+
+        local character = localplayer.Character
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+
+        if not humanoid or humanoid.Health <= 0 then
+            return false
+        end
+
+        if toggles.triggerbotRequireTool_Toggle.Value and not character:FindFirstChildOfClass("Tool") then
+            return false
+        end
+
+        if toggles.triggerbotExcludeProjectiles_Toggle.Value and isProjectileWeaponHeld(character) then
+            return false
+        end
+
+        return true
+    end
+
+    -- Casts one ray through a screen point and returns the Killer model it lands on (or nil).
+    local function castForKiller(cam, character, hrp, screenPoint, range, partFilter, visibilityCheck)
+        local ray = cam:ViewportPointToRay(screenPoint.X, screenPoint.Y)
+        local length = range + (cam.CFrame.Position - hrp.Position).Magnitude
+        local params = triggerbot.params
+
+        if visibilityCheck then
+            -- Solid geometry blocks the shot; invisible parts are skipped so they cannot hide a Killer.
+            local filter = { character, cam }
+            params.FilterType = Enum.RaycastFilterType.Exclude
+            params.FilterDescendantsInstances = filter
+
+            for _ = 1, 6 do
+                local result = workspace:Raycast(ray.Origin, ray.Direction * length, params)
+
+                if not result then
+                    return nil
+                end
+
+                local instance = result.Instance
+                local model = getKillerFromPart(instance)
+
+                if not model and instance.Transparency >= 0.95 then
+                    table.insert(filter, instance)
+                    params.FilterDescendantsInstances = filter
+                else
+                    if not model or triggerbot.excluded[model.Name] or not isKillerAlive(model) then
+                        return nil
+                    end
+
+                    if partFilter ~= "Any" and instance.Name ~= partFilter then
+                        return nil
+                    end
+
+                    if (hrp.Position - result.Position).Magnitude > range then
+                        return nil
+                    end
+
+                    return model
+                end
+            end
+
+            return nil
+        end
+
+        -- Visibility check off: only Killer parts are considered, so walls never block the ray.
+        params.FilterType = Enum.RaycastFilterType.Include
+        params.FilterDescendantsInstances = { killersFolder }
+
+        local result = workspace:Raycast(ray.Origin, ray.Direction * length, params)
+
+        if not result then
+            return nil
+        end
+
+        local instance = result.Instance
+        local model = getKillerFromPart(instance)
+
+        if not model or triggerbot.excluded[model.Name] or not isKillerAlive(model) then
+            return nil
+        end
+
+        if partFilter ~= "Any" and instance.Name ~= partFilter then
+            return nil
+        end
+
+        if (hrp.Position - result.Position).Magnitude > range then
+            return nil
+        end
+
+        return model
+    end
+
+    local function findTarget()
+        local cam = workspace.CurrentCamera
+        local character = localplayer.Character
+        local hrp = character and character:FindFirstChild("HumanoidRootPart")
+
+        if not cam or not hrp or not killersFolder then
+            return nil
+        end
+
+        local range = options.triggerbotRange_Slider.Value
+        local tolerance = options.triggerbotTolerance_Slider.Value
+        local partFilter = options.triggerbotHitPart_Dropdown.Value
+        local visibilityCheck = toggles.triggerbotVisibility_Toggle.Value
+
+        local origin
+        if options.triggerbotAimSource_Dropdown.Value == "Screen Center" then
+            local size = cam.ViewportSize
+            origin = Vector2.new(size.X / 2, size.Y / 2)
+        else
+            origin = uis:GetMouseLocation()
+        end
+
+        local model = castForKiller(cam, character, hrp, origin, range, partFilter, visibilityCheck)
+
+        if model or tolerance <= 0 then
+            return model
+        end
+
+        for _, direction in ipairs(sampleDirections) do
+            model = castForKiller(cam, character, hrp, origin + direction * tolerance, range, partFilter, visibilityCheck)
+
+            if model then
+                return model
+            end
+        end
+
+        return nil
+    end
+
+    local function step()
+        if not canFire() then
+            triggerbot.target = nil
+            releaseHeld()
+            return
+        end
+
+        local model = findTarget()
+
+        if not model then
+            triggerbot.target = nil
+            releaseHeld()
+            return
+        end
+
+        local now = os.clock()
+
+        if triggerbot.target ~= model then
+            triggerbot.target = model
+            triggerbot.targetSince = now
+
+            local delay = options.triggerbotDelay_Slider.Value
+            local jitter = options.triggerbotJitter_Slider.Value
+            triggerbot.reaction = (delay + (jitter > 0 and math.random() * jitter or 0)) / 1000
+        end
+
+        if now - triggerbot.targetSince < triggerbot.reaction then
+            return
+        end
+
+        if options.triggerbotFireMode_Dropdown.Value == "Hold" then
+            if not triggerbot.holding then
+                triggerbot.holding = true
+                pressMouse()
+            end
+        else
+            releaseHeld()
+
+            if now - triggerbot.lastClick >= options.triggerbotInterval_Slider.Value / 1000 then
+                triggerbot.lastClick = now
+                clickMouse()
+            end
+        end
+    end
+
+    local function stopTriggerbot()
+        if triggerbot.connection then
+            triggerbot.connection:Disconnect()
+            triggerbot.connection = nil
+        end
+
+        triggerbot.target = nil
+        releaseHeld()
+    end
+
+    toggles.enableTriggerbot_Toggle:OnChanged(function(enabled)
+        stopTriggerbot()
+
+        if not enabled then
+            return
+        end
+
+        if type(mouse1click) ~= "function" and type(mouse1press) ~= "function" and not virtualInput then
+            notify("Error", "Triggerbot unavailable", "Your executor has no mouse input functions (mouse1click / mouse1press).", 7)
+            return
+        end
+
+        triggerbot.connection = runService.RenderStepped:Connect(function()
+            local success, err = pcall(step)
+
+            if not success and err ~= triggerbot.lastError then
+                triggerbot.lastError = err
+                warn("[Triggerbot] " .. tostring(err))
+            end
+        end)
+    end)
+
+    -- Click Interval only applies in Click mode, so it is hidden in Hold mode
+    local function applyFireMode(value)
+        options.triggerbotInterval_Slider:SetVisible(value ~= "Hold")
+
+        if value ~= "Hold" then
+            releaseHeld()
+        end
+    end
+
+    options.triggerbotFireMode_Dropdown:OnChanged(applyFireMode)
+    applyFireMode(options.triggerbotFireMode_Dropdown.Value)
+
+    readExcluded(options.triggerbotExcludedKillers_Dropdown.Value)
+    options.triggerbotExcludedKillers_Dropdown:OnChanged(readExcluded)
+
+    table.insert(teardownTasks, stopTriggerbot)
+end
 
 -- [Exploits / Collection] Recognized ingredient names
 local collectibles = {
@@ -10015,6 +10389,8 @@ do
             return nil
         end
 
+        utils.getActiveGrenadeLauncher = getActiveLauncher -- Returns the tool while the M203 is active.
+
         -- Weapon.fire: the grenade leaves from the Aim part while scoped (if the tool has one), otherwise from Flash.
         local function getMuzzlePart(tool, scoped)
             local flash = tool:FindFirstChild("Flash")
@@ -10456,6 +10832,10 @@ do
         end)
 
         table.insert(teardownTasks, stopPreview)
+
+        table.insert(teardownTasks, function()
+            utils.getActiveGrenadeLauncher = nil
+        end)
     end
 
     buildGrenadeTrajectory()
