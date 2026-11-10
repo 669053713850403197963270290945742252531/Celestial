@@ -525,7 +525,7 @@ utils.runPAPTeleport = function(weaponName, cancelCheck)
     local maxAttempts = 8
     local confirmTimeout = 2.5 -- seconds to wait for the teleporter to react to one prompt fire
     local busyTimeout = 120 -- seconds to wait for another player's teleport to finish
-    local arrivalTimeout = 15 -- seconds to wait for arriving in the punch room once inside
+    local arrivalTimeout = 15 -- seconds to wait for arriving in the bedroom once inside
 
     local standCFrame = CFrame.new(110.864708, 313.499969, 72.9767151)
     local insideCFrame = CFrame.new(111.216148, 315.700012, 41.9078827)
@@ -735,7 +735,7 @@ utils.runPAPTeleport = function(weaponName, cancelCheck)
                 return false, arrivalReason
             end
 
-            setStatus("Retrying..", "Did not reach the punch room. Restarting the teleport...")
+            setStatus("Retrying..", "Did not reach the bedroom. Restarting the teleport...")
         end
 
         return false, "arrival"
@@ -4071,7 +4071,7 @@ local function singlePAP(weaponName)
         return false
     end
 
-    -- Teleport to the control panel, activate the teleporter (with retries) and validate the punch room
+    -- Teleport to the control panel, activate the teleporter (with retries) and validate the bedroom
 
     freeze(true)
 
@@ -4090,7 +4090,7 @@ local function singlePAP(weaponName)
         elseif failReason == "busy" then
             notify("Error", "Teleporter busy", "The teleporter stayed in use by another player. Please try again later.", 10)
         elseif failReason == "arrival" then
-            notify("Error", "Teleport failed", "You did not reach the punch room. Please try again.", 10)
+            notify("Error", "Teleport failed", "You did not reach the bedroom. Please try again.", 10)
         elseif failReason == "error" then
             notify("Error", "Teleport failed", "Something went wrong while using the teleporter.", 15)
         end
