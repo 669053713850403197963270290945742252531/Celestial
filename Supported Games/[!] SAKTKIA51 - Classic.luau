@@ -10,6 +10,7 @@
     06. Shared helpers
     07. Home: player, game, and whitelist panels
     08. Utility: teleport, healing, sounds, and interactions
+    08b. Waypoints: custom saved positions with one-click teleport and file persistence
     09. Player: movement, phase, speed handling, freecam, and backtrack
     10. Exploits: Pack-a-Punch, aim controls, collection, killer controls, and Hitbox Expander
     11. Visuals: ESP, FOV, fog, anti-effect handlers, scope overlay removal, Hitbox Visualizer, Killer Portrait, and grenade trajectory preview
@@ -183,6 +184,7 @@ library.KeybindFrame.Visible = window.keybindFrameEnabled
 local tabs = {
     home = window:AddTab("Home", assetLib.fetchAsset("Icons/house.png"), "Player info, game info, and whitelist"),
     utils = window:AddTab("Utility", assetLib.fetchAsset("Icons/wrench.png"), "Teleports, healing, and interactions"),
+    waypoints = window:AddTab("Waypoints", assetLib.fetchAsset("Icons/map-pin.png"), "Save your own positions and teleport to them"),
     player = window:AddTab("Player", assetLib.fetchAsset("Icons/circle-user-round.png"), "Movement, noclip, phase, camera, and safety"),
     exploits = window:AddTab("Exploits", assetLib.fetchAsset("Icons/bug.png"), "Aim, hitboxes, and killer controls"),
     visuals = window:AddTab("Visuals", assetLib.fetchAsset("Icons/eye.png"), "ESP, FOV, effects, hitboxes, and trajectory preview"),
@@ -201,6 +203,11 @@ ui.utility = {
     teleport = tabs.utils:AddGroupbox({ Side = "Left", Name = "Teleport", IconName = assetLib.fetchAsset("Icons/map-pin.png"), Description = "Map locations and camera spots" }),
     interaction = tabs.utils:AddGroupbox({ Side = "Left", Name = "Interaction", IconName = assetLib.fetchAsset("Icons/mouse-pointer-click.png"), Description = "Prompts and doors" }),
     healing = tabs.utils:AddGroupbox({ Side = "Right", Name = "Healing", IconName = assetLib.fetchAsset("Icons/heart-pulse.png"), Description = "Drinks and refills" }),
+}
+
+ui.waypoints = {
+    create = tabs.waypoints:AddGroupbox({ Side = "Left", Name = "Create Waypoint", IconName = assetLib.fetchAsset("Icons/crosshair.png"), Description = "Name a spot and save its position" }),
+    list = tabs.waypoints:AddGroupbox({ Side = "Right", Name = "Saved Waypoints", IconName = assetLib.fetchAsset("Icons/map-pin.png"), Description = "Teleport to or delete your spots" }),
 }
 
 ui.player = {
@@ -1845,6 +1852,281 @@ end
 
 toggles.autoOpenDoors_Toggle:OnChanged(updateDoorLoop)
 toggles.autoCloseDoors_Toggle:OnChanged(updateDoorLoop)
+
+-- ============================================================================
+-- 08b | TAB: TELEPORTS
+-- ============================================================================
+
+-- Custom teleports are stored as plain positions (Vector3), never as CFrames, in one JSON file
+do
+    local httpService = game:GetService("HttpService")
+
+    local teleportsFolder = "Celestial ScriptHub/SAKTKIA51"
+    local teleportsFile = teleportsFolder .. "/Waypoints.json"
+    local maxNameLength = 32
+
+    -- Every entry is { name = string, position = Vector3, button = Button }
+    local entries = {}
+    local nameInput
+    local positionInput
+    local emptyLabel
+
+    -- [Waypoints / Formatting] Position text and parsing
+    local function formatNumber(value: number): string
+        if math.abs(value) < 0.0005 then
+            return "0"
+        end
+
+        -- Up to three decimals, without trailing zeros ("12.500" -> "12.5", "40.000" -> "40")
+        return (string.format("%.3f", value):gsub("%.?0+$", ""))
+    end
+
+    local function formatPosition(position: Vector3): string
+        return formatNumber(position.X) .. ", " .. formatNumber(position.Y) .. ", " .. formatNumber(position.Z)
+    end
+
+    local function parsePosition(text: string): (Vector3?, string?)
+        -- A pasted "Vector3.new(1, 2, 3)" works the same as "1, 2, 3"
+        local cleaned = string.gsub(text, "[Vv]ector3%.new", "")
+        local numbers = {}
+
+        for token in string.gmatch(cleaned, "[^%s,;%(%)%[%]{}]+") do
+            local number = tonumber(token)
+
+            if number == nil or number ~= number or math.abs(number) == math.huge then
+                return nil, utils.bold(token) .. " is not a valid number."
+            end
+
+            table.insert(numbers, number)
+        end
+
+        if #numbers == 0 then
+            return nil, "Set a position first: press " .. utils.bold("Use Current Position") .. " or type X, Y, Z."
+        end
+
+        if #numbers ~= 3 then
+            return nil, "A position needs exactly three numbers (X, Y, Z), like 120.5, 313.5, -40."
+        end
+
+        return Vector3.new(numbers[1], numbers[2], numbers[3])
+    end
+
+    -- [Waypoints / Storage] JSON file read and write
+    local function readSavedTeleports()
+        local saved = {}
+
+        if typeof(isfile) ~= "function" or typeof(readfile) ~= "function" or not isfile(teleportsFile) then
+            return saved
+        end
+
+        local readOk, raw = pcall(readfile, teleportsFile)
+
+        if not readOk then
+            warn("[Waypoints] Could not read " .. teleportsFile .. ": " .. tostring(raw))
+            return saved
+        end
+
+        local decodeOk, decoded = pcall(httpService.JSONDecode, httpService, raw)
+
+        if not decodeOk or typeof(decoded) ~= "table" or typeof(decoded.waypoints) ~= "table" then
+            -- Keep the unreadable file as a backup so the next save cannot silently overwrite it
+            if typeof(writefile) == "function" then
+                pcall(writefile, teleportsFile .. ".bak", raw)
+            end
+
+            notify("Warning", "Waypoints not loaded", "The saved waypoints file could not be read. A copy was kept as " .. utils.bold("Waypoints.json.bak") .. ".", 10)
+            return saved
+        end
+
+        for _, item in ipairs(decoded.waypoints) do
+            if typeof(item) == "table" and typeof(item.name) == "string" and item.name ~= ""
+                and typeof(item.x) == "number" and typeof(item.y) == "number" and typeof(item.z) == "number" then
+                table.insert(saved, { name = item.name, position = Vector3.new(item.x, item.y, item.z) })
+            end
+        end
+
+        return saved
+    end
+
+    local function writeSavedTeleports(): boolean
+        if typeof(writefile) ~= "function" then
+            return false
+        end
+
+        local data = { version = 1, waypoints = {} }
+
+        for _, entry in ipairs(entries) do
+            table.insert(data.waypoints, { name = entry.name, x = entry.position.X, y = entry.position.Y, z = entry.position.Z })
+        end
+
+        local ok, err = pcall(function()
+            if typeof(isfolder) == "function" and typeof(makefolder) == "function" and not isfolder(teleportsFolder) then
+                if not isfolder("Celestial ScriptHub") then
+                    makefolder("Celestial ScriptHub")
+                end
+
+                makefolder(teleportsFolder)
+            end
+
+            writefile(teleportsFile, httpService:JSONEncode(data))
+        end)
+
+        if not ok then
+            warn("[Waypoints] Could not save waypoints: " .. tostring(err))
+        end
+
+        return ok
+    end
+
+    local function persist()
+        if not writeSavedTeleports() then
+            notify("Warning", "Waypoints not saved", "Your waypoints still work this session, but they could not be written to disk.", 8)
+        end
+    end
+
+    -- [Waypoints / Entries] Teleport, delete, and list rows
+    local function refreshEmptyLabel()
+        if emptyLabel then
+            emptyLabel:SetVisible(#entries == 0)
+        end
+    end
+
+    local function teleportToEntry(entry)
+        local hrp = getHRP()
+
+        if not isAlive() or not hrp then
+            notify("Error", "Teleport failed", "You need to be alive to teleport.", 6)
+            return
+        end
+
+        local destination = CFrame.new(entry.position)
+
+        -- Only the position changes; the way the character is facing is kept
+        entityLib.teleport(destination * hrp.CFrame.Rotation)
+
+        if entityLib.checkCFrame(hrp, destination, 5) then
+            notify("Success", "Successful teleport", "Successfully teleported to " .. utils.bold(entry.name) .. ".", 6)
+        else
+            notify("Error", "Teleport failed", "Failed to teleport to " .. utils.bold(entry.name) .. ".", 7)
+        end
+    end
+
+    local function removeEntry(entry)
+        local index = table.find(entries, entry)
+
+        if not index then
+            return
+        end
+
+        table.remove(entries, index)
+        entry.button:Destroy() -- also removes the Delete button that shares its row
+        refreshEmptyLabel()
+        persist()
+
+        notify("Info", "Teleport deleted", utils.bold(entry.name) .. " was removed from your saved waypoints.", 5)
+    end
+
+    -- Each row is a Teleport button (the name; hover for the coordinates) with a Delete button beside it
+    local function createRow(entry)
+        local button = ui.waypoints.list:AddButton({
+            Text = utils.escapeRichText(entry.name),
+            Icon = "navigation",
+            Tooltip = formatPosition(entry.position),
+            Func = function()
+                task.spawn(teleportToEntry, entry) -- The position check yields, so the teleport gets its own thread instead of running inside the button callback
+            end,
+        })
+
+        button:AddButton({
+            Text = "Delete",
+            Icon = "trash-2",
+            Risky = true,
+            Func = function()
+                removeEntry(entry)
+            end,
+        })
+
+        entry.button = button
+    end
+
+    local function addTeleport()
+        local name = string.match(nameInput.Value, "^%s*(.-)%s*$")
+
+        if name == "" then
+            notify("Error", "Name required", "Give the teleport a name first.", 6)
+            return
+        end
+
+        if (utf8.len(name) or #name) > maxNameLength then
+            notify("Error", "Name too long", "Teleport names can be up to " .. utils.bold(maxNameLength) .. " characters long.", 6)
+            return
+        end
+
+        for _, entry in ipairs(entries) do
+            if string.lower(entry.name) == string.lower(name) then
+                notify("Error", "Name already used", "A teleport named " .. utils.bold(entry.name) .. " already exists.", 6)
+                return
+            end
+        end
+
+        local position, err = parsePosition(positionInput.Value)
+
+        if not position then
+            notify("Error", "Invalid position", err, 7)
+            return
+        end
+
+        local entry = { name = name, position = position }
+        table.insert(entries, entry)
+        createRow(entry)
+        refreshEmptyLabel()
+        persist()
+
+        nameInput:SetValue("")
+        notify("Success", "Teleport added", utils.bold(name) .. " was saved at " .. utils.bold(formatPosition(position)) .. ".", 6)
+    end
+
+    -- [Waypoints / Create] Name, position, and add controls
+    nameInput = ui.waypoints.create:AddInput("customTeleportName_Input", {
+        Text = "Name",
+        Default = "",
+        Placeholder = "Teleport name",
+        Tooltip = "Up to " .. maxNameLength .. " characters. Each name can only be used once.",
+    })
+
+    positionInput = ui.waypoints.create:AddInput("customTeleportPosition_Input", {
+        Text = "Position",
+        Default = "",
+        Placeholder = "X, Y, Z",
+        Tooltip = "Three numbers separated by commas.",
+    })
+
+    ui.waypoints.create:AddButton({ Text = "Use Current Position", Icon = "crosshair", Tooltip = "Fills in the position with where you are standing right now.",
+        Func = function()
+            local hrp = getHRP()
+
+            if not isAlive() or not hrp then
+                notify("Error", "Position unavailable", "You need to be alive to read your position.", 6)
+                return
+            end
+
+            positionInput:SetValue(formatPosition(hrp.Position))
+        end,
+    })
+
+    ui.waypoints.create:AddButton({ Text = "Add Teleport", Icon = "plus", Tooltip = "Saves the name and position above to your list.", Func = addTeleport })
+
+    -- [Waypoints / List] Saved teleports, restored from the file on load
+    emptyLabel = ui.waypoints.list:AddLabel("No saved waypoints yet.", true)
+
+    for _, saved in ipairs(readSavedTeleports()) do
+        local entry = { name = saved.name, position = saved.position }
+        table.insert(entries, entry)
+        createRow(entry)
+    end
+
+    refreshEmptyLabel()
+end
 
 -- ============================================================================
 -- 09 | TAB: PLAYER
@@ -13870,7 +14152,7 @@ options.rainbowSpeed_Slider:OnChanged(function(val) window.rainbowSpeed = val en
 themeManager:SetLibrary(library)
 saveManager:SetLibrary(library)
 saveManager:IgnoreThemeSettings()
-saveManager:SetIgnoreIndexes({ "menuKeybind_KeyPicker" })
+saveManager:SetIgnoreIndexes({ "menuKeybind_KeyPicker", "customTeleportName_Input", "customTeleportPosition_Input" })
 themeManager:SetFolder("Celestial ScriptHub")
 saveManager:SetFolder("Celestial ScriptHub/SAKTKIA51")
 saveManager:SetSubFolder("Classic Mode")
