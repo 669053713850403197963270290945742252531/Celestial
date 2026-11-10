@@ -13,7 +13,7 @@
     08b. Waypoints: custom saved positions with one-click teleport and file persistence
     09. Player: movement, phase, speed handling, freecam, and backtrack
     10. Exploits: Pack-a-Punch, aim controls, Triggerbot, collection, killer controls, and Hitbox Expander
-    11. Visuals: ESP, FOV, fog, anti-effect handlers, scope overlay removal, Hitbox Visualizer, Killer Portrait, and grenade trajectory preview
+    11. Visuals: ESP, FOV, fog, anti-effect handlers, scope overlay removal, Hitbox Visualizer, Killer Portrait, grenade trajectory preview, and Halloween Killers w/Camping Lantern
     12. World: environmental settings, door noclip, and alien / kill-part controls
     13. Weapons: inventory, Pack-a-Punch queue, defense, gun options, and skin changer
     14. Miscellaneous: utility actions and weapon spam
@@ -226,7 +226,7 @@ ui.exploits = {
 ui.visuals = {
     esp = tabs.visuals:AddGroupbox({ Side = "Left", Name = "Killer ESP", IconName = assetLib.fetchAsset("Icons/scan-eye.png"), Description = "Boxes, arrows, name tags, and hitboxes" }),
     portrait = tabs.visuals:AddGroupbox({ Side = "Left", Name = "Killer Portrait", IconName = assetLib.fetchAsset("Icons/picture-in-picture-2.png"), Description = "Nearest Killer preview", MaxPopOutHeight = 380, PopOutWidth = 240 }),
-    screen = tabs.visuals:AddGroupbox({ Side = "Right", Name = "Screen & Effects", IconName = assetLib.fetchAsset("Icons/monitor.png"), Description = "Fog, FOV, and anti-effects" }),
+    screen = tabs.visuals:AddGroupbox({ Side = "Right", Name = "Screen & Effects", IconName = assetLib.fetchAsset("Icons/monitor.png"), Description = "Fog, FOV, anti-effects, and Halloween looks" }),
     weapon = tabs.visuals:AddGroupbox({ Side = "Right", Name = "Weapon Visuals", IconName = assetLib.fetchAsset("Icons/telescope.png"), Description = "Scope overlay and grenade path" }),
 }
 
@@ -809,7 +809,7 @@ local function teleport(destination, hrp)
         if entityLib.checkCFrame(hrp, papMachineCFrame, 5) then
             notify("Success", "Successful teleport", "Successfully teleported to " .. utils.bold(destination) .. ".", 6)
         else
-            notify("Error", "Teleport failed", "Failed to teleport to " .. utils.bold(destination) .. ".", 7)
+            notify("Error", "Teleport failed", "Failed to teleport to " .. utils.bold(destination) .. ".", 10)
         end
 
         return
@@ -820,7 +820,7 @@ local function teleport(destination, hrp)
     if entityLib.checkCFrame(hrp, cframeDestination, 5) then
         notify("Success", "Successful teleport", "Successfully teleported to " .. utils.bold(destination) .. ".", 6)
     else
-        notify("Error", "Teleport failed", "Failed to teleport to " .. utils.bold(destination) .. ".", 7)
+        notify("Error", "Teleport failed", "Failed to teleport to " .. utils.bold(destination) .. ".", 10)
     end
 end
 
@@ -1433,7 +1433,7 @@ local function refillEnergyDrink()
 
     local remainingCharges = energyDrink.Ammo.Value
     if remainingCharges ~= 0 then
-        notify("Error", "Refill failed", "You still have " .. utils.bold(remainingCharges) .. " charges left.", 6)
+        notify("Error", "Refill failed", "You still have " .. utils.bold(remainingCharges) .. " charges left.", 7)
         return
     end
 
@@ -1995,7 +1995,7 @@ do
         local hrp = getHRP()
 
         if not isAlive() or not hrp then
-            notify("Error", "Teleport failed", "You need to be alive to teleport.", 6)
+            notify("Error", "Teleport failed", "You need to be alive to teleport.", 10)
             return
         end
 
@@ -2007,7 +2007,7 @@ do
         if entityLib.checkCFrame(hrp, destination, 5) then
             notify("Success", "Successful teleport", "Successfully teleported to " .. utils.bold(entry.name) .. ".", 6)
         else
-            notify("Error", "Teleport failed", "Failed to teleport to " .. utils.bold(entry.name) .. ".", 7)
+            notify("Error", "Teleport failed", "Failed to teleport to " .. utils.bold(entry.name) .. ".", 10)
         end
     end
 
@@ -2054,18 +2054,18 @@ do
         local name = string.match(nameInput.Value, "^%s*(.-)%s*$")
 
         if name == "" then
-            notify("Error", "Name required", "Give the teleport a name first.", 6)
+            notify("Error", "Name required", "Give the teleport a name first.", 8)
             return
         end
 
         if (utf8.len(name) or #name) > maxNameLength then
-            notify("Error", "Name too long", "Teleport names can be up to " .. utils.bold(maxNameLength) .. " characters long.", 6)
+            notify("Error", "Name too long", "Teleport names can be up to " .. utils.bold(maxNameLength) .. " characters long.", 8)
             return
         end
 
         for _, entry in ipairs(entries) do
             if string.lower(entry.name) == string.lower(name) then
-                notify("Error", "Name already used", "A teleport named " .. utils.bold(entry.name) .. " already exists.", 6)
+                notify("Error", "Name already used", "A teleport named " .. utils.bold(entry.name) .. " already exists.", 8)
                 return
             end
         end
@@ -2073,7 +2073,7 @@ do
         local position, err = parsePosition(positionInput.Value)
 
         if not position then
-            notify("Error", "Invalid position", err, 7)
+            notify("Error", "Invalid position", err, 10)
             return
         end
 
@@ -2108,7 +2108,7 @@ do
             local hrp = getHRP()
 
             if not isAlive() or not hrp then
-                notify("Error", "Position unavailable", "You need to be alive to read your position.", 6)
+                notify("Error", "Position unavailable", "You need to be alive to read your position.", 8)
                 return
             end
 
@@ -2834,7 +2834,7 @@ do
             end
 
             lastNotify = now
-            notify("Error", "Phase", description, 3)
+            notify("Error", "Phase", description, 10)
         end
 
         -- Your character, killers, other players and the MapLimit walls are never walls
@@ -4055,7 +4055,7 @@ local function singlePAP(weaponName)
     -- Validate selected weapon
 
     if not entityLib.getTool("Specific", weaponName) then
-        notify("Error", "Invalid tool", "You don't have " .. utils.bold(weaponName) .. " in your inventory.", 6)
+        notify("Error", "Invalid tool", "You don't have " .. utils.bold(weaponName) .. " in your inventory.", 12)
         return false
     end
 
@@ -4067,7 +4067,7 @@ local function singlePAP(weaponName)
 
     if requiredKills and kills < requiredKills then
         local needed = requiredKills - kills
-        notify("Error", "Insufficient kills", utils.bold(weaponName) .. " requires " .. utils.bold(requiredKills) .. " kills to pack a punch. You need " .. utils.bold(needed) .. " more.", 7)
+        notify("Error", "Insufficient kills", utils.bold(weaponName) .. " requires " .. utils.bold(requiredKills) .. " kills to pack a punch. You need " .. utils.bold(needed) .. " more.", 15)
         return false
     end
 
@@ -4086,13 +4086,13 @@ local function singlePAP(weaponName)
         end
 
         if failReason == "retries" then
-            notify("Error", "Teleporter unresponsive", "The teleporter did not respond after several attempts. Please try again.", 8)
+            notify("Error", "Teleporter unresponsive", "The teleporter did not respond after several attempts. Please try again.", 10)
         elseif failReason == "busy" then
-            notify("Error", "Teleporter busy", "The teleporter stayed in use by another player. Please try again later.", 8)
+            notify("Error", "Teleporter busy", "The teleporter stayed in use by another player. Please try again later.", 10)
         elseif failReason == "arrival" then
-            notify("Error", "Teleport failed", "You did not reach the punch room. Please try again.", 8)
+            notify("Error", "Teleport failed", "You did not reach the punch room. Please try again.", 10)
         elseif failReason == "error" then
-            notify("Error", "Teleport failed", "Something went wrong while using the teleporter.", 6)
+            notify("Error", "Teleport failed", "Something went wrong while using the teleporter.", 15)
         end
 
         return false
@@ -5353,7 +5353,7 @@ do
         end
 
         if type(mouse1click) ~= "function" and type(mouse1press) ~= "function" and not virtualInput then
-            notify("Error", "Triggerbot unavailable", "Your executor has no mouse input functions (mouse1click / mouse1press).", 7)
+            notify("Error", "Triggerbot unavailable", "Your executor has no mouse input functions (mouse1click / mouse1press).", 15)
             return
         end
 
@@ -6342,7 +6342,7 @@ local function updateKiller(hum, model, root, method, inRange, visible)
         return
     end
 
-    -- Restore previous movement if switching methods
+    -- Restore previous movement if changing methods
     if affectedKillers[hum] == "Disable Movement" then
         releaseKiller(hum)
     end
@@ -7415,7 +7415,7 @@ do
         if not plan then
             if toggles.acidDodgeDebugNotifs_Toggle.Value and now - lastNoRoomNotify > 1.5 then
                 lastNoRoomNotify = now
-                notify("Error", "Acid Dodge", "No safe room to dodge sideways or backwards.", 2)
+                notify("Error", "Acid Dodge", "No safe room to dodge sideways or backwards.", 8)
             end
 
             return
@@ -7645,7 +7645,7 @@ do
 
         if not blockerReady and not godmode.warned then
             godmode.warned = true
-            notify("Error", "Killer Godmode", "This executor can not hook __namecall, so damage reports can not be blocked. Only hitboxes are removed.", 6)
+            notify("Error", "Killer Godmode", "This executor can't hook __namecall, so damage can not be blocked. Only hitboxes are removed.", 15)
         end
 
         -- Hitboxes: removed the moment they appear instead of waiting for the next sweep
@@ -9213,7 +9213,7 @@ do
         local playerGui = localplayer:FindFirstChildOfClass("PlayerGui")
 
         if not playerGui then
-            notify("Error", "Failed to locate", "Failed to find PlayerGui.", 100)
+            notify("Error", "Failed to locate", "Failed to find PlayerGui.", 15)
             return
         end
 
@@ -9377,7 +9377,7 @@ do
             end)
 
             if not getScopeGuis() then
-                notify("Error", "Failed to locate", "Failed to find the scope overlay. It will be removed once it loads.", 8)
+                notify("Error", "Failed to locate", "Failed to find the scope overlay. It will be removed once it loads.", 15)
             end
 
             applyOverlayRemoval()
@@ -10098,7 +10098,7 @@ do
         end
 
         if not portraitViewport then
-            notify("Error", "Viewport unavailable", "This UI library version could not create the portrait viewport.", 8)
+            notify("Error", "Viewport unavailable", "This UI library version could not create the portrait viewport.", 15)
             toggles.killerPortrait_Toggle:SetValue(false)
             return
         end
@@ -10841,6 +10841,314 @@ do
     buildGrenadeTrajectory()
 end
 
+-- [Visuals / Screen & Effects] Halloween Killers and Camping Lantern
+-- The transform module is loaded the first time Halloween Killers is enabled, then kept in transformModule so it is never fetched twice in a session
+do
+    local TRANSFORM_URL = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Scripts/SAKTKIA51%20TRANSFORM.luau"
+    local LANTERN_NAME = "CampingLantern"
+    -- Marks lanterns made by Celestial, so disabled the lantern never deletes a CampingLantern the game gave you
+    local LANTERN_ATTRIBUTE = "CelestialCampingLantern"
+
+    ui.visuals.screen:AddToggle("halloweenKillers_Toggle", { Text = "Halloween Killers", Tooltip = "Changes every Killer to its 2026 Halloween appearance." })
+
+    local lanternDepbox = ui.visuals.screen:AddDependencyBox()
+    lanternDepbox:AddToggle("campingLantern_Toggle", { Text = "Camping Lantern", Tooltip = "Gives you the Camping Lantern from the 2026 Halloween event, a tool that doubles as a light source." })
+    lanternDepbox:AddDivider()
+    lanternDepbox:SetupDependencies({ { toggles.halloweenKillers_Toggle, true } })
+
+    -- Halloween Killers
+    local transformModule: any = nil
+    local moduleLoading = false
+    local spawnConnection: RBXScriptConnection? = nil
+    local killersApplied = false
+
+    local killersGeneration = 0 -- Bumped on every on/off change, so work that was waiting (module download, rig loading) can tell if its outdated
+
+    local function getTransformModule(): any
+        -- Another enable may already be downloading it
+        while moduleLoading do
+            task.wait()
+        end
+
+        if transformModule then
+            return transformModule
+        end
+
+        moduleLoading = true
+
+        local success, result = pcall(function()
+            return assert(loadstring(game:HttpGet(TRANSFORM_URL)))()
+        end)
+
+        moduleLoading = false
+
+        if success and type(result) == "table" and type(result.HalloweenTransform) == "function" and type(result.NormalTransform) == "function" then
+            transformModule = result
+            return result
+        end
+
+        warn("[Halloween Killers] Could not load the transform module:", result)
+        return nil
+    end
+
+    local function runTransform(functionName: string, target: string)
+        local module = transformModule
+
+        if not module then
+            return
+        end
+
+        local success, err = pcall(module[functionName], target)
+
+        if not success then
+            warn("[Halloween Killers] " .. functionName .. "(\"" .. target .. "\") failed:", err)
+        end
+    end
+
+    -- A Killer spawned while the toggle is on: transform only that Killer instead of repeating "All" and absolutely MURDERING frames and increasing frame drops
+    local function onKillerSpawned(model: Instance)
+        if not model:IsA("Model") then
+            return
+        end
+
+        local generation = killersGeneration
+
+        task.spawn(function()
+            -- Let the rig finish loading, otherwise the module skips it for missing parts
+            if not (model:FindFirstChildOfClass("Humanoid") or model:WaitForChild("Zombie", 5)) then
+                return
+            end
+
+            model:WaitForChild("HumanoidRootPart", 5)
+            model:WaitForChild("Head", 5)
+            task.wait()
+
+            if generation ~= killersGeneration or not model.Parent then
+                return
+            end
+
+            runTransform("HalloweenTransform", model.Name)
+        end)
+    end
+
+    local function startKillers()
+        killersGeneration += 1
+        local generation = killersGeneration
+
+        task.spawn(function()
+            local module = getTransformModule()
+
+            -- Turned off (or off and on again) while the module was downloading
+            if generation ~= killersGeneration then
+                return
+            end
+
+            if not module then
+                notify("Error", "Halloween Killers", "Could not load the Halloween transform module.", 15)
+                toggles.halloweenKillers_Toggle:SetValue(false)
+                return
+            end
+
+            local folder = killersFolder or workspace:FindFirstChild("Killers")
+
+            if not folder then
+                notify("Error", "Halloween Killers", "The Killers folder was not found.", 15)
+                toggles.halloweenKillers_Toggle:SetValue(false)
+                return
+            end
+
+            -- Listen first, so a Killer that spawns during the transform below is not missed
+            if spawnConnection then
+                spawnConnection:Disconnect()
+            end
+
+            spawnConnection = folder.ChildAdded:Connect(onKillerSpawned)
+            killersApplied = true
+            runTransform("HalloweenTransform", "All")
+        end)
+    end
+
+    local function stopKillers()
+        killersGeneration += 1
+
+        -- Stop the spawn listener so new Killers keep their normal appearance
+        if spawnConnection then
+            spawnConnection:Disconnect()
+            spawnConnection = nil
+        end
+
+        if killersApplied then
+            killersApplied = false
+            runTransform("NormalTransform", "All")
+        end
+    end
+
+    -- Camping Lantern
+    local lanternTemplate: Tool? = nil
+    local lanternConnection: RBXScriptConnection? = nil
+    local lanternRunning = false
+
+    local function createLantern(): Tool
+        local tool = Instance.new("Tool")
+        tool.Name = LANTERN_NAME
+        tool.CanBeDropped = false
+        tool.Enabled = true
+        tool.ManualActivationOnly = false
+        tool.RequiresHandle = true
+        tool.ToolTip = ""
+        tool.TextureId = "rbxassetid://123239881"
+        tool.Grip = CFrame.new(0, 1, 0)
+        tool:SetAttribute(LANTERN_ATTRIBUTE, true)
+
+        local handle = Instance.new("Part")
+        handle.Name = "Handle"
+        handle.Shape = Enum.PartType.Block
+        handle.Size = Vector3.new(0.8, 2.4, 0.8)
+        handle.Color = Color3.fromRGB(163, 162, 165)
+        handle.Material = Enum.Material.Plastic
+        handle.Transparency = 0
+        handle.Reflectance = 0
+        handle.Anchored = false
+        handle.CanCollide = false
+        handle.Massless = true
+        handle.Locked = false
+        handle.TopSurface = Enum.SurfaceType.Studs
+        handle.BottomSurface = Enum.SurfaceType.Inlet
+        handle.Parent = tool
+
+        local mesh = Instance.new("SpecialMesh")
+        mesh.Name = "Mesh"
+        mesh.MeshType = Enum.MeshType.FileMesh
+        mesh.MeshId = "rbxassetid://123115084"
+        mesh.TextureId = "rbxassetid://123115105"
+        mesh.Offset = Vector3.zero
+        mesh.Scale = Vector3.new(0.8, 0.8, 0.8)
+        mesh.VertexColor = Vector3.new(1, 0.5, 0)
+        mesh.Parent = handle
+
+        local light = Instance.new("PointLight")
+        light.Name = "PointLight"
+        light.Range = 16
+        light.Brightness = 5
+        light.Color = Color3.fromRGB(255, 127, 0)
+        light.Enabled = true
+        light.Shadows = false
+        light.Parent = handle
+
+        return tool
+    end
+
+    local function giveLantern()
+        local backpack = localplayer:WaitForChild("Backpack", 10)
+
+        if not backpack or not lanternRunning then
+            return
+        end
+
+        local character = localplayer.Character
+
+        if backpack:FindFirstChild(LANTERN_NAME) or (character and character:FindFirstChild(LANTERN_NAME)) then
+            return
+        end
+
+        -- Built once on first use, then cloned
+        local template = lanternTemplate or createLantern()
+        lanternTemplate = template
+
+        template:Clone().Parent = backpack
+    end
+
+    local function clearLanterns(container: Instance?)
+        if not container then
+            return
+        end
+
+        for _, child in ipairs(container:GetChildren()) do
+            if child:IsA("Tool") and child:GetAttribute(LANTERN_ATTRIBUTE) then
+                child:Destroy()
+            end
+        end
+    end
+
+    local function removeLantern()
+        clearLanterns(localplayer:FindFirstChildOfClass("Backpack"))
+        clearLanterns(localplayer.Character)
+    end
+
+    -- Every respawn
+    local function onCharacterAdded(character: Model)
+        task.spawn(function()
+            character:WaitForChild("Humanoid", 10)
+            task.wait()
+
+            if lanternRunning and localplayer.Character == character then
+                giveLantern()
+            end
+        end)
+    end
+
+    -- The lantern needs both toggles
+    local killersOn = false
+    local lanternOn = false
+
+    local function refreshLantern()
+        local wanted = killersOn and lanternOn
+
+        if wanted == lanternRunning then
+            return
+        end
+
+        lanternRunning = wanted
+
+        if wanted then
+            lanternConnection = localplayer.CharacterAdded:Connect(onCharacterAdded)
+
+            -- The character may already exist by the time the toggle is enabled
+            if localplayer.Character then
+                task.spawn(giveLantern)
+            end
+        else
+            if lanternConnection then
+                lanternConnection:Disconnect()
+                lanternConnection = nil
+            end
+
+            removeLantern()
+        end
+    end
+
+    toggles.halloweenKillers_Toggle:OnChanged(function(enabled)
+        killersOn = enabled
+
+        if enabled then
+            startKillers()
+        else
+            stopKillers()
+        end
+
+        refreshLantern()
+    end)
+
+    toggles.campingLantern_Toggle:OnChanged(function(enabled)
+        lanternOn = enabled
+        refreshLantern()
+    end)
+
+    table.insert(teardownTasks, function()
+        killersOn = false
+        lanternOn = false
+        stopKillers()
+        refreshLantern()
+
+        local template = lanternTemplate
+
+        if template then
+            template:Destroy()
+            lanternTemplate = nil
+        end
+    end)
+end
+
 -- ============================================================================
 -- 12 | TAB: WORLD
 -- ============================================================================
@@ -10899,7 +11207,7 @@ do
         local cactusFolder = outside and outside:FindFirstChild("Cactus")
 
         if not cactusFolder then
-            notify("Error", "Failed to locate", "Failed to find the cactuses.", 100)
+            notify("Error", "Failed to locate", "Failed to find the cactuses.", 15)
             return
         end
 
@@ -11033,7 +11341,7 @@ do
         local zone = area51:FindFirstChild("RadioactiveArea")
 
         if not zone then
-            notify("Error", "Failed to locate", "Failed to find the Radioactive Zone.", 100)
+            notify("Error", "Failed to locate", "Failed to find the Radioactive Zone.", 15)
             return
         end
 
@@ -11307,7 +11615,7 @@ local function obtainSelectedWeapons()
                     if weapon and weapon:FindFirstChild("Hitbox") then
                         table.insert(weaponsToGive, weapon)
                     else
-                        notify("Error", "No available hitbox", utils.bold(weaponName) .. " is missing or has no available hitbox.", 13)
+                        notify("Error", "No available hitbox", utils.bold(weaponName) .. " is missing or has no available hitbox.", 15)
                     end
                 end
             end
@@ -11339,11 +11647,11 @@ local function obtainSelectedWeapons()
     end
 
     if #alreadyHave > 0 then
-        notify("Error", "Cannot give weapons", "You already have the following weapons: " .. utils.bold(table.concat(alreadyHave, ", ")), 8)
+        notify("Error", "Cannot give weapons", "You already have the following weapons: " .. utils.bold(table.concat(alreadyHave, ", ")), 10)
     end
 
     if #givenWeapons > 0 then
-        notify("Success", "Gave weapons", "You have been given the following weapons: " .. utils.bold(table.concat(givenWeapons, ", ")), 5)
+        notify("Success", "Gave weapons", "You have been given the following weapons: " .. utils.bold(table.concat(givenWeapons, ", ")), 6)
         if toggles.clearOnAction_Toggle.Value then
             options.weaponsList_Dropdown:SetValue({})
         end
@@ -11365,7 +11673,7 @@ local function pap(weaponName, selectedWeapons, currentIndex)
     -- Validate selected weapon
 
     if not entityLib.getTool("Specific", weaponName) then
-        notify("Error", "Unavailable tool", "You don't have " .. utils.bold(weaponName) .. " in your inventory. Skipping...", 6)
+        notify("Error", "Unavailable tool", "You don't have " .. utils.bold(weaponName) .. " in your inventory. Skipping...", 8)
         return false
     end
 
@@ -11377,11 +11685,11 @@ local function pap(weaponName, selectedWeapons, currentIndex)
 
     if requiredKills and kills < requiredKills then
         local needed = requiredKills - kills
-        notify("Error", "Insufficient kills", utils.bold(weaponName) .. " requires " .. utils.bold(requiredKills) .. " kills to pack a punch. You need " .. utils.bold(needed) .. " more.", 7)
+        notify("Error", "Insufficient kills", utils.bold(weaponName) .. " requires " .. utils.bold(requiredKills) .. " kills to pack a punch. You need " .. utils.bold(needed) .. " more.", 20)
         return false
     end
 
-    -- Teleport to the control panel, activate the teleporter (with retries) and validate the punch room (bedroom)
+    -- Teleport to the control panel, activate the teleporter (with retries) and validate the bedroom
 
     freeze(true)
 
@@ -11396,13 +11704,13 @@ local function pap(weaponName, selectedWeapons, currentIndex)
         end
 
         if failReason == "retries" then
-            notify("Error", "Teleporter unresponsive", "The teleporter did not respond after several attempts. Please try again.", 8)
+            notify("Error", "Teleporter unresponsive", "The teleporter did not respond after several attempts. Please try again.", 15)
         elseif failReason == "busy" then
-            notify("Error", "Teleporter busy", "The teleporter stayed in use by another player. Please try again later.", 8)
+            notify("Error", "Teleporter busy", "The teleporter stayed in use by another player. Please try again later.", 15)
         elseif failReason == "arrival" then
-            notify("Error", "Teleport failed", "You did not reach the punch room. Please try again.", 8)
+            notify("Error", "Teleport failed", "You did not reach the bedroom. Please try again.", 15)
         elseif failReason == "error" then
-            notify("Error", "Teleport failed", "Something went wrong while using the teleporter.", 6)
+            notify("Error", "Teleport failed", "Something went wrong while using the teleporter.", 15)
         end
 
         return false
@@ -11459,7 +11767,7 @@ papWeaponBtn = ui.weapons.inventory:AddButton({ Text = "PAP Weapon", Icon = "arr
         local deathConnection = humanoid.Died:Connect(function()
             died = true
             utils.clearPAPQueueNote()
-            notify("Error", "Process interrupted", "You died during Pack-a-Punch. Process stopped.", 7)
+            notify("Error", "Process interrupted", "You died during Pack-a-Punch. Process stopped.", 15)
             papWeaponBtn:SetDisabled(false)
             papHeldBtn:SetDisabled(false)
         end)
@@ -11492,11 +11800,11 @@ papWeaponBtn = ui.weapons.inventory:AddButton({ Text = "PAP Weapon", Icon = "arr
                 local hasPAP = entityLib.getTool("Specific", "PAP" .. weaponName)
 
                 if not (hasBase or hasPAP) then
-                    notify("Error", "Unavailable weapon", "You don't have " .. utils.bold(weaponName) .. ". Cannot pack a punch.", 6)
+                    notify("Error", "Unavailable weapon", "You don't have " .. utils.bold(weaponName) .. ". Cannot pack a punch.", 15)
                 else
                     local requiredKills = requirements[weaponName] or 0
                     if kills < requiredKills then
-                        notify("Error", "Insufficient kills", "Not enough kills to pack a punch " .. utils.bold(weaponName) .. ". Need " .. utils.bold(requiredKills - kills) .. " more kills.", 6)
+                        notify("Error", "Insufficient kills", "Not enough kills to pack a punch " .. utils.bold(weaponName) .. ". Need " .. utils.bold(requiredKills - kills) .. " more kills.", 25)
                     else
                         local waitNote = nil
 
@@ -11549,7 +11857,7 @@ papWeaponBtn = ui.weapons.inventory:AddButton({ Text = "PAP Weapon", Icon = "arr
                             punchedCount += 1
                         else
                             if not (cancelPAPQueue or died) then
-                                notify("Error", "Failed", "Failed to pack a punch " .. utils.bold(weaponName), 5)
+                                notify("Error", "Failed", "Failed to pack a punch " .. utils.bold(weaponName), 15)
                             end
                             break
                         end
@@ -11607,7 +11915,7 @@ papHeldBtn = papWeaponBtn:AddButton({ Text = "PAP Held", Icon = "arrow-up-circle
 
         local heldTool = entityLib.getTool("Held")
         if not heldTool then
-            notify("Error", "No weapon", "You're not holding a weapon.", 5)
+            notify("Error", "No weapon", "You're not holding a weapon.", 10)
             return
         end
 
@@ -11624,7 +11932,7 @@ papHeldBtn = papWeaponBtn:AddButton({ Text = "PAP Held", Icon = "arrow-up-circle
         local deathConnection = humanoid.Died:Connect(function()
             died = true
             utils.clearPAPQueueNote()
-            notify("Error", "Process canceled", "You died during the pack-a-punch process and it has been stopped.", 7)
+            notify("Error", "Process canceled", "You died during the pack-a-punch process and it has been stopped.", 0)
             papWeaponBtn:SetDisabled(false)
             papHeldBtn:SetDisabled(false)
         end)
@@ -12760,7 +13068,7 @@ task.spawn(function()
     skinGroup:AddButton({ Text = "Apply Skin", Tooltip = "Applies the selected skin once.", Icon = "plus-circle",
         Func = function()
             if not state.skin then
-                notify("Error", "No skin selected", "Pick a skin from the dropdown first.", 6)
+                notify("Error", "No skin selected", "Pick a skin from the dropdown first.", 8)
                 return
             end
 
@@ -12775,7 +13083,7 @@ task.spawn(function()
                 local hint = state.scope == "Equipped weapon"
                     and "Hold a weapon first, or switch Apply To to All weapons."
                     or "No skinnable weapons were found in your hands or backpack."
-                notify("Error", "No weapon found", hint, 7)
+                notify("Error", "No weapon found", hint, 10)
             else
                 notify("Success", "Skin applied", utils.bold(state.skin) .. " applied to " .. utils.bold(applied) .. (applied == 1 and " weapon." or " weapons."), 5)
             end
@@ -12805,7 +13113,7 @@ task.spawn(function()
             if restored > 0 then
                 notify("Success", "Skins reset", "Restored " .. utils.bold(restored) .. (restored == 1 and " weapon" or " weapons") .. " to the real skin.", 5)
             else
-                notify("Error", "Nothing to reset", "No weapons have a local skin applied.", 5)
+                notify("Error", "Nothing to reset", "No weapons have a local skin applied.", 8)
             end
         end,
     })
