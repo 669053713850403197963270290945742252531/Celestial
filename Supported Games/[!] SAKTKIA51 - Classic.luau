@@ -1863,7 +1863,7 @@ do
 
     local teleportsFolder = "Celestial ScriptHub/SAKTKIA51"
     local teleportsFile = teleportsFolder .. "/Waypoints.json"
-    local maxNameLength = 32
+    local maxNameLength = 15
 
     -- Every entry is { name = string, position = Vector3, button = Button }
     local entries = {}
@@ -2040,6 +2040,7 @@ do
         button:AddButton({
             Text = "Delete",
             Icon = "trash-2",
+            DoubleClick = true,
             Risky = true,
             Func = function()
                 removeEntry(entry)
@@ -2092,6 +2093,7 @@ do
         Default = "",
         Placeholder = "Teleport name",
         Tooltip = "Up to " .. maxNameLength .. " characters. Each name can only be used once.",
+        MaxLength = 15,
     })
 
     positionInput = ui.waypoints.create:AddInput("customTeleportPosition_Input", {
