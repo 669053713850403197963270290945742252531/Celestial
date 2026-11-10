@@ -59,7 +59,11 @@ local camera = game:GetService("Workspace").CurrentCamera
 local defaults = {
     killerESPColor_ColorPicker = Color3.fromRGB(255, 0, 0),
     killerNameTagColor_ColorPicker = Color3.fromRGB(255, 255, 255),
-    silentAimFOVColor_ColorPicker = Color3.fromRGB(0, 229, 255)
+    silentAimFOVColor_ColorPicker = Color3.fromRGB(0, 229, 255),
+    hitboxVisualizeColor_ColorPicker = Color3.fromRGB(255, 60, 60),
+    trajectoryPathColor_ColorPicker = Color3.fromRGB(0, 229, 255),
+    trajectoryLandingColor_ColorPicker = Color3.fromRGB(255, 170, 0),
+    trajectoryKillerColor_ColorPicker = Color3.fromRGB(0, 255, 0),
 }
 
 -- Names used by the target-exclusion dropdowns.
@@ -444,6 +448,21 @@ local function toggleRainbow(enabled, colorPickerName)
             end
         end
     end
+end
+
+-- [Shared Helpers / Color Cycling] Adds a Settings gear to a color picker with a Rainbow toggle for that picker only.
+utils.addRainbowSettings = function(colorPickerLabel, colorPickerName, toggleName)
+    local settings = colorPickerLabel:AddSettings({ Width = 170 })
+
+    settings:AddToggle(toggleName, {
+        Text = "Rainbow",
+        Tooltip = "Cycles this color through the rainbow. Speed and Auto Reset Color are in UI Settings.",
+        Callback = function(enabled)
+            toggleRainbow(enabled, colorPickerName)
+        end,
+    })
+
+    return settings
 end
 
 -- [Shared Helpers / Teleporter State] State checks
@@ -3835,8 +3854,7 @@ silentAimDepbox:AddToggle("silentAimShowFOV_Toggle", { Text = "Show FOV", Toolti
 
 local silentAimFOVColorDepbox = silentAimDepbox:AddDependencyBox()
 
-silentAimFOVColorDepbox:AddLabel("FOV Color"):AddColorPicker("silentAimFOVColor_ColorPicker", { Title = "FOV Color", Default = Color3.fromRGB(0, 229, 255), Transparency = nil })
-silentAimFOVColorDepbox:AddCheckbox("rainbowSilentAimFOVColor_Toggle", { Text = "Rainbow FOV Color" })
+utils.addRainbowSettings(silentAimFOVColorDepbox:AddLabel("FOV Color"):AddColorPicker("silentAimFOVColor_ColorPicker", { Title = "FOV Color", Default = Color3.fromRGB(0, 229, 255), Transparency = nil }), "silentAimFOVColor_ColorPicker", "rainbowSilentAimFOVColor_Toggle")
 
 silentAimDepbox:AddDivider()
 
@@ -4398,10 +4416,6 @@ do
     end
 
     -- The rainbow loop writes into the color picker, so the circle only has to follow the picker.
-    toggles.rainbowSilentAimFOVColor_Toggle:OnChanged(function(enabled)
-        toggleRainbow(enabled, "silentAimFOVColor_ColorPicker")
-    end)
-
     local silentAimFOVConnection = runService.RenderStepped:Connect(function()
         if not silentAimFOVCircle then
             return
@@ -7736,14 +7750,12 @@ killerESPDepbox:AddDropdown("excludedKillers_Dropdown", { Text = "Excluded Kille
 killerESPDepbox:AddSlider("killerESPDistance_Slider", { Text = "Range", Tooltip = "How far away to show ESP on killers", Default = 150, Min = 100, Max = 1000, Suffix = " Studs" })
 killerESPDepbox:AddDropdown("killerESPBoxType_Dropdown", { Text = "Box Type", Tooltip = "2D draws a flat box around the killer, 3D draws a wireframe box.", Values = { "2D", "3D" }, Default = 1 })
 killerESPDepbox:AddToggle("killerESPHealthBar_Toggle", { Text = "Health Bar", Tooltip = "Shows a health bar next to the killer.", Default = true })
-killerESPDepbox:AddLabel("ESP Color"):AddColorPicker("killerESPColor_ColorPicker",{ Title = "ESP Color", Default = Color3.fromRGB(255, 0, 0), Transparency = nil })
-killerESPDepbox:AddCheckbox("rainbowESPColor_Toggle", { Text = "Rainbow ESP Color" })
+utils.addRainbowSettings(killerESPDepbox:AddLabel("ESP Color"):AddColorPicker("killerESPColor_ColorPicker",{ Title = "ESP Color", Default = Color3.fromRGB(255, 0, 0), Transparency = nil }), "killerESPColor_ColorPicker", "rainbowESPColor_Toggle")
 killerESPDepbox:AddToggle("toggleKillersNametags_Toggle", { Text = "Enable Name Tags" })
 killerESPDepbox:AddDivider()
 
 local killerNametagDepbox = killerESPDepbox:AddDependencyBox()
-killerNametagDepbox:AddLabel("Name Tag Color"):AddColorPicker("killerNameTagColor_ColorPicker",{ Title = "Name Tag Color", Default = Color3.fromRGB(255, 255, 255), Transparency = nil })
-killerNametagDepbox:AddCheckbox("rainbowNameTagColor_Toggle", { Text = "Rainbow Name Tag Color" })
+utils.addRainbowSettings(killerNametagDepbox:AddLabel("Name Tag Color"):AddColorPicker("killerNameTagColor_ColorPicker",{ Title = "Name Tag Color", Default = Color3.fromRGB(255, 255, 255), Transparency = nil }), "killerNameTagColor_ColorPicker", "rainbowNameTagColor_Toggle")
 killerNametagDepbox:AddSlider("textSize_Slider", { Text = "Text Size", Default = 15, Min = 10, Max = 50 })
 killerNametagDepbox:AddDivider()
 
@@ -8378,14 +8390,6 @@ options.excludedKillers_Dropdown:OnChanged(function(val)
     -- updateESP() clears drawings for newly excluded killers on its next frame
 end)
 
-toggles.rainbowESPColor_Toggle:OnChanged(function(enabled)
-    toggleRainbow(enabled, "killerESPColor_ColorPicker")
-end)
-
-toggles.rainbowNameTagColor_Toggle:OnChanged(function(enabled)
-    toggleRainbow(enabled, "killerNameTagColor_ColorPicker")
-end)
-
 toggles.enableFOV_Toggle:OnChanged(function(enabled)
     if enabled then
         entityLib.storeData(camera, "FieldOfView", true)
@@ -8738,7 +8742,7 @@ do
     hitboxVisualizerGroup:AddToggle("visualizeHitbox_Toggle", { Text = "Visualize Hitbox", Tooltip = "Draws a box around each Killer that covers every part a shot can hit." })
 
     local visualizeHitboxDepbox = hitboxVisualizerGroup:AddDependencyBox()
-    visualizeHitboxDepbox:AddLabel("Hitbox Color"):AddColorPicker("hitboxVisualizeColor_ColorPicker", { Title = "Hitbox Color", Default = Color3.fromRGB(255, 60, 60), Transparency = nil })
+    utils.addRainbowSettings(visualizeHitboxDepbox:AddLabel("Hitbox Color"):AddColorPicker("hitboxVisualizeColor_ColorPicker", { Title = "Hitbox Color", Default = Color3.fromRGB(255, 60, 60), Transparency = nil }), "hitboxVisualizeColor_ColorPicker", "rainbowHitboxColor_Toggle")
     visualizeHitboxDepbox:AddSlider("hitboxVisualizeFill_Slider", { Text = "Fill Transparency", Default = 1, Min = 0, Max = 1, Rounding = 2 })
     visualizeHitboxDepbox:AddSlider("hitboxVisualizeRange_Slider", { Text = "Range", Tooltip = "How far away to show hitboxes on killers", Default = 150, Min = 50, Max = 1000, Suffix = " Studs" })
     visualizeHitboxDepbox:AddToggle("hitboxVisualizeWallCheck_Toggle", { Text = "Wall Check", Tooltip = "Only outline Killers that are visible.", Default = true })
@@ -9471,15 +9475,15 @@ do
 
         local trajectoryDepbox = trajectoryGroup:AddDependencyBox()
 
-        trajectoryDepbox:AddLabel("Path Color"):AddColorPicker("trajectoryPathColor_ColorPicker", { Title = "Path Color", Default = Color3.fromRGB(0, 229, 255) })
-        trajectoryDepbox:AddLabel("Landing Color"):AddColorPicker("trajectoryLandingColor_ColorPicker", { Title = "Landing Color", Default = Color3.fromRGB(255, 170, 0) })
+        utils.addRainbowSettings(trajectoryDepbox:AddLabel("Path Color"):AddColorPicker("trajectoryPathColor_ColorPicker", { Title = "Path Color", Default = Color3.fromRGB(0, 229, 255) }), "trajectoryPathColor_ColorPicker", "rainbowTrajectoryPathColor_Toggle")
+        utils.addRainbowSettings(trajectoryDepbox:AddLabel("Landing Color"):AddColorPicker("trajectoryLandingColor_ColorPicker", { Title = "Landing Color", Default = Color3.fromRGB(255, 170, 0) }), "trajectoryLandingColor_ColorPicker", "rainbowTrajectoryLandingColor_Toggle")
         trajectoryDepbox:AddSlider("trajectoryThickness_Slider", { Text = "Line Thickness", Default = 2, Min = 1, Max = 5 })
         trajectoryDepbox:AddSlider("trajectoryMarkerSize_Slider", { Text = "Landing Marker Size", Tooltip = "Radius of the ring drawn where the grenade lands. Only a visual size, not the explosion radius.", Default = 3, Min = 1, Max = 10, Suffix = " Studs" })
         trajectoryDepbox:AddToggle("trajectoryShowInfo_Toggle", { Text = "Show Distance / Time", Tooltip = "Shows the flight distance and flight time next to the landing spot.", Default = true })
         trajectoryDepbox:AddToggle("trajectoryKillerHighlight_Toggle", { Text = "Highlight Killer On Hit", Tooltip = "When the grenade is predicted to hit a killer, that killer and the path turn the hit color.", Default = true })
 
         local trajectoryKillerDepbox = trajectoryDepbox:AddDependencyBox()
-        trajectoryKillerDepbox:AddLabel("Killer Hit Color"):AddColorPicker("trajectoryKillerColor_ColorPicker", { Title = "Killer Hit Color", Default = Color3.fromRGB(0, 255, 0) })
+        utils.addRainbowSettings(trajectoryKillerDepbox:AddLabel("Killer Hit Color"):AddColorPicker("trajectoryKillerColor_ColorPicker", { Title = "Killer Hit Color", Default = Color3.fromRGB(0, 255, 0) }), "trajectoryKillerColor_ColorPicker", "rainbowTrajectoryKillerColor_Toggle")
 
         trajectoryDepbox:SetupDependencies({ { toggles.trajectoryPreview_Toggle, true } })
         trajectoryKillerDepbox:SetupDependencies({ { toggles.trajectoryKillerHighlight_Toggle, true } })
@@ -12380,7 +12384,7 @@ ui.settings.appearance:AddDropdown("DPIDropdown", { Text = "DPI Scale", Values =
 ui.settings.appearance:AddSlider("cornerRadius_Slider", { Text = "Corner Radius", Default = library.CornerRadius, Min = 0, Max = 20, Callback = function(val) window:SetCornerRadius(val) end })
 
 ui.settings.appearance:AddSlider("rainbowSpeed_Slider", { Text = "Rainbow Speed", Default = window.rainbowSpeed, Min = 0.1, Max = 1, Rounding = 1 })
-ui.settings.appearance:AddToggle("autoResetColor_Toggle", { Text = "Auto Reset Color", Tooltip = "Resets the colorpicker color back to its default color once a rainbow toggle is disabled.", Default = true,
+ui.settings.appearance:AddToggle("autoResetColor_Toggle", { Text = "Auto Reset Color", Tooltip = "Resets a color picker back to its default color once its Rainbow toggle (in the picker's settings gear) is disabled.", Default = true,
     Callback = function(Value) window.autoResetRainbowColor = Value end })
 ui.settings.menu:AddLabel("Menu bind"):AddKeyPicker("menuKeybind_KeyPicker", { Text = "Menu keybind", Default = "RightControl", NoUI = true })
 
