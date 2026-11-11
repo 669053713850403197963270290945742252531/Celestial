@@ -78,7 +78,7 @@ local killerNames = {
     "Pinhead", "Rake", "Robot", "Slenderman",
     "Smile Dog", "Sonic.exe", "Tails Doll",
     "Wendigo", "Yeti", "Zombie", "Fuwatti",
-    "Giant", "Evil Lawn Mower"
+    "Giant"
 }
 
 -- 03 | SHARED RUNTIME STATE
@@ -133,7 +133,7 @@ local window = library:CreateWindow({
     Center = true,
     AutoShow = true,
     ToggleKeybind = Enum.KeyCode.RightControl,
-    NotifySide = "Right",
+    NotifySide = "TopRight",
     ShowCustomCursor = false,
     Icon = assetLib.fetchAsset("Icons/Celestial.png"),
     Resizable = true,
@@ -4121,7 +4121,7 @@ silentAimSettings:AddDropdown("silentAimHitPart_Dropdown", { Text = "Hit Part", 
 silentAimSettings:AddToggle("silentAimPrediction_Toggle", { Text = "Prediction", Tooltip = "Lead moving Killers based on their velocity and projectile travel time.", Default = true })
 silentAimSettings:AddSlider("silentAimProjectileSpeed_Slider", { Text = "Projectile Speed", Tooltip = "Used to estimate projectile travel time for prediction.", Default = 150, Min = 25, Max = 1000, Suffix = " studs/s" })
 silentAimSettings:AddSlider("silentAimPredictionFactor_Slider", { Text = "Prediction Factor", Tooltip = "Scales how far ahead the predicted position is.", Default = 1, Min = 0, Max = 2, Rounding = 1 })
-silentAimSettings:AddToggle("silentAimShowFOV_Toggle", { Text = "Show FOV", Tooltip = "Display the silent-aim target radius when Silent Aim is enabled.", Default = true })
+silentAimSettings:AddToggle("silentAimShowFOV_Toggle", { Text = "Show FOV", Tooltip = "Display the silent-aim target radius." })
 
 local silentAimFOVColorSettings = toggles.silentAimShowFOV_Toggle:AddSettings({ Width = 200 })
 
@@ -8393,7 +8393,11 @@ end
 
 -- [Visuals / Controls] Fog, FOV, and anti-effects
 
-ui.visuals.screen:AddToggle("removeFog_Toggle", { Text = "Remove Fog" })
+ui.visuals.screen:AddToggle("fogReducer_Toggle", { Text = "Fog Reducer", Tooltip = "Pushes the fog back so you can see further. 100% removes the fog completely." })
+
+local fogReducerSettings = toggles.fogReducer_Toggle:AddSettings({ Width = 240 })
+fogReducerSettings:AddSlider("fogReducerAmount_Slider", { Text = "Reduction", Tooltip = "0% leaves the fog normal, higher values make it clearer, 100% removes it completely.", Default = 100, Min = 0, Max = 100, Suffix = "%", Rounding = 0 })
+
 ui.visuals.screen:AddToggle("enableFOV_Toggle", { Text = "Enable FOV" })
 
 local fieldOfViewSettings = toggles.enableFOV_Toggle:AddSettings({ Width = 220 })
@@ -8410,55 +8414,105 @@ local scopeOverlaySettings = toggles.disableScopeOverlay_Toggle:AddSettings({ Wi
 scopeOverlaySettings:AddToggle("keepScopeCrosshair_Toggle", { Text = "Keep Crosshair", Tooltip = "Shows the normal crosshair while scoped, since the scope's own reticle goes away with the overlay.", Default = true })
 
 
--- [Visuals / Fog] Toggle lifecycle and property-change connections
+-- [Visuals / Fog] Fog Reducer
+-- The reduction moves the whole fog band away from the camera: FogStart and FogEnd are both multiplied by
+-- 1 / (1 - reduction).
 local fogConnections = {}
-toggles.removeFog_Toggle:OnChanged(function(enabled)
-    if enabled then
-        entityLib.storeData(lighting, "FogColor")
-        entityLib.storeData(lighting, "FogEnd")
-        entityLib.storeData(lighting, "FogStart")
+local fogState: any = nil -- the game's own fog values and the values this feature last wrote
 
-        local function removeFog()
-            lighting.FogEnd = math.huge
-            lighting.FogStart = 0
-        end
-
-        removeFog()
-
-        -- Connect to property changes
-
-        fogConnections.FogEnd = lighting:GetPropertyChangedSignal("FogEnd"):Connect(function()
-            if toggles.removeFog_Toggle.Value and lighting.FogEnd ~= math.huge then
-                lighting.FogEnd = math.huge
-            end
-        end)
-
-        fogConnections.FogStart = lighting:GetPropertyChangedSignal("FogStart"):Connect(function()
-            if toggles.removeFog_Toggle.Value and lighting.FogStart ~= 0 then
-                lighting.FogStart = 0
-            end
-        end)
-
-    else
-        -- Disconnect all property change listeners
-
-        for _, conn in pairs(fogConnections) do
-            if conn.Connected then
-                conn:Disconnect()
-            end
-        end
-
-        fogConnections = {}
-
-        entityLib.restoreData(lighting, "FogColor")
-        entityLib.restoreData(lighting, "FogEnd")
-        entityLib.restoreData(lighting, "FogStart")
-
-        entityLib.clearData(lighting, "FogColor")
-        entityLib.clearData(lighting, "FogEnd")
-        entityLib.clearData(lighting, "FogStart")
+local function sameFog(a: number, b: number): boolean
+    if a == b then
+        return true
     end
+
+    if math.abs(a) == math.huge or math.abs(b) == math.huge then
+        return false
+    end
+
+    return math.abs(a - b) <= math.max(math.abs(a), math.abs(b)) * 1e-5 + 1e-6
+end
+
+local function applyFog()
+    local fog = fogState
+
+    if not fog then
+        return
+    end
+
+    local reduction = math.clamp(tonumber(options.fogReducerAmount_Slider.Value) or 100, 0, 100) / 100
+    local fogStart, fogEnd = 0, math.huge
+
+    if reduction < 1 then
+        local scale = 1 / (1 - reduction)
+
+        -- Capped below the 32-bit float limit so a huge game value cannot overflow into infinity
+        fogStart = math.min(fog.startOriginal * scale, 1e38)
+        fogEnd = math.min(fog.endOriginal * scale, 1e38)
+    end
+
+    fog.startApplied = fogStart
+    fog.endApplied = fogEnd
+
+    lighting.FogStart = fogStart
+    lighting.FogEnd = fogEnd
+end
+
+local function stopFogReducer()
+    for _, conn in pairs(fogConnections) do
+        if conn.Connected then
+            conn:Disconnect()
+        end
+    end
+
+    fogConnections = {}
+
+    local fog = fogState
+    fogState = nil
+
+    if fog then
+        lighting.FogStart = fog.startOriginal
+        lighting.FogEnd = fog.endOriginal
+    end
+end
+
+toggles.fogReducer_Toggle:OnChanged(function(enabled)
+    stopFogReducer()
+
+    if not enabled then
+        return
+    end
+
+    fogState = {
+        startOriginal = lighting.FogStart,
+        endOriginal = lighting.FogEnd,
+        startApplied = lighting.FogStart,
+        endApplied = lighting.FogEnd,
+    }
+
+    applyFog()
+
+    -- When the game changes the fog itself, that value becomes the new original and the reduction is applied on top.
+    -- A value that matches what this module wrote is its own change and is ignored.
+    fogConnections.FogEnd = lighting:GetPropertyChangedSignal("FogEnd"):Connect(function()
+        local fog = fogState
+
+        if fog and not sameFog(lighting.FogEnd, fog.endApplied) then
+            fog.endOriginal = lighting.FogEnd
+            applyFog()
+        end
+    end)
+
+    fogConnections.FogStart = lighting:GetPropertyChangedSignal("FogStart"):Connect(function()
+        local fog = fogState
+
+        if fog and not sameFog(lighting.FogStart, fog.startApplied) then
+            fog.startOriginal = lighting.FogStart
+            applyFog()
+        end
+    end)
 end)
+
+options.fogReducerAmount_Slider:OnChanged(applyFog)
 
 local excludedKillers = { Giant = true, Jane = true }
 
@@ -13303,7 +13357,7 @@ local notifSoundSettings = toggles.notifSound_Toggle:AddSettings({ Width = 230 }
 notifSoundSettings:AddSlider("notifAlertVolume_Slider", { Text = "Alert Volume", Default = 1, Min = 0.1, Max = 6, Rounding = 1 })
 
 
-ui.settings.overlays:AddDropdown("NotificationSide", { Text = "Notification Side", Values = { "Left", "Right" }, Default = "Right", Callback = function(val) library:SetNotifySide(val) end })
+ui.settings.overlays:AddDropdown("NotificationSide", { Text = "Notification Side", Values = { "TopLeft", "TopRight", "BottomLeft", "BottomRight" }, Default = 2, Callback = function(val) library:SetNotifySide(val) end })
 ui.settings.appearance:AddDropdown("DPIDropdown", { Text = "DPI Scale", Values = { "50%", "75%", "100%", "125%", "150%", "175%", "200%" }, Default = 3,
     Callback = function(val)
         val = val:gsub("%%", "")
@@ -14731,17 +14785,29 @@ utils.buildArraylist = function()
     local arraylistSettings = toggles.arraylist_Toggle:AddSettings({ Width = 290 })
     arraylistSettings:AddDropdown("arraylistSide_Dropdown", { Text = "Side", Values = { "Right", "Left" }, Default = 1 })
     arraylistSettings:AddDropdown("arraylistSort_Dropdown", { Text = "Sort", Values = { "Longest First", "Shortest First", "Alphabetical" }, Default = 1 })
-    arraylistSettings:AddDropdown("arraylistColorMode_Dropdown", { Text = "Color Mode", Tooltip = "Gradient runs a rainbow down the list. Static uses the color picker.", Values = { "Gradient", "Static" }, Default = 1 })
+    arraylistSettings:AddDropdown("arraylistColorMode_Dropdown", { Text = "Color Mode", Tooltip = "Gradient runs a rainbow down the list. Solid uses the color from the color picker.", Values = { "Gradient", "Solid" }, Default = 1 })
 
-    utils.addRainbowSettings(arraylistSettings:AddLabel("Static Color"):AddColorPicker("arraylistColor_ColorPicker", { Title = "Arraylist Color", Default = Color3.fromRGB(0, 229, 255) }), "arraylistColor_ColorPicker", "rainbowArraylistColor_Toggle")
+    local solidColorLabel = arraylistSettings:AddLabel("Solid Color")
+    utils.addRainbowSettings(solidColorLabel:AddColorPicker("arraylistColor_ColorPicker", { Title = "Arraylist Color", Default = Color3.fromRGB(0, 229, 255) }), "arraylistColor_ColorPicker", "rainbowArraylistColor_Toggle")
+
+    -- The color picker only matters in Solid mode, so it is hidden in Gradient mode.
+    local function updateColorOptions()
+        solidColorLabel:SetVisible(options.arraylistColorMode_Dropdown.Value == "Solid")
+    end
+
+    options.arraylistColorMode_Dropdown:OnChanged(updateColorOptions)
+    updateColorOptions()
 
     arraylistSettings:AddSlider("arraylistTextSize_Slider", { Text = "Text Size", Default = 16, Min = 12, Max = 24, Rounding = 0 })
     arraylistSettings:AddSlider("arraylistBarWidth_Slider", { Text = "Bar Width", Default = 2, Min = 1, Max = 6, Rounding = 0, Suffix = " px" })
     arraylistSettings:AddSlider("arraylistBackground_Slider", { Text = "Background Transparency", Default = 0.5, Min = 0, Max = 1, Rounding = 2 })
     arraylistSettings:AddSlider("arraylistOffsetX_Slider", { Text = "Offset X", Default = 6, Min = 0, Max = 400, Rounding = 0, Suffix = " px" })
     arraylistSettings:AddSlider("arraylistOffsetY_Slider", { Text = "Offset Y", Default = 6, Min = 0, Max = 600, Rounding = 0, Suffix = " px" })
-    arraylistSettings:AddToggle("arraylistInfo_Toggle", { Text = "Show Info", Tooltip = "Shows a module's mode or value after its name, like Speed Exploit's method.", Default = true })
+    arraylistSettings:AddToggle("arraylistInfo_Toggle", { Text = "Show Info", Tooltip = "Shows a module's mode and values after its name, like Disable Aura's method and range.", Default = true })
     arraylistSettings:AddToggle("arraylistAnimate_Toggle", { Text = "Animations", Default = true })
+    arraylistSettings:AddToggle("arraylistExclusions_Toggle", { Text = "Exclusions", Tooltip = "Hides specific modules from the Arraylist." })
+
+    local arraylistExclusionSettings = toggles.arraylistExclusions_Toggle:AddSettings({ Width = 260 })
 
 
     -- [Arraylist / Modules] The toggles that count as a module.
@@ -14753,30 +14819,84 @@ utils.buildArraylist = function()
         return object and object.Value
     end
 
-    local function number(id: string): string?
+    -- A slider value rounded to two decimals without trailing zeros (0.40 -> "0.4"), with an optional unit.
+    local function number(id: string, unit: string?): string?
         local amount = value(id)
 
         if type(amount) ~= "number" then
             return nil
         end
 
-        return tostring(math.floor(amount * 10 + 0.5) / 10)
+        return tostring(math.floor(amount * 100 + 0.5) / 100) .. (unit or "")
     end
+
+    -- The selected value of a dropdown, optionally shortened through a lookup table.
+    local function choice(id: string, shorten: any?): string?
+        local selected = value(id)
+
+        if type(selected) ~= "string" or selected == "" then
+            return nil
+        end
+
+        return shorten and shorten[selected] or selected
+    end
+
+    local function flag(id: string): boolean
+        local toggle = toggles[id]
+
+        return toggle ~= nil and toggle.Value == true
+    end
+
+    -- Connects the parts that exist (strings only, so `flag(...) and "text"` can be passed straight in).
+    local function join(separator: string, ...: any): string?
+        local parts: { string } = {}
+
+        for index = 1, select("#", ...) do
+            local part = select(index, ...)
+
+            if type(part) == "string" and part ~= "" then
+                table.insert(parts, part)
+            end
+        end
+
+        if #parts == 0 then
+            return nil
+        end
+
+        return table.concat(parts, separator)
+    end
+
+    local hitPartNames = { HumanoidRootPart = "Root" }
+    local auraMethodNames = { ["Disable Movement"] = "Movement", ["Disable Humanoid"] = "Humanoid" }
 
     local modules: { any } = {
         -- Player
         { id = "speedExploit_Toggle", name = "Speed Exploit", suffix = function()
-            local method, amount = value("speedExploitMethod_Dropdown"), number("speedExploitAmount_Slider")
-            return method and amount and (method .. " " .. amount) or method
+            return join(" ", choice("speedExploitMethod_Dropdown"), number("speedExploitAmount_Slider"))
         end },
-        { id = "speedBypass_Toggle", name = "Speed Bypass" },
-        { id = "toggleFly_Toggle", requires = { "enableFly_Toggle" }, name = "Fly", suffix = function() return number("flyHorizSpeed_Slider") end },
+        { id = "speedBypass_Toggle", name = "Speed Bypass", suffix = function()
+            return flag("speedBypassNoAcceleration_Toggle") and "No Accel" or nil
+        end },
+        { id = "toggleFly_Toggle", requires = { "enableFly_Toggle" }, name = "Fly", suffix = function()
+            local horizontal, vertical = number("flyHorizSpeed_Slider"), number("flyVertSpeed_Slider")
+
+            -- One number while both speeds match, horizontal / vertical when they differ.
+            if horizontal == vertical then
+                return horizontal
+            end
+
+            return join(" / ", horizontal, vertical)
+        end },
         { id = "toggleNoclip_Toggle", requires = { "enableNoclip_Toggle" }, name = "Noclip" },
         { id = "enableJumpPower_Toggle", name = "Jump Power", suffix = function() return number("jumpPowerValue_Slider") end },
         { id = "autoBacktrack_Toggle", name = "Backtrack" },
-        { id = "outOfBoundsGuard_Toggle", name = "Out-of-Bounds Guard" },
-        { id = "freecam_Toggle", name = "Freecam" },
-        { id = "fakeLag_Toggle", name = "Fake Lag" },
+        { id = "outOfBoundsGuard_Toggle", name = "Out-of-Bounds Guard", suffix = function()
+            return join(" / ", number("outOfBoundsGuardGrace_Slider", "s"), number("outOfBoundsGuardMargin_Slider"))
+        end },
+        { id = "freecam_Toggle", name = "Freecam", suffix = function() return number("freecamSpeedSlider") end },
+        { id = "fakeLag_Toggle", name = "Fake Lag", suffix = function()
+            return join(" / ", number("fakeLagDuration_Slider", "s"), number("fakeLagRelease_Slider", "s"))
+        end },
 
         -- Utility
         { id = "promptReach_Toggle", name = "Prompt Reach" },
@@ -14785,33 +14905,55 @@ utils.buildArraylist = function()
         { id = "autoOpenDoors_Toggle", name = "Auto Open Doors" },
         { id = "autoCloseDoors_Toggle", name = "Auto Close Doors" },
         { id = "doorNoclip_Toggle", name = "Door Noclip" },
-        { id = "autoDrink_Toggle", name = "Auto Drink" },
+        { id = "autoDrink_Toggle", name = "Auto Drink", suffix = function() return number("autoDrinkThreshold_Slider") end },
         { id = "autoRefill_Toggle", name = "Auto Refill" },
 
         -- Exploits
-        { id = "enableAimbot_Toggle", name = "Aimbot" },
-        { id = "enableSilentAim_Toggle", name = "Silent Aim" },
-        { id = "enableTriggerbot_Toggle", name = "Triggerbot" },
-        { id = "disableAllKillers_Toggle", name = "Disable Aura" },
+        { id = "enableAimbot_Toggle", name = "Aimbot", suffix = function()
+            return join(" ", choice("aimbotHitPart_Dropdown", hitPartNames), number("aimbotMaximumDistance_Slider"))
+        end },
+        { id = "enableSilentAim_Toggle", name = "Silent Aim", suffix = function()
+            return join(" ", choice("silentAimHitPart_Dropdown", hitPartNames), number("FOV_Slider"))
+        end },
+        { id = "enableTriggerbot_Toggle", name = "Triggerbot", suffix = function()
+            return join(" ", choice("triggerbotFireMode_Dropdown"), number("triggerbotRange_Slider"))
+        end },
+        { id = "disableAllKillers_Toggle", name = "Disable Aura", suffix = function()
+            return join(" ", choice("disableAuraMethod_Dropdown", auraMethodNames), number("disableKillersDistance_Slider"))
+        end },
         { id = "killerGodmode_Toggle", name = "Killer Godmode" },
+        { id = "antiPinhead_Toggle", requires = { "killerGodmode_Toggle" }, name = "Anti Pinhead" },
+        { id = "acidDodge_Toggle", requires = { "killerGodmode_Toggle" }, name = "Acid Dodge", suffix = function()
+            return join(" / ", number("acidDodgeRange_Slider"), number("acidDodgeDistance_Slider"))
+        end },
         { id = "antiSlendermanJumpscare_Toggle", name = "Anti Slenderman Jumpscare" },
-        { id = "slendermanSafeFacing_Toggle", name = "Slenderman Safe Facing" },
-        { id = "autoSafeSpot_Toggle", name = "Auto Safe Spot" },
-        { id = "hitboxExpander_Toggle", name = "Hitbox Expander", suffix = function() return number("hitboxSize_Slider") end },
+        { id = "slendermanSafeFacing_Toggle", name = "Slenderman Safe Facing", suffix = function() return number("slendermanSafeFacingDistance_Slider") end },
+        { id = "autoSafeSpot_Toggle", name = "Auto Safe Spot", suffix = function()
+            return join(" / ", number("autoSafeSpotHealth_Slider", " HP"), number("autoSafeSpotRadius_Slider"))
+        end },
+        { id = "autoSafeSpotSlenderman_Toggle", requires = { "autoSafeSpot_Toggle" }, name = "Flee Slenderman", suffix = function() return number("autoSafeSpotSlendermanDistance_Slider") end },
+        { id = "autoSafeSpotSpectate_Toggle", requires = { "autoSafeSpot_Toggle" }, name = "Spectate Killer" },
+        { id = "hitboxExpander_Toggle", name = "Hitbox Expander", suffix = function()
+            return join(" / ", number("hitboxSize_Slider"), number("hitboxRange_Slider"))
+        end },
         { id = "autoCollect_Toggle", name = "Auto Collect" },
 
         -- Visuals
-        { id = "killerESP_Toggle", name = "Killer ESP" },
-        { id = "toggleKillersNametags_Toggle", requires = { "killerESP_Toggle" }, name = "Name Tags" },
-        { id = "killerArrows_Toggle", requires = { "killerESP_Toggle" }, name = "Offscreen Arrows" },
-        { id = "removeFog_Toggle", name = "Remove Fog" },
+        { id = "killerESP_Toggle", name = "Killer ESP", suffix = function()
+            return join(" ", choice("killerESPBoxType_Dropdown"), number("killerESPDistance_Slider"))
+        end },
+        { id = "toggleKillersNametags_Toggle", requires = { "killerESP_Toggle" }, name = "Name Tags", suffix = function() return number("textSize_Slider") end },
+        { id = "killerArrows_Toggle", requires = { "killerESP_Toggle" }, name = "Offscreen Arrows", suffix = function()
+            return join(" / ", number("killerArrowSize_Slider"), number("killerArrowOffset_Slider"))
+        end },
+        { id = "fogReducer_Toggle", name = "Fog Reducer", suffix = function() return number("fogReducerAmount_Slider", "%") end },
         { id = "halloweenKillers_Toggle", name = "Halloween Killers" },
         { id = "campingLantern_Toggle", requires = { "halloweenKillers_Toggle" }, name = "Camping Lantern" },
         { id = "enableFOV_Toggle", name = "FOV", suffix = function() return number("fieldOfViewValue_Slider") end },
         { id = "antiInk_Toggle", name = "Anti Ink" },
         { id = "antiTailsPopup_Toggle", name = "Anti Tails Popup" },
         { id = "disableScopeOverlay_Toggle", name = "No Scope Overlay" },
-        { id = "visualizeHitbox_Toggle", name = "Hitbox Visualizer" },
+        { id = "visualizeHitbox_Toggle", name = "Hitbox Visualizer", suffix = function() return number("hitboxVisualizeRange_Slider") end },
         { id = "killerPortrait_Toggle", name = "Killer Portrait" },
         { id = "trajectoryPreview_Toggle", name = "Grenade Trajectory" },
 
@@ -14822,13 +14964,18 @@ utils.buildArraylist = function()
         { id = "disableKillParts_Toggle", name = "No Kill Parts" },
 
         -- Weapons
-        { id = "zombieMorph_Toggle", name = "Zombie Morph" },
-        { id = "autoReloadWeapons_Toggle", name = "Auto Reload" },
+        { id = "zombieMorph_Toggle", name = "Zombie Morph", suffix = function()
+            return join(" / ", flag("disableSelfGlow_Toggle") and "No Glow" or nil, flag("normalAppearance_Toggle") and "Normal" or nil)
+        end },
+        { id = "autoReloadWeapons_Toggle", name = "Auto Reload", suffix = function() return number("autoReloadDelay_Slider", "s") end },
         { id = "autoPickupWeapons_Toggle", name = "Auto Pickup" },
+        { id = "fireOnRespawn_Toggle", name = "Auto Weapons" },
         { id = "weaponSpam_Toggle", name = "Weapon Spam" },
         { id = "obtainArmor_Toggle", name = "Auto Armor" },
         { id = "obtainHelmet_Toggle", name = "Auto Helmet" },
-        { id = "skinChangerAuto_Toggle", name = "Skin Changer" },
+        { id = "skinChangerAuto_Toggle", name = "Skin Changer", suffix = function()
+            return join(" / ", choice("skinChangerSkin_Dropdown"))
+        end },
         { id = "enableGunMods_Toggle", name = "Gun Mods", suffix = function() return number("bulletCountGunMod_Slider") end },
         { id = "infiniteAmmoGunMod_Toggle", requires = { "enableGunMods_Toggle" }, name = "Infinite Ammo" },
         { id = "fullAutoGunMod_Toggle", requires = { "enableGunMods_Toggle" }, name = "Full Auto" },
@@ -14845,7 +14992,7 @@ utils.buildArraylist = function()
         active = false,
         busy = false, -- a refresh is running (measuring text can yield)
         dirty = false, -- something changed, refresh on the next frame
-        rebuild = false, -- a setting changed, recreate every row instead of animating
+        restyle = false, -- a look or sort setting changed: restyle and re-lay out the existing rows in place
         accumulator = 0,
         container = nil,
         loop = nil,
@@ -14855,6 +15002,59 @@ utils.buildArraylist = function()
         signature = nil,
         widths = {},
     }
+
+    -- [Arraylist / Exclusions] Modules are picked from a dropdown by the name of their toggle in the menu
+    local function menuName(definition: any): string
+        local toggle = toggles[definition.id]
+        local text = toggle and toggle.Text
+
+        if type(text) == "string" and text ~= "" then
+            return text
+        end
+
+        return definition.name
+    end
+
+    local function readExclusions(): { [string]: boolean }?
+        local toggle = toggles.arraylistExclusions_Toggle
+        local dropdown = options.arraylistExclusions_Dropdown
+
+        if not toggle or toggle.Value ~= true or not dropdown or type(dropdown.Value) ~= "table" then
+            return nil
+        end
+
+        return dropdown.Value
+    end
+
+    -- [Arraylist / Exclusions / Dropdown] Every module whose toggle exists, sorted by menu name
+    do
+        local names: { string } = {}
+        local seen: { [string]: boolean } = {}
+
+        for _, definition in ipairs(modules) do
+            if toggles[definition.id] then
+                local name = menuName(definition)
+
+                if not seen[name] then
+                    seen[name] = true
+                    table.insert(names, name)
+                end
+            end
+        end
+
+        table.sort(names, function(a: string, b: string)
+            return a:lower() < b:lower()
+        end)
+
+        arraylistExclusionSettings:AddDropdown("arraylistExclusions_Dropdown", { Text = "Hidden Modules", Tooltip = "The modules to hide from the Arraylist.", Values = names, Multi = true, Searchable = true, AllowNull = true })
+
+        -- Unselects every module at once, so the dropdown does not have to be scrolled through.
+        arraylistExclusionSettings:AddButton({ Text = "Clear Exclusions", Icon = "trash-2", Tooltip = "Unselects every hidden module, so all of them can show in the Arraylist again.",
+            Func = function()
+                options.arraylistExclusions_Dropdown:SetValue({})
+            end,
+        })
+    end
 
     local function readConfig(): any
         local function setting(id: string, fallback: any): any
@@ -14887,6 +15087,7 @@ utils.buildArraylist = function()
             offsetY = math.floor(setting("arraylistOffsetY_Slider", 6)),
             showInfo = switch("arraylistInfo_Toggle", true),
             animate = switch("arraylistAnimate_Toggle", true),
+            exclusions = readExclusions(),
         }
     end
 
@@ -14910,11 +15111,13 @@ utils.buildArraylist = function()
         return true
     end
 
-    local function collectEntries(showInfo: boolean): { any }
+    local function collectEntries(cfg: any): { any }
+        local showInfo: boolean = cfg.showInfo
+        local excluded: { [string]: boolean }? = cfg.exclusions
         local entries: { any } = {}
 
         for _, definition in ipairs(modules) do
-            if isEnabled(definition) then
+            if isEnabled(definition) and not (excluded and excluded[menuName(definition)]) then
                 local info = ""
 
                 if showInfo and definition.suffix then
@@ -14961,16 +15164,6 @@ utils.buildArraylist = function()
     end
 
     -- [Arraylist / Rows]
-    local function destroyRows()
-        for id, row in pairs(state.rows) do
-            state.rows[id] = nil
-            row.frame:Destroy()
-        end
-
-        table.clear(state.order)
-        state.signature = nil
-    end
-
     local function play(instance: any, properties: any)
         tweenService:Create(instance, TweenInfo.new(ANIMATION_TIME, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), properties):Play()
     end
@@ -14986,17 +15179,34 @@ utils.buildArraylist = function()
         return instance
     end
 
-    local function createRow(id: string, cfg: any, font: any, height: number): any
+    -- Everything in a row that depends on the settings. Used for new rows and, when a setting changes, for the rows that
+    -- already exist, so a setting change never destroys and recreates the list.
+    local function styleRow(row: any, cfg: any, font: any)
         local rightSide: boolean = cfg.side == "Right"
         local barWidth: number = cfg.barWidth
         local padding: number = ROW_PADDING
 
+        row.frame.AnchorPoint = Vector2.new(rightSide and 1 or 0, 0)
+
+        row.background.Size = UDim2.new(1, -barWidth, 1, 0)
+        row.background.Position = UDim2.fromOffset(rightSide and 0 or barWidth, 0)
+
+        row.bar.Size = UDim2.new(0, barWidth, 1, 0)
+        row.bar.Position = rightSide and UDim2.new(1, -barWidth, 0, 0) or UDim2.fromOffset(0, 0)
+
+        row.label.FontFace = font
+        row.label.TextSize = cfg.size
+        row.label.TextXAlignment = rightSide and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left
+        row.label.Size = UDim2.new(1, -(barWidth + padding * 2), 1, 0)
+        row.label.Position = UDim2.fromOffset(rightSide and padding or (barWidth + padding), 0)
+    end
+
+    local function createRow(id: string, cfg: any, font: any, height: number): any
         local frame = create("Frame", {
             Name = id,
-            AnchorPoint = Vector2.new(rightSide and 1 or 0, 0),
             BackgroundTransparency = 1,
             BorderSizePixel = 0,
-            Size = UDim2.fromOffset(barWidth + padding * 2, height),
+            Size = UDim2.fromOffset(0, height),
             Parent = state.container,
         })
 
@@ -15004,16 +15214,12 @@ utils.buildArraylist = function()
             Name = "Background",
             BackgroundColor3 = Color3.new(0, 0, 0),
             BorderSizePixel = 0,
-            Size = UDim2.new(1, -barWidth, 1, 0),
-            Position = UDim2.fromOffset(rightSide and 0 or barWidth, 0),
             Parent = frame,
         })
 
         local bar = create("Frame", {
             Name = "Bar",
             BorderSizePixel = 0,
-            Size = UDim2.new(0, barWidth, 1, 0),
-            Position = rightSide and UDim2.new(1, -barWidth, 0, 0) or UDim2.fromOffset(0, 0),
             Parent = frame,
         })
 
@@ -15022,18 +15228,32 @@ utils.buildArraylist = function()
             BackgroundTransparency = 1,
             BorderSizePixel = 0,
             RichText = true,
-            FontFace = font,
-            TextSize = cfg.size,
             TextWrapped = false,
-            TextXAlignment = rightSide and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left,
             TextYAlignment = Enum.TextYAlignment.Center,
-            Size = UDim2.new(1, -(barWidth + padding * 2), 1, 0),
-            Position = UDim2.fromOffset(rightSide and padding or (barWidth + padding), 0),
             Text = "",
             Parent = frame,
         })
 
-        return { frame = frame, background = background, bar = bar, label = label, width = 0, new = true }
+        local row = { frame = frame, background = background, bar = bar, label = label, width = 0, new = true }
+
+        styleRow(row, cfg, font)
+
+        return row
+    end
+
+    -- The container is a zero-width anchor on the screen edge, rows hang off it and are aligned to its edge.
+    -- Moving it moves the whole list, so the offset sliders only call this and never touch the rows.
+    local function placeContainer(cfg: any)
+        local container = state.container
+
+        if not container then
+            return
+        end
+
+        local rightSide = cfg.side == "Right"
+
+        container.AnchorPoint = rightSide and Vector2.new(1, 0) or Vector2.new(0, 0)
+        container.Position = rightSide and UDim2.new(1, -cfg.offsetX, 0, cfg.offsetY) or UDim2.fromOffset(cfg.offsetX, cfg.offsetY)
     end
 
     local function setHidden(row: any, cfg: any, hidden: boolean)
@@ -15051,7 +15271,7 @@ utils.buildArraylist = function()
             return
         end
 
-        local static = modeObject.Value == "Static"
+        local solid = modeObject.Value == "Solid"
         local pickerColor = picker and picker.Value or Color3.new(1, 1, 1)
         local phase = os.clock() * (window.rainbowSpeed or 0.1)
 
@@ -15059,7 +15279,7 @@ utils.buildArraylist = function()
             local row = state.rows[id]
 
             if row then
-                local color = static and pickerColor or Color3.fromHSV((phase + (index - 1) * 0.03) % 1, 0.85, 1)
+                local color = solid and pickerColor or Color3.fromHSV((phase + (index - 1) * 0.03) % 1, 0.85, 1)
 
                 row.bar.BackgroundColor3 = color
                 row.label.TextColor3 = color
@@ -15067,15 +15287,12 @@ utils.buildArraylist = function()
         end
     end
 
-    local function layout(entries: { any }, cfg: any, font: any)
+    local function layout(entries: { any }, cfg: any, font: any, restyle: boolean)
         local rightSide = cfg.side == "Right"
         local height = math.floor(cfg.size * 1.3) -- always a whole number so stacked rows never leave a gap
 
-        -- The container is a zero-width anchor on the screen edge, rows hang off it and are aligned to its edge
-        local container = state.container
-        container.AnchorPoint = rightSide and Vector2.new(1, 0) or Vector2.new(0, 0)
-        container.Position = rightSide and UDim2.new(1, -cfg.offsetX, 0, cfg.offsetY) or UDim2.fromOffset(cfg.offsetX, cfg.offsetY)
-        container.Size = UDim2.fromOffset(0, #entries * height)
+        placeContainer(cfg)
+        state.container.Size = UDim2.fromOffset(0, #entries * height)
 
         local wanted: { [string]: boolean } = {}
         table.clear(state.order)
@@ -15089,6 +15306,9 @@ utils.buildArraylist = function()
             if not row then
                 row = createRow(entry.id, cfg, font, height)
                 state.rows[entry.id] = row
+            elseif restyle then
+                styleRow(row, cfg, font)
+                row.background.BackgroundTransparency = cfg.background
             end
 
             local width = entry.width + ROW_PADDING * 2 + cfg.barWidth
@@ -15155,10 +15375,10 @@ utils.buildArraylist = function()
             font = Font.fromEnum(Enum.Font.Gotham)
         end
 
-        local fullRebuild = state.rebuild
-        state.rebuild = false
+        local restyle = state.restyle
+        state.restyle = false
 
-        local entries = collectEntries(cfg.showInfo)
+        local entries = collectEntries(cfg)
         local parts = {}
 
         for index, entry in ipairs(entries) do
@@ -15167,7 +15387,7 @@ utils.buildArraylist = function()
 
         local signature = table.concat(parts, "\n")
 
-        if not fullRebuild and signature == state.signature then
+        if not restyle and signature == state.signature then
             return
         end
 
@@ -15177,10 +15397,6 @@ utils.buildArraylist = function()
 
         if not state.active then
             return
-        end
-
-        if fullRebuild then
-            destroyRows()
         end
 
         table.sort(entries, function(a, b)
@@ -15199,7 +15415,7 @@ utils.buildArraylist = function()
             return a.name:lower() < b.name:lower()
         end)
 
-        layout(entries, cfg, font)
+        layout(entries, cfg, font, restyle)
         state.signature = signature
     end
 
@@ -15250,7 +15466,7 @@ utils.buildArraylist = function()
         container.Parent = library.ScreenGui
         state.container = container
 
-        state.rebuild = true
+        state.restyle = true
         state.dirty = true
         state.accumulator = 0
 
@@ -15292,9 +15508,15 @@ utils.buildArraylist = function()
     end
 
     -- [Arraylist / Wiring]
-    local function requestRebuild()
-        state.rebuild = true
+    -- Look and sort settings restyle and re-lay out the rows that already exist
+    local function requestRestyle()
+        state.restyle = true
         state.dirty = true
+    end
+
+    -- Position only moves the container, so dragging an offset slider is smooth and nothing is rebuilt
+    local function applyPosition()
+        placeContainer(readConfig())
     end
 
     toggles.arraylist_Toggle:OnChanged(function(enabled)
@@ -15305,12 +15527,26 @@ utils.buildArraylist = function()
         end
     end)
 
-    for _, id in ipairs({ "arraylistSide_Dropdown", "arraylistSort_Dropdown", "arraylistTextSize_Slider", "arraylistBarWidth_Slider", "arraylistBackground_Slider", "arraylistOffsetX_Slider", "arraylistOffsetY_Slider" }) do
-        options[id]:OnChanged(requestRebuild)
+    for _, id in ipairs({ "arraylistSide_Dropdown", "arraylistSort_Dropdown", "arraylistTextSize_Slider", "arraylistBarWidth_Slider", "arraylistBackground_Slider" }) do
+        options[id]:OnChanged(requestRestyle)
     end
 
-    toggles.arraylistInfo_Toggle:OnChanged(requestRebuild)
-    toggles.arraylistAnimate_Toggle:OnChanged(requestRebuild)
+    options.arraylistOffsetX_Slider:OnChanged(applyPosition)
+    options.arraylistOffsetY_Slider:OnChanged(applyPosition)
+
+    -- Show Info changes the rows' text, which the refresh already notices. Animations is read when rows move.
+    toggles.arraylistInfo_Toggle:OnChanged(function()
+        state.dirty = true
+    end)
+
+    -- Exclusions only change which modules are listed, so the next refresh picks them up
+    toggles.arraylistExclusions_Toggle:OnChanged(function()
+        state.dirty = true
+    end)
+
+    options.arraylistExclusions_Dropdown:OnChanged(function()
+        state.dirty = true
+    end)
 
     table.insert(teardownTasks, stop)
 end
