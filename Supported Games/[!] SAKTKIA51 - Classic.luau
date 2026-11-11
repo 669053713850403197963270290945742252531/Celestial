@@ -65,6 +65,7 @@ local defaults = {
     trajectoryPathColor_ColorPicker = Color3.fromRGB(0, 229, 255),
     trajectoryLandingColor_ColorPicker = Color3.fromRGB(255, 170, 0),
     trajectoryKillerColor_ColorPicker = Color3.fromRGB(0, 255, 0),
+    arraylistColor_ColorPicker = Color3.fromRGB(0, 229, 255),
 }
 
 -- Names used by the target-exclusion dropdowns.
@@ -212,9 +213,9 @@ ui.waypoints = {
 
 ui.player = {
     movement = tabs.player:AddGroupbox({ Side = "Left", Name = "Movement", IconName = assetLib.fetchAsset("Icons/move.png"), Description = "Speed, fly, and jump power" }),
-    clipping = tabs.player:AddGroupbox({ Side = "Left", Name = "Noclip & Phase", IconName = assetLib.fetchAsset("Icons/brick-wall.png"), Description = "Get through walls and objects" }),
+    clipping = tabs.player:AddGroupbox({ Side = "Right", Name = "Noclip & Phase", IconName = assetLib.fetchAsset("Icons/brick-wall.png"), Description = "Get through walls and objects" }),
     safety = tabs.player:AddGroupbox({ Side = "Right", Name = "Safety", IconName = assetLib.fetchAsset("Icons/life-buoy.png"), Description = "Backtrack and out-of-bounds guard" }),
-    cameraLag = tabs.player:AddGroupbox({ Side = "Right", Name = "Camera & Lag", IconName = assetLib.fetchAsset("Icons/video.png"), Description = "Freecam and fake lag" }),
+    cameraLag = tabs.player:AddGroupbox({ Side = "Left", Name = "Camera & Lag", IconName = assetLib.fetchAsset("Icons/video.png"), Description = "Freecam and fake lag" }),
 }
 
 ui.exploits = {
@@ -225,13 +226,13 @@ ui.exploits = {
 -- Killer Portrait stays its own groupbox because it is a pop-out panel.
 ui.visuals = {
     esp = tabs.visuals:AddGroupbox({ Side = "Left", Name = "Killer ESP", IconName = assetLib.fetchAsset("Icons/scan-eye.png"), Description = "Boxes, arrows, name tags, and hitboxes" }),
+    weapon = tabs.visuals:AddGroupbox({ Side = "Left", Name = "Weapon Visuals", IconName = assetLib.fetchAsset("Icons/telescope.png"), Description = "Scope overlay and grenade path" }),
     portrait = tabs.visuals:AddGroupbox({ Side = "Left", Name = "Killer Portrait", IconName = assetLib.fetchAsset("Icons/picture-in-picture-2.png"), Description = "Nearest Killer preview", MaxPopOutHeight = 380, PopOutWidth = 240 }),
     screen = tabs.visuals:AddGroupbox({ Side = "Right", Name = "Screen & Effects", IconName = assetLib.fetchAsset("Icons/monitor.png"), Description = "Fog, FOV, anti-effects, and Halloween looks" }),
-    weapon = tabs.visuals:AddGroupbox({ Side = "Right", Name = "Weapon Visuals", IconName = assetLib.fetchAsset("Icons/telescope.png"), Description = "Scope overlay and grenade path" }),
 }
 
 do
-    local environmentTabbox = tabs.world:AddLeftTabbox()
+    local environmentTabbox = tabs.world:AddTabbox( { Side = "Left" } )
     ui.world = {
         hazards = environmentTabbox:AddTab("Hazards"),
         ambience = environmentTabbox:AddTab("Ambience"),
@@ -251,12 +252,10 @@ ui.misc = {
 }
 
 do
-    local feedbackTabbox = tabs.uiSettings:AddRightTabbox()
     ui.settings = {
         menu = tabs.uiSettings:AddGroupbox({ Side = "Left", Name = "Menu", IconName = assetLib.fetchAsset("Icons/keyboard.png"), Description = "Keybinds and window" }),
         appearance = tabs.uiSettings:AddGroupbox({ Side = "Left", Name = "Appearance", IconName = assetLib.fetchAsset("Icons/swatch-book.png"), Description = "Scale, corners, and rainbow colors" }),
-        notifications = feedbackTabbox:AddTab("Notifications"),
-        sessionInfo = feedbackTabbox:AddTab("Session Info"),
+        overlays = tabs.uiSettings:AddGroupbox({ Side = "Right", Name = "Notifications & Overlays", IconName = assetLib.fetchAsset("Icons/monitor.png"), Description = "Alerts, Session Info, and Arraylist" }),
     }
 end
 
@@ -841,7 +840,7 @@ end
 -- 07 | TAB: HOME
 -- ============================================================================
 
-local infoTabBox = tabs.home:AddLeftTabbox()
+local infoTabBox = tabs.home:AddTabbox( { Side = "Left" } )
 
 -- [Home / Panels] Player, game, and optional whitelist tabs
 
@@ -1108,16 +1107,16 @@ log("gave up asking for a server; press Play manually (the script will still rel
 
     filterGroup:AddToggle("serverhopLowPlayers_Toggle", { Text = "Prefer Low-Player Servers", Tooltip = "Serverhop keeps hopping until it lands in a server with at least this many players." })
 
-    local lowPlayersDepbox = filterGroup:AddDependencyBox()
-    lowPlayersDepbox:AddSlider("serverhopMaxPlayers_Slider", { Text = "Max Players", Tooltip = "Servers with more players than this (counting you) are skipped. A server holds 12.", Default = 6, Min = 1, Max = 11 })
-    lowPlayersDepbox:SetupDependencies({ { toggles.serverhopLowPlayers_Toggle, true } })
+    local lowPlayersBox = filterGroup:AddDependencyBox()
+    lowPlayersBox:AddSlider("serverhopMaxPlayers_Slider", { Text = "Max Players", Tooltip = "Servers with more players than this (counting you) are skipped. A server holds 12.", Default = 6, Min = 1, Max = 11 })
+    lowPlayersBox:SetupDependencies({ { toggles.serverhopLowPlayers_Toggle, true } })
 
     filterGroup:AddToggle("serverhopKillerFilter_Toggle", { Text = "Skip Servers With Dead Killers", Tooltip = "Serverhop keeps hopping when the killers you care about are already dead in the server you land in." })
 
-    local killerFilterDepbox = filterGroup:AddDependencyBox()
-    killerFilterDepbox:AddDropdown("serverhopKillers_Dropdown", { Text = "Killers I Care About", Tooltip = "Killers that are not in the server at all are ignored.", Values = killerNames, Multi = true, Searchable = true, AllowNull = true })
-    killerFilterDepbox:AddDropdown("serverhopKillerMode_Dropdown", { Text = "Skip When", Values = { "Any selected is dead", "All selected are dead" }, Default = 1 })
-    killerFilterDepbox:SetupDependencies({ { toggles.serverhopKillerFilter_Toggle, true } })
+    local killerFilterBox = filterGroup:AddDependencyBox()
+    killerFilterBox:AddDropdown("serverhopKillers_Dropdown", { Text = "Killers I Care About", Tooltip = "Killers that are not in the server at all are ignored.", Values = killerNames, Multi = true, Searchable = true, AllowNull = true })
+    killerFilterBox:AddDropdown("serverhopKillerMode_Dropdown", { Text = "Skip When", Values = { "Any selected is dead", "All selected are dead" }, Default = 1 })
+    killerFilterBox:SetupDependencies({ { toggles.serverhopKillerFilter_Toggle, true } })
 
     filterGroup:AddSlider("serverhopMaxHops_Slider", { Text = "Max Hops", Tooltip = "After this many servers Serverhop stops and stays in the last one, even if it does not match.", Default = 10, Min = 1, Max = 30 })
 
@@ -1588,11 +1587,10 @@ end
 
 autoDrinkToggle = ui.utility.healing:AddToggle("autoDrink_Toggle", { Text = "Auto Drink", Tooltip = "Drinks the entire energy drink when you are below the threshold.", Disabled = not getEnergyDrinkState() })
 
--- [Utility / Healing] Toggle controls and dependency wiring
-local autoDrinkDepbox = ui.utility.healing:AddDependencyBox()
-autoDrinkThresholdSlider = autoDrinkDepbox:AddSlider("autoDrinkThreshold_Slider", { Text = "Threshold", Default = 40, Min = 10, Max = getMaxThreshold() })
+-- [Utility / Healing] Toggle controls and settings
+local autoDrinkSettings = toggles.autoDrink_Toggle:AddSettings({ Width = 230 })
+autoDrinkThresholdSlider = autoDrinkSettings:AddSlider("autoDrinkThreshold_Slider", { Text = "Threshold", Default = 40, Min = 10, Max = getMaxThreshold() })
 
-autoDrinkDepbox:SetupDependencies({ { toggles.autoDrink_Toggle, true } })
 
 autoRefillToggle = ui.utility.healing:AddToggle("autoRefill_Toggle", { Text = "Auto Refill", Tooltip = "Refills your energy drink when it has no more charges left.", Disabled = not getEnergyDrinkState() })
 
@@ -2039,7 +2037,7 @@ do
 
         button:AddButton({
             Text = "Delete",
-            Icon = "trash-2",
+            Icon = "trash",
             DoubleClick = true,
             Risky = true,
             Func = function()
@@ -2073,7 +2071,7 @@ do
         local position, err = parsePosition(positionInput.Value)
 
         if not position then
-            notify("Error", "Invalid position", err, 10)
+            notify("Error", "Invalid position", utils.escapeRichText(err), 10)
             return
         end
 
@@ -2142,53 +2140,48 @@ end
 
 ui.player.movement:AddToggle("speedBypass_Toggle", { Text = "Speed Check Bypass", Default = true, Tooltip = "EXPERIMENTAL. Disables the game's client-side movement checks (WalkSpeed, JumpPower, state changes, collision). You should still be cautious when using features in the Player tab." })
 
-local speedBypassDepbox = ui.player.movement:AddDependencyBox()
-speedBypassDepbox:AddToggle("speedBypassNoAcceleration_Toggle", { Text = "Disable Acceleration", Tooltip = "Removes the slight sliding effect when starting or stopping at high WalkSpeed values. Only applies while on the ground." })
-speedBypassDepbox:AddDivider()
+local speedBypassSettings = toggles.speedBypass_Toggle:AddSettings({ Width = 250 })
+speedBypassSettings:AddToggle("speedBypassNoAcceleration_Toggle", { Text = "Disable Acceleration", Tooltip = "Removes the slight sliding effect when starting or stopping at high WalkSpeed values. Only applies while on the ground." })
 
 -- [Player / Speed Exploit] Controls
 
 ui.player.movement:AddToggle("speedExploit_Toggle", { Text = "Speed Exploit" })
 
-local speedExploitDepbox = ui.player.movement:AddDependencyBox()
-speedExploitDepbox:AddDropdown("speedExploitMethod_Dropdown", { Text = "Method", Values = { "WalkSpeed", "Velocity" }, Default = 1 })
-speedExploitDepbox:AddSlider("speedExploitAmount_Slider", { Text = "Amount", Default = 20, Min = 16, Max = 100 })
-speedExploitDepbox:AddLabel("Due to Roblox's physics limitations, high velocity speeds may cause unexpected falling on collisions.", true)
-speedExploitDepbox:AddDivider()
+local speedExploitSettings = toggles.speedExploit_Toggle:AddSettings({ Width = 260 })
+speedExploitSettings:AddDropdown("speedExploitMethod_Dropdown", { Text = "Method", Values = { "WalkSpeed", "Velocity" }, Default = 1 })
+speedExploitSettings:AddSlider("speedExploitAmount_Slider", { Text = "Amount", Default = 20, Min = 16, Max = 100 })
+speedExploitSettings:AddLabel("Due to Roblox's physics limitations, high velocity speeds may cause unexpected falling on collisions.", true)
 
 -- [Player / Fly] Controls and input handling
 
-ui.player.movement:AddToggle("enableFly_Toggle", { Text = "Enable Fly" })
+ui.player.movement:AddToggle("enableFly_Toggle", { Text = "Enable Fly", Tooltip = "Unlocks the Fly toggle and its keybind. The Fly speeds are in the gear." })
 
-local flyDepbox = ui.player.movement:AddDependencyBox()
-flyDepbox:AddToggle("toggleFly_Toggle", { Text = "Fly" })
+local flySettings = toggles.enableFly_Toggle:AddSettings({ Width = 270 })
+local flyHorizSpeed_Slider = flySettings:AddSlider("flyHorizSpeed_Slider", { Text = "Horizontal Speed", Tooltip = "The speed you normally go at.", Default = 100, Min = 30, Max = 1000 })
+local flyVertSpeed_Slider = flySettings:AddSlider("flyVertSpeed_Slider", { Text = "Vertical Speed", Tooltip = "The speed you go when ascending/descending.", Default = 100, Min = 30, Max = 300 })
+flySettings:AddLabel("Fly is NOT compatible when Speed Exploit's mode is set as Velocity and will be swapped.", true)
+
+local flyBox = ui.player.movement:AddDependencyBox()
+flyBox:AddToggle("toggleFly_Toggle", { Text = "Fly" })
 :AddKeyPicker("fly_KeyPicker", { Text = "Fly", Default = "F", SyncToggleState = true, Mode = "Toggle", NoUI = true, Disabled = true })
-local flyHorizSpeed_Slider = flyDepbox:AddSlider("flyHorizSpeed_Slider", { Text = "Horizontal Speed", Tooltip = "The speed you normally go at.", Default = 100, Min = 30, Max = 1000 })
-local flyVertSpeed_Slider = flyDepbox:AddSlider("flyVertSpeed_Slider", { Text = "Vertical Speed", Tooltip = "The speed you go when ascending/descending.", Default = 100, Min = 30, Max = 300 })
-flyDepbox:AddLabel("Fly is NOT compatible when Speed Exploit's mode is set as Velocity and will be swapped.", true)
-flyDepbox:AddDivider()
+flyBox:SetupDependencies({ { toggles.enableFly_Toggle, true } })
 
 -- [Player / Noclip] Controls
 
-ui.player.clipping:AddToggle("enableNoclip_Toggle", { Text = "Enable Noclip" })
+ui.player.clipping:AddToggle("enableNoclip_Toggle", { Text = "Enable Noclip", Tooltip = "Unlocks the Noclip toggle and its keybind." })
 
-local noclipDepbox = ui.player.clipping:AddDependencyBox()
-noclipDepbox:AddToggle("toggleNoclip_Toggle", { Text = "Noclip" })
+local noclipBox = ui.player.clipping:AddDependencyBox()
+noclipBox:AddToggle("toggleNoclip_Toggle", { Text = "Noclip" })
 :AddKeyPicker("noclip_KeyPicker", { Text = "Noclip", Default = "G", SyncToggleState = true, Mode = "Toggle", NoUI = true, Disabled = true })
-noclipDepbox:AddDivider()
+noclipBox:SetupDependencies({ { toggles.enableNoclip_Toggle, true } })
 
 -- [Player / Jump Power] Controls
 
 ui.player.movement:AddToggle("enableJumpPower_Toggle", { Text = "Enable JumpPower" })
 
-local jumpPowerDepbox = ui.player.movement:AddDependencyBox()
-jumpPowerDepbox:AddSlider("jumpPowerValue_Slider", { Text = "Value", Default = 50, Min = 50, Max = 200 })
+local jumpPowerSettings = toggles.enableJumpPower_Toggle:AddSettings({ Width = 220 })
+jumpPowerSettings:AddSlider("jumpPowerValue_Slider", { Text = "Value", Default = 50, Min = 50, Max = 200 })
 
-speedBypassDepbox:SetupDependencies({ { toggles.speedBypass_Toggle, true } })
-speedExploitDepbox:SetupDependencies({ { toggles.speedExploit_Toggle, true } })
-flyDepbox:SetupDependencies({ { toggles.enableFly_Toggle, true } })
-noclipDepbox:SetupDependencies({ { toggles.enableNoclip_Toggle, true } })
-jumpPowerDepbox:SetupDependencies({ { toggles.enableJumpPower_Toggle, true } })
 
 toggles.enableJumpPower_Toggle:OnChanged(function(enabled)
     if enabled then
@@ -2744,35 +2737,35 @@ do
     local function buildPhase()
         ui.player.clipping:AddToggle("enablePhase_Toggle", { Text = "Enable Phase", Tooltip = "Adds a Phase button and keybind. Phase teleports you through the wall in front of you to the floor behind it. It is not noclip: it refuses when the wall is too thick or there is no safe floor behind it." })
 
-        local phaseDepbox = ui.player.clipping:AddDependencyBox()
+        local phaseSettings = toggles.enablePhase_Toggle:AddSettings({ Width = 270 })
 
-        phaseDepbox:AddButton({ Text = "Phase", Tooltip = "Teleports you through the wall you are facing (or walking into) to the floor behind it.",
-            Func = function()
-                performPhase()
-            end,
-        }):AddKeyPicker("phase_KeyPicker", { Default = "B", Text = "Phase", Mode = "Press", NoUI = true, Disabled = true })
 
-        phaseDepbox:AddSlider("phaseWallThickness_Slider", { Text = "Wall Thickness", Tooltip = "The thickest wall Phase will go through. Thicker walls are refused. Nearly all walls in the map are 0.5-1 stud thick; a few go up to about 10.", Default = 5, Min = 2, Max = 10, Suffix = " Studs", Rounding = 1,
+        phaseSettings:AddSlider("phaseWallThickness_Slider", { Text = "Wall Thickness", Tooltip = "The thickest wall Phase will go through. Thicker walls are refused. Nearly all walls in the map are 0.5-1 stud thick; a few go up to about 10.", Default = 5, Min = 2, Max = 10, Suffix = " Studs", Rounding = 1,
             Callback = function(val)
                 options.phaseWallThickness_Slider:SetSuffix(getSuffix(options.phaseWallThickness_Slider, "Stud"))
             end
         })
 
-        phaseDepbox:AddToggle("phaseSkipGaps_Toggle", { Text = "Skip Gaps", Tooltip = "When there is no floor behind the wall, keep scanning across the gap and land on the first safe ground. If another wall appears (like the wall of a room) Phase crosses it too, within the Wall Thickness limit, and lands on the floor inside." })
+        phaseSettings:AddToggle("phaseSkipGaps_Toggle", { Text = "Skip Gaps", Tooltip = "When there is no floor behind the wall, keep scanning across the gap and land on the first safe ground. If another wall appears (like the wall of a room) Phase crosses it too, within the Wall Thickness limit, and lands on the floor inside." })
 
-        local phaseGapDepbox = phaseDepbox:AddDependencyBox()
+        local phaseGapSettings = toggles.phaseSkipGaps_Toggle:AddSettings({ Width = 250 })
 
-        phaseGapDepbox:AddSlider("phaseGapDistance_Slider", { Text = "Max Gap Scan", Tooltip = "How far past the first wall Skip Gaps will scan for safe ground, in studs.", Default = 60, Min = 10, Max = 150, Suffix = " Studs",
+        phaseGapSettings:AddSlider("phaseGapDistance_Slider", { Text = "Max Gap Scan", Tooltip = "How far past the first wall Skip Gaps will scan for safe ground, in studs.", Default = 60, Min = 10, Max = 150, Suffix = " Studs",
             Callback = function(val)
                 options.phaseGapDistance_Slider:SetSuffix(getSuffix(options.phaseGapDistance_Slider, "Stud"))
             end
         })
 
-        phaseGapDepbox:SetupDependencies({ { toggles.phaseSkipGaps_Toggle, true } })
 
-        phaseDepbox:AddDivider()
+        local phaseBox = ui.player.clipping:AddDependencyBox()
+        local phaseButton = phaseBox:AddButton({ Text = "Phase", Tooltip = "Teleports you through the wall you are facing (or walking into) to the floor behind it.",
+            Func = function()
+                performPhase()
+            end,
+        })
+        phaseButton:AddKeyPicker("phase_KeyPicker", { Default = "B", Text = "Phase", Mode = "Press", NoUI = true, Disabled = true })
+        phaseBox:SetupDependencies({ { toggles.enablePhase_Toggle, true } })
 
-        phaseDepbox:SetupDependencies({ { toggles.enablePhase_Toggle, true } })
 
         toggles.enablePhase_Toggle:OnChanged(function(enabled)
             local keypicker = options.phase_KeyPicker
@@ -3242,21 +3235,20 @@ ui.player.safety:AddToggle("autoBacktrack_Toggle", { Text = "Backtrack", Tooltip
 ui.player.safety:AddToggle("outOfBoundsGuard_Toggle", { Text = "Out-of-Bounds Guard", Tooltip = "The game kills you about 2-3 seconds after you leave the map or sit inside a wall. This teleports you back to your last safe position if you leave the real map (fly and noclip included) or end up inside a wall." })
 
 do
-    local guardDepbox = ui.player.safety:AddDependencyBox()
+    local guardSettings = toggles.outOfBoundsGuard_Toggle:AddSettings({ Width = 290 })
 
-    guardDepbox:AddSlider("outOfBoundsGuardGrace_Slider", { Text = "Grace Time", Tooltip = "How long you can be out of bounds or inside a wall before you are moved back. The game kills you after about 2-3 seconds, so keep this well below that. Falling out of the map is always handled instantly.", Default = 0.8, Min = 0.1, Max = 1.5, Suffix = " Seconds", Rounding = 1,
+    guardSettings:AddSlider("outOfBoundsGuardGrace_Slider", { Text = "Grace Time", Tooltip = "How long you can be out of bounds or inside a wall before you are moved back. The game kills you after about 2-3 seconds, so keep this well below that. Falling out of the map is always handled instantly.", Default = 0.8, Min = 0.1, Max = 1.5, Suffix = " Seconds", Rounding = 1,
         Callback = function(val)
             options.outOfBoundsGuardGrace_Slider:SetSuffix(getSuffix(options.outOfBoundsGuardGrace_Slider, "Second"))
         end
     })
 
-    guardDepbox:AddSlider("outOfBoundsGuardMargin_Slider", { Text = "Map Edge Margin", Tooltip = "How far from the real map (rooms, walls, fences, buildings) you can get before you are moved back. The map is much smaller than the game's own MapLimit box, so this is what keeps you from flying through walls and around outside it. Lower is tighter, but below 24 it can misfire in the largest halls. The open surface allows 4x this value.", Default = 24, Min = 16, Max = 96, Suffix = " Studs",
+    guardSettings:AddSlider("outOfBoundsGuardMargin_Slider", { Text = "Map Edge Margin", Tooltip = "How far from the real map (rooms, walls, fences, buildings) you can get before you are moved back. The map is much smaller than the game's own MapLimit box, so this is what keeps you from flying through walls and around outside it. Lower is tighter, but below 24 it can misfire in the largest halls. The open surface allows 4x this value.", Default = 24, Min = 16, Max = 96, Suffix = " Studs",
         Callback = function(val)
             options.outOfBoundsGuardMargin_Slider:SetSuffix(getSuffix(options.outOfBoundsGuardMargin_Slider, "Stud"))
         end
     })
 
-    guardDepbox:SetupDependencies({ { toggles.outOfBoundsGuard_Toggle, true } })
 
     local config = {
         SolidInterval = 0.05, -- seconds between the inside-a-wall checks
@@ -3864,13 +3856,11 @@ end
 ui.player.cameraLag:AddToggle("freecam_Toggle", { Text = "Freecam" })
 :AddKeyPicker("freecam_KeyPicker", { Text = "Freecam", Default = "H", SyncToggleState = true, Mode = "Toggle" })
 
-local freecamDepbox = ui.player.cameraLag:AddDependencyBox()
+local freecamSettings = toggles.freecam_Toggle:AddSettings({ Width = 250 })
 
-local freecamSpeedSlider = freecamDepbox:AddSlider("freecamSpeedSlider", { Text = "Speed", Tooltip = "The speed you move at in freecam.",  Default = 64, Min = 10, Max = 2000 })
-local freecamPanSpeedSlider = freecamDepbox:AddSlider("freecamPanSpeedSlider", { Text = "Pan Speed", Tooltip = "How fast your camera moves when moving your mouse around in freecam.",  Default = 8, Min = 2, Max = 30 })
-freecamDepbox:AddDivider()
+local freecamSpeedSlider = freecamSettings:AddSlider("freecamSpeedSlider", { Text = "Speed", Tooltip = "The speed you move at in freecam.",  Default = 64, Min = 10, Max = 2000 })
+local freecamPanSpeedSlider = freecamSettings:AddSlider("freecamPanSpeedSlider", { Text = "Pan Speed", Tooltip = "How fast your camera moves when moving your mouse around in freecam.",  Default = 8, Min = 2, Max = 30 })
 
-freecamDepbox:SetupDependencies({ { toggles.freecam_Toggle, true } })
 
 -- [Player / Fake Lag] Chokes the client's outgoing network traffic in bursts so other players see you freeze, then jump ahead
 
@@ -3878,23 +3868,21 @@ ui.player.cameraLag:AddToggle("fakeLag_Toggle", { Text = "Fake Lag", Tooltip = "
 :AddKeyPicker("fakeLag_KeyPicker", { Text = "Fake Lag", Default = "Z", SyncToggleState = true, Mode = "Hold" })
 
 do
-    local fakeLagDepbox = ui.player.cameraLag:AddDependencyBox()
+    local fakeLagSettings = toggles.fakeLag_Toggle:AddSettings({ Width = 270 })
 
-    fakeLagDepbox:AddSlider("fakeLagDuration_Slider", { Text = "Lag Time", Tooltip = "How long each burst holds your movement back before it is released to the server. Keep it short: long bursts are easier for the server to flag.", Default = 0.4, Min = 0.1, Max = 1.5, Rounding = 2, Suffix = " Seconds",
+    fakeLagSettings:AddSlider("fakeLagDuration_Slider", { Text = "Lag Time", Tooltip = "How long each burst holds your movement back before it is released to the server. Keep it short: long bursts are easier for the server to flag.", Default = 0.4, Min = 0.1, Max = 1.5, Rounding = 2, Suffix = " Seconds",
         Callback = function(val)
             options.fakeLagDuration_Slider:SetSuffix(getSuffix(options.fakeLagDuration_Slider, "Second"))
         end
     })
 
-    fakeLagDepbox:AddSlider("fakeLagRelease_Slider", { Text = "Release Time", Tooltip = "How long your traffic flows normally between two bursts, so the server receives your real position and keeps you in sync.", Default = 0.1, Min = 0.05, Max = 0.5, Rounding = 2, Suffix = " Seconds",
+    fakeLagSettings:AddSlider("fakeLagRelease_Slider", { Text = "Release Time", Tooltip = "How long your traffic flows normally between two bursts, so the server receives your real position and keeps you in sync.", Default = 0.1, Min = 0.05, Max = 0.5, Rounding = 2, Suffix = " Seconds",
         Callback = function(val)
             options.fakeLagRelease_Slider:SetSuffix(getSuffix(options.fakeLagRelease_Slider, "Second"))
         end
     })
 
-    fakeLagDepbox:AddDivider()
 
-    fakeLagDepbox:SetupDependencies({ { toggles.fakeLag_Toggle, true } })
 
     local networkClient = game:GetService("NetworkClient")
 
@@ -4114,33 +4102,31 @@ end
 ui.exploits.aim:AddToggle("enableAimbot_Toggle", { Text = "Enable Aimbot" })
 
 -- [Exploits / Aimbot] Targeting controls
-local aimbotDepbox = ui.exploits.aim:AddDependencyBox()
-aimbotDepbox:AddDropdown("aimbotHitPart_Dropdown", { Text = "Hit Part", Values = { "Head", "HumanoidRootPart" }, Default = 1 })
-aimbotDepbox:AddDropdown("aimbotTargetType_Dropdown", { Text = "Target Type", Values = { "Closest", "Closest to Cursor" }, Default = 2 })
-aimbotDepbox:AddDropdown("aimbotExcludedKillers_Dropdown", { Text = "Excluded Killers", Values = killerNames, Default = { "Giant", "Jane" }, Multi = true, Searchable = true })
-aimbotDepbox:AddSlider("aimbotMaximumDistance_Slider", { Text = "Range", Tooltip = "Killers farther than this distance will not be targeted.", Default = 100, Min = 10, Max = 2000, Suffix = " Studs", Rounding = 1 })
-aimbotDepbox:AddSlider("aimbotSmoothing_Slider", { Text = "Smoothing", Tooltip = "How smooth aimbot should lock onto Killer's.", Default = 400, Min = 10, Max = 1000 })
-aimbotDepbox:AddToggle("aimbotVisibilityCheck_Toggle", { Text = "Visibility Check", Tooltip = "Whether to only target Killers that are visible.", Default = true })
-aimbotDepbox:AddDivider()
+local aimbotSettings = toggles.enableAimbot_Toggle:AddSettings({ Width = 280 })
+aimbotSettings:AddDropdown("aimbotHitPart_Dropdown", { Text = "Hit Part", Values = { "Head", "HumanoidRootPart" }, Default = 1 })
+aimbotSettings:AddDropdown("aimbotTargetType_Dropdown", { Text = "Target Type", Values = { "Closest", "Closest to Cursor" }, Default = 2 })
+aimbotSettings:AddDropdown("aimbotExcludedKillers_Dropdown", { Text = "Excluded Killers", Values = killerNames, Default = { "Giant", "Jane" }, Multi = true, Searchable = true })
+aimbotSettings:AddSlider("aimbotMaximumDistance_Slider", { Text = "Range", Tooltip = "Killers farther than this distance will not be targeted.", Default = 100, Min = 10, Max = 2000, Suffix = " Studs", Rounding = 1 })
+aimbotSettings:AddSlider("aimbotSmoothing_Slider", { Text = "Smoothing", Tooltip = "How smooth aimbot should lock onto Killer's.", Default = 400, Min = 10, Max = 1000 })
+aimbotSettings:AddToggle("aimbotVisibilityCheck_Toggle", { Text = "Visibility Check", Tooltip = "Whether to only target Killers that are visible.", Default = true })
 
 ui.exploits.aim:AddToggle("enableSilentAim_Toggle", { Text = "Enable Silent Aim" })
 
-local silentAimDepbox = ui.exploits.aim:AddDependencyBox()
-silentAimDepbox:AddSlider("FOV_Slider", { Text = "FOV", Tooltip = "The screen-space radius in which targets can be selected.", Default = 150, Min = 0, Max = 1000, Suffix = " px" })
-silentAimDepbox:AddToggle("silentAimWallCheck_Toggle", { Text = "Wall Check", Tooltip = "Only target Killers that are visible. Wallbang takes priority when enabled.", Default = true })
-silentAimDepbox:AddToggle("silentAimWallBang_Toggle", { Text = "Wallbang", Tooltip = "Bullets fired at a locked Killer fly through walls and other obstructions. Shots with no Killer inside the FOV behave normally.", Default = true })
-silentAimDepbox:AddToggle("silentAimNoSpread_Toggle", { Text = "No Spread", Tooltip = "Removes weapon inaccuracy and shotgun pellet spread while a Killer is locked, so every bullet follows the aimed line.", Default = true })
-silentAimDepbox:AddDropdown("silentAimHitPart_Dropdown", { Text = "Hit Part", Tooltip = "Auto aims at the Head while a Killer is close and standing still, and at the larger HumanoidRootPart when it is moving or far away.", Values = { "Auto", "Head", "HumanoidRootPart" }, Default = 1 })
-silentAimDepbox:AddToggle("silentAimPrediction_Toggle", { Text = "Prediction", Tooltip = "Lead moving Killers based on their velocity and projectile travel time.", Default = true })
-silentAimDepbox:AddSlider("silentAimProjectileSpeed_Slider", { Text = "Projectile Speed", Tooltip = "Used to estimate projectile travel time for prediction.", Default = 150, Min = 25, Max = 1000, Suffix = " studs/s" })
-silentAimDepbox:AddSlider("silentAimPredictionFactor_Slider", { Text = "Prediction Factor", Tooltip = "Scales how far ahead the predicted position is.", Default = 1, Min = 0, Max = 2, Rounding = 1 })
-silentAimDepbox:AddToggle("silentAimShowFOV_Toggle", { Text = "Show FOV", Tooltip = "Display the silent-aim target radius when Silent Aim is enabled.", Default = true })
+local silentAimSettings = toggles.enableSilentAim_Toggle:AddSettings({ Width = 290 })
+silentAimSettings:AddSlider("FOV_Slider", { Text = "FOV", Tooltip = "The screen-space radius in which targets can be selected.", Default = 150, Min = 0, Max = 1000, Suffix = " px" })
+silentAimSettings:AddToggle("silentAimWallCheck_Toggle", { Text = "Wall Check", Tooltip = "Only target Killers that are visible. Wallbang takes priority when enabled.", Default = true })
+silentAimSettings:AddToggle("silentAimWallBang_Toggle", { Text = "Wallbang", Tooltip = "Bullets fired at a locked Killer fly through walls and other obstructions. Shots with no Killer inside the FOV behave normally.", Default = true })
+silentAimSettings:AddToggle("silentAimNoSpread_Toggle", { Text = "No Spread", Tooltip = "Removes weapon inaccuracy and shotgun pellet spread while a Killer is locked, so every bullet follows the aimed line.", Default = true })
+silentAimSettings:AddDropdown("silentAimHitPart_Dropdown", { Text = "Hit Part", Tooltip = "Auto aims at the Head while a Killer is close and standing still, and at the larger HumanoidRootPart when it is moving or far away.", Values = { "Auto", "Head", "HumanoidRootPart" }, Default = 1 })
+silentAimSettings:AddToggle("silentAimPrediction_Toggle", { Text = "Prediction", Tooltip = "Lead moving Killers based on their velocity and projectile travel time.", Default = true })
+silentAimSettings:AddSlider("silentAimProjectileSpeed_Slider", { Text = "Projectile Speed", Tooltip = "Used to estimate projectile travel time for prediction.", Default = 150, Min = 25, Max = 1000, Suffix = " studs/s" })
+silentAimSettings:AddSlider("silentAimPredictionFactor_Slider", { Text = "Prediction Factor", Tooltip = "Scales how far ahead the predicted position is.", Default = 1, Min = 0, Max = 2, Rounding = 1 })
+silentAimSettings:AddToggle("silentAimShowFOV_Toggle", { Text = "Show FOV", Tooltip = "Display the silent-aim target radius when Silent Aim is enabled.", Default = true })
 
-local silentAimFOVColorDepbox = silentAimDepbox:AddDependencyBox()
+local silentAimFOVColorSettings = toggles.silentAimShowFOV_Toggle:AddSettings({ Width = 200 })
 
-utils.addRainbowSettings(silentAimFOVColorDepbox:AddLabel("FOV Color"):AddColorPicker("silentAimFOVColor_ColorPicker", { Title = "FOV Color", Default = Color3.fromRGB(0, 229, 255), Transparency = nil }), "silentAimFOVColor_ColorPicker", "rainbowSilentAimFOVColor_Toggle")
+utils.addRainbowSettings(silentAimFOVColorSettings:AddLabel("FOV Color"):AddColorPicker("silentAimFOVColor_ColorPicker", { Title = "FOV Color", Default = Color3.fromRGB(0, 229, 255), Transparency = nil }), "silentAimFOVColor_ColorPicker", "rainbowSilentAimFOVColor_Toggle")
 
-silentAimDepbox:AddDivider()
 
 ui.misc.objectives:AddToggle("autoCollect_Toggle", { Text = "Auto Collect Ingredients", Tooltip = "Automatically collects all materials/ingredients added in V17.0." })
 ui.misc.objectives:AddButton({ Text = "Complete Area 51 Personnel", Icon = "trophy",
@@ -4195,9 +4181,6 @@ ui.misc.objectives:AddButton({ Text = "Complete Area 51 Personnel", Icon = "trop
     end,
 })
 
-aimbotDepbox:SetupDependencies({ { toggles.enableAimbot_Toggle, true } })
-silentAimDepbox:SetupDependencies({ { toggles.enableSilentAim_Toggle, true } })
-silentAimFOVColorDepbox:SetupDependencies({ { toggles.silentAimShowFOV_Toggle, true } })
 
 -- [Exploits / Silent Aim] Settings, target resolution, and weapon hooks
 local silentAimHookRecords = {}
@@ -5016,22 +4999,20 @@ do
     local triggerbotToggle = ui.exploits.aim:AddToggle("enableTriggerbot_Toggle", { Text = "Enable Triggerbot", Tooltip = "Fires automatically while your aim is on a Killer." })
     triggerbotToggle:AddKeyPicker("triggerbot_KeyPicker", { Text = "Triggerbot", Default = "None", Mode = "Always", NoUI = false })
 
-    local triggerbotDepbox = ui.exploits.aim:AddDependencyBox()
-    triggerbotDepbox:AddDropdown("triggerbotFireMode_Dropdown", { Text = "Fire Mode", Tooltip = "Click: clicks the mouse repeatedly (semi-auto weapons).\nHold: keeps the mouse button down while on target (automatic weapons).", Values = { "Click", "Hold" }, Default = 1 })
-    triggerbotDepbox:AddDropdown("triggerbotAimSource_Dropdown", { Text = "Aim Source", Tooltip = "Where the check ray starts on screen. Use Screen Center for third person / shift lock.", Values = { "Cursor", "Screen Center" }, Default = 1 })
-    triggerbotDepbox:AddDropdown("triggerbotHitPart_Dropdown", { Text = "Target Part", Tooltip = "Only fire when the aim point is on this part of the Killer.", Values = { "Any", "Head", "HumanoidRootPart" }, Default = 1 })
-    triggerbotDepbox:AddDropdown("triggerbotExcludedKillers_Dropdown", { Text = "Excluded Killers", Values = killerNames, Default = { "Jane" }, Multi = true, Searchable = true })
-    triggerbotDepbox:AddSlider("triggerbotRange_Slider", { Text = "Range", Tooltip = "Killers farther than this distance will not trigger.", Default = 200, Min = 30, Max = 2000, Suffix = " Studs", Rounding = 0 })
-    triggerbotDepbox:AddSlider("triggerbotTolerance_Slider", { Text = "Tolerance", Tooltip = "Also checks points this many pixels around the aim point, so you do not have to be pixel perfect. 0 = exact.", Default = 5, Min = 0, Max = 50, Suffix = " px", Rounding = 0 })
-    triggerbotDepbox:AddSlider("triggerbotDelay_Slider", { Text = "Reaction Delay", Tooltip = "How long the aim point must stay on a Killer before firing.", Default = 0, Min = 0, Max = 500, Suffix = " ms", Rounding = 0 })
-    triggerbotDepbox:AddSlider("triggerbotJitter_Slider", { Text = "Delay Randomness", Tooltip = "Adds a random extra 0 - X ms to the reaction delay for every new target.", Default = 0, Min = 0, Max = 250, Suffix = " ms", Rounding = 0 })
-    triggerbotDepbox:AddSlider("triggerbotInterval_Slider", { Text = "Click Interval", Tooltip = "Time between clicks in Click mode.", Default = 80, Min = 10, Max = 1000, Suffix = " ms", Rounding = 0 })
-    triggerbotDepbox:AddToggle("triggerbotVisibility_Toggle", { Text = "Visibility Check", Tooltip = "Only fire when nothing solid is between you and the Killer.", Default = true })
-    triggerbotDepbox:AddToggle("triggerbotRequireTool_Toggle", { Text = "Require Weapon", Tooltip = "Only fire while you are holding a weapon.", Default = true })
-    triggerbotDepbox:AddToggle("triggerbotExcludeProjectiles_Toggle", { Text = "Exclude Projectiles", Tooltip = "Does not fire while you hold a projectile weapon: the Crossbow and the M16A2/M203 in grenade mode.", Default = true })
-    triggerbotDepbox:AddDivider()
+    local triggerbotSettings = toggles.enableTriggerbot_Toggle:AddSettings({ Width = 300 })
+    triggerbotSettings:AddDropdown("triggerbotFireMode_Dropdown", { Text = "Fire Mode", Tooltip = "Click: clicks the mouse repeatedly (semi-auto weapons).\nHold: keeps the mouse button down while on target (automatic weapons).", Values = { "Click", "Hold" }, Default = 1 })
+    triggerbotSettings:AddDropdown("triggerbotAimSource_Dropdown", { Text = "Aim Source", Tooltip = "Where the check ray starts on screen. Use Screen Center for third person / shift lock.", Values = { "Cursor", "Screen Center" }, Default = 1 })
+    triggerbotSettings:AddDropdown("triggerbotHitPart_Dropdown", { Text = "Target Part", Tooltip = "Only fire when the aim point is on this part of the Killer.", Values = { "Any", "Head", "HumanoidRootPart" }, Default = 1 })
+    triggerbotSettings:AddDropdown("triggerbotExcludedKillers_Dropdown", { Text = "Excluded Killers", Values = killerNames, Default = { "Jane" }, Multi = true, Searchable = true })
+    triggerbotSettings:AddSlider("triggerbotRange_Slider", { Text = "Range", Tooltip = "Killers farther than this distance will not trigger.", Default = 200, Min = 30, Max = 2000, Suffix = " Studs", Rounding = 0 })
+    triggerbotSettings:AddSlider("triggerbotTolerance_Slider", { Text = "Tolerance", Tooltip = "Also checks points this many pixels around the aim point, so you do not have to be pixel perfect. 0 = exact.", Default = 5, Min = 0, Max = 50, Suffix = " px", Rounding = 0 })
+    triggerbotSettings:AddSlider("triggerbotDelay_Slider", { Text = "Reaction Delay", Tooltip = "How long the aim point must stay on a Killer before firing.", Default = 0, Min = 0, Max = 500, Suffix = " ms", Rounding = 0 })
+    triggerbotSettings:AddSlider("triggerbotJitter_Slider", { Text = "Delay Randomness", Tooltip = "Adds a random extra 0 - X ms to the reaction delay for every new target.", Default = 0, Min = 0, Max = 250, Suffix = " ms", Rounding = 0 })
+    triggerbotSettings:AddSlider("triggerbotInterval_Slider", { Text = "Click Interval", Tooltip = "Time between clicks in Click mode.", Default = 80, Min = 10, Max = 1000, Suffix = " ms", Rounding = 0 })
+    triggerbotSettings:AddToggle("triggerbotVisibility_Toggle", { Text = "Visibility Check", Tooltip = "Only fire when nothing solid is between you and the Killer.", Default = true })
+    triggerbotSettings:AddToggle("triggerbotRequireTool_Toggle", { Text = "Require Weapon", Tooltip = "Only fire while you are holding a weapon.", Default = true })
+    triggerbotSettings:AddToggle("triggerbotExcludeProjectiles_Toggle", { Text = "Exclude Projectiles", Tooltip = "Does not fire while you hold a projectile weapon: the Crossbow and the M16A2/M203 in grenade mode.", Default = true })
 
-    triggerbotDepbox:SetupDependencies({ { toggles.enableTriggerbot_Toggle, true } })
 
     local virtualInput = nil
     pcall(function()
@@ -5471,30 +5452,27 @@ end)
 
 ui.exploits.killers:AddToggle("disableAllKillers_Toggle", { Text = "Disable Aura", Tooltip = "Deals with all nearby killers within the specified amount of studs, using the selected method." })
 
-local disableKillersDepbox = ui.exploits.killers:AddDependencyBox()
-disableKillersDepbox:AddDropdown("disableAuraMethod_Dropdown", { Text = "Method", Values = { "Kill", "Disable Movement", "Disable Humanoid", "Push" }, Default = 4 })
-disableKillersDepbox:AddSlider("disableKillersDistance_Slider", { Text = "Range", Tooltip = "How far away to disable killers", Default = 20, Min = 10, Max = 100, Suffix = " Studs" })
-disableKillersDepbox:AddToggle("disableAuraWallCheck_Toggle", { Text = "Wall Check", Tooltip = "Only affects Killers that are visible. Emergency Kill ignores this." })
-disableKillersDepbox:AddLabel("Emergency Kill"):AddKeyPicker("emergencyKill_KeyPicker", { Text = "Emergency Kill", Default = "X", Mode = "Hold", NoUI = true, Disabled = true })
-disableKillersDepbox:AddToggle("disableAuraDebugNotifs_Toggle", { Text = "Debug Notifications", Tooltip = "Sends a notification each time Disable Aura kills, disables or starts pushing a killer, and while it waits for control of a killer." })
-disableKillersDepbox:AddDivider()
+local disableKillersSettings = toggles.disableAllKillers_Toggle:AddSettings({ Width = 290 })
+disableKillersSettings:AddDropdown("disableAuraMethod_Dropdown", { Text = "Method", Values = { "Kill", "Disable Movement", "Disable Humanoid", "Push" }, Default = 4 })
+disableKillersSettings:AddSlider("disableKillersDistance_Slider", { Text = "Range", Tooltip = "How far away to disable killers", Default = 20, Min = 10, Max = 100, Suffix = " Studs" })
+disableKillersSettings:AddToggle("disableAuraWallCheck_Toggle", { Text = "Wall Check", Tooltip = "Only affects Killers that are visible. Emergency Kill ignores this." })
+disableKillersSettings:AddLabel("Emergency Kill"):AddKeyPicker("emergencyKill_KeyPicker", { Text = "Emergency Kill", Default = "X", Mode = "Hold", NoUI = true, Disabled = true })
+disableKillersSettings:AddToggle("disableAuraDebugNotifs_Toggle", { Text = "Debug Notifications", Tooltip = "Sends a notification each time Disable Aura kills, disables or starts pushing a killer, and while it waits for control of a killer." })
 
 -- [Exploits / Killer Controls] Defensive toggles
 
 ui.exploits.killers:AddToggle("killerGodmode_Toggle", { Text = "Killer Godmode", Tooltip = "Makes you invincible to the killers by blocking killer interactions." })
 
-local killerGodmodeDepbox = ui.exploits.killers:AddDependencyBox()
-killerGodmodeDepbox:AddToggle("antiPinhead_Toggle", { Text = "Anti Pinhead", Default = true, Tooltip = "Disables (mostly) Pinhead's spikes that he expels upon death." })
-killerGodmodeDepbox:AddToggle("acidDodge_Toggle", { Text = "Acid Dodge", Default = true, Tooltip = "EXPERIMENTAL. Attempts to dodge the acid Alien spits at you by stepping out of the way before it lands. This isn't guaranteed to work due to the speed of the acid." })
+local killerGodmodeSettings = toggles.killerGodmode_Toggle:AddSettings({ Width = 290 })
+killerGodmodeSettings:AddToggle("antiPinhead_Toggle", { Text = "Anti Pinhead", Default = true, Tooltip = "Disables (mostly) Pinhead's spikes that he expels upon death." })
+killerGodmodeSettings:AddToggle("acidDodge_Toggle", { Text = "Acid Dodge", Default = true, Tooltip = "EXPERIMENTAL. Attempts to dodge the acid Alien spits at you by stepping out of the way before it lands. This isn't guaranteed to work due to the speed of the acid." })
 
-local acidDodgeDepbox = killerGodmodeDepbox:AddDependencyBox()
-acidDodgeDepbox:AddSlider("acidDodgeRange_Slider", { Text = "Alien Range", Tooltip = "Acid Dodge only reacts while an Alien is within this many studs of you.", Default = 9, Min = 5, Max = 20, Suffix = " Studs" })
-acidDodgeDepbox:AddSlider("acidDodgeDistance_Slider", { Text = "Dodge Distance", Tooltip = "How far a dodge moves you. It is shortened automatically when a wall is closer, and a direction without enough room or floor is skipped.", Default = 7, Min = 4, Max = 12, Suffix = " Studs" })
-acidDodgeDepbox:AddToggle("acidDodgeDebugNotifs_Toggle", { Text = "Debug Notifications", Tooltip = "Sends a notification each time Acid Dodge moves you, and when there is no safe room to dodge." })
-acidDodgeDepbox:AddDivider()
+local acidDodgeSettings = toggles.acidDodge_Toggle:AddSettings({ Width = 280 })
+acidDodgeSettings:AddSlider("acidDodgeRange_Slider", { Text = "Alien Range", Tooltip = "Acid Dodge only reacts while an Alien is within this many studs of you.", Default = 9, Min = 5, Max = 20, Suffix = " Studs" })
+acidDodgeSettings:AddSlider("acidDodgeDistance_Slider", { Text = "Dodge Distance", Tooltip = "How far a dodge moves you. It is shortened automatically when a wall is closer, and a direction without enough room or floor is skipped.", Default = 7, Min = 4, Max = 12, Suffix = " Studs" })
+acidDodgeSettings:AddToggle("acidDodgeDebugNotifs_Toggle", { Text = "Debug Notifications", Tooltip = "Sends a notification each time Acid Dodge moves you, and when there is no safe room to dodge." })
 
-killerGodmodeDepbox:AddLabel("Covers what your client reports or detects itself: touch hitboxes, Freddy's nightmare (snakes, bugs and the hole), Chucky's jump attack and Pinhead's spikes. Attacks the server checks on its own, like Alien's arm and Yeti's ice slam, can not be blocked from the client. Use Disable Aura against those.", true)
-killerGodmodeDepbox:AddDivider()
+killerGodmodeSettings:AddLabel("Covers what your client reports or detects itself: touch hitboxes, Freddy's nightmare (snakes, bugs and the hole), Chucky's jump attack and Pinhead's spikes. Attacks the server checks on its own, like Alien's arm and Yeti's ice slam, can not be blocked from the client. Use Disable Aura against those.", true)
 
 ui.exploits.killers:AddToggle("antiSlendermanJumpscare_Toggle", { Text = "Anti Slenderman Jumpscare" })
 
@@ -5537,10 +5515,8 @@ end
 do
     ui.exploits.killers:AddToggle("slendermanSafeFacing_Toggle", { Text = "Slenderman Safe Facing", Tooltip = "While Slenderman is near, keeps you facing a direction where he cannot teleport behind you (a wall or no floor behind you). Your character stops turning on its own while this holds a facing. Does nothing where no such direction exists." })
 
-    local safeFacingDepbox = ui.exploits.killers:AddDependencyBox()
-    safeFacingDepbox:AddSlider("slendermanSafeFacingDistance_Slider", { Text = "Minimum Distance", Tooltip = "Safe Facing only takes over your facing while Slenderman is closer to you than this. He starts targeting players from 200 studs away, so the maximum covers everything he can do. Lower it to keep control of your character until he gets close.", Default = 200, Min = 50, Max = 200, Suffix = " Studs" })
-    safeFacingDepbox:AddDivider()
-    safeFacingDepbox:SetupDependencies({ { toggles.slendermanSafeFacing_Toggle, true } })
+    local safeFacingSettings = toggles.slendermanSafeFacing_Toggle:AddSettings({ Width = 290 })
+    safeFacingSettings:AddSlider("slendermanSafeFacingDistance_Slider", { Text = "Minimum Distance", Tooltip = "Safe Facing only takes over your facing while Slenderman is closer to you than this. He starts targeting players from 200 studs away, so the maximum covers everything he can do. Lower it to keep control of your character until he gets close.", Default = 200, Min = 50, Max = 200, Suffix = " Studs" })
 
     -- The margin covers him closing in between two checks, it is added on top of the slider
     local distanceMargin = 50
@@ -5670,26 +5646,20 @@ do
     end)
 end
 
-killerGodmodeDepbox:SetupDependencies({ { toggles.killerGodmode_Toggle, true } })
-acidDodgeDepbox:SetupDependencies({ { toggles.acidDodge_Toggle, true } })
-disableKillersDepbox:SetupDependencies({ { toggles.disableAllKillers_Toggle, true } })
 
 -- [Exploits / Killer Controls] Auto Safe Spot
 do
     ui.exploits.killers:AddToggle("autoSafeSpot_Toggle", { Text = "Auto Safe Spot", Tooltip = "Teleports you to the nearest safe spot when your health is low and a killer is close, then returns you once your original position is safe again." })
 
-    local autoSafeSpotDepbox = ui.exploits.killers:AddDependencyBox()
-    autoSafeSpotDepbox:AddSlider("autoSafeSpotHealth_Slider", { Text = "Health Threshold", Tooltip = "You are teleported to a safe spot once your health is at or below this while a killer is within the safe radius.", Default = 60, Min = 30, Max = 100, Suffix = " HP" })
-    autoSafeSpotDepbox:AddSlider("autoSafeSpotRadius_Slider", { Text = "Safe Radius", Tooltip = "A killer has to be at least this far away for a safe spot (or your original position) to count as safe.", Default = 50, Min = 20, Max = 200, Suffix = " Studs" })
-    autoSafeSpotDepbox:AddToggle("autoSafeSpotSpectate_Toggle", { Text = "Spectate Killer", Tooltip = "While hiding, spectates the killer you are avoiding so you can see what it is doing." })
-    autoSafeSpotDepbox:AddToggle("autoSafeSpotSlenderman_Toggle", { Text = "Flee Slenderman", Tooltip = "Hides as soon as Slenderman is chasing you and within the minimum distance, no matter your health. He can teleport behind you from up to 200 studs away, so waiting for low health is too late." })
-    autoSafeSpotDepbox:AddDivider()
+    local autoSafeSpotSettings = toggles.autoSafeSpot_Toggle:AddSettings({ Width = 290 })
+    autoSafeSpotSettings:AddSlider("autoSafeSpotHealth_Slider", { Text = "Health Threshold", Tooltip = "You are teleported to a safe spot once your health is at or below this while a killer is within the safe radius.", Default = 60, Min = 30, Max = 100, Suffix = " HP" })
+    autoSafeSpotSettings:AddSlider("autoSafeSpotRadius_Slider", { Text = "Safe Radius", Tooltip = "A killer has to be at least this far away for a safe spot (or your original position) to count as safe.", Default = 50, Min = 20, Max = 200, Suffix = " Studs" })
+    autoSafeSpotSettings:AddToggle("autoSafeSpotSpectate_Toggle", { Text = "Spectate Killer", Tooltip = "While hiding, spectates the killer you are avoiding so you can see what it is doing." })
+    autoSafeSpotSettings:AddToggle("autoSafeSpotSlenderman_Toggle", { Text = "Flee Slenderman", Tooltip = "Hides as soon as Slenderman is chasing you and within the minimum distance, no matter your health. He can teleport behind you from up to 200 studs away, so waiting for low health is too late." })
 
-    local slendermanDepbox = autoSafeSpotDepbox:AddDependencyBox()
-    slendermanDepbox:AddSlider("autoSafeSpotSlendermanDistance_Slider", { Text = "Minimum Distance", Tooltip = "Slenderman has to be at least this far from you for you to be safe: you flee once he is chasing you from closer than this, and only return once he is this far from your original position.", Default = 50, Min = 50, Max = 200, Suffix = " Studs" })
+    local slendermanSettings = toggles.autoSafeSpotSlenderman_Toggle:AddSettings({ Width = 280 })
+    slendermanSettings:AddSlider("autoSafeSpotSlendermanDistance_Slider", { Text = "Minimum Distance", Tooltip = "Slenderman has to be at least this far from you for you to be safe: you flee once he is chasing you from closer than this, and only return once he is this far from your original position.", Default = 50, Min = 50, Max = 200, Suffix = " Studs" })
     
-    autoSafeSpotDepbox:SetupDependencies({ { toggles.autoSafeSpot_Toggle, true } })
-    slendermanDepbox:SetupDependencies({ { toggles.autoSafeSpotSlenderman_Toggle, true } })
 
     -- Predefined spots where no killers spawn.
     local safeSpots = {
@@ -7720,13 +7690,11 @@ do
 
     hitboxGroup:AddToggle("hitboxExpander_Toggle", { Text = "Hitbox Expander", Tooltip = "Enlarges the hit parts of every Killer in range so shots land more easily." })
 
-    local hitboxExpanderDepbox = hitboxGroup:AddDependencyBox()
-    hitboxExpanderDepbox:AddSlider("hitboxSize_Slider", { Text = "Hitbox Size", Tooltip = "Smallest size of each resized hit part (head, arms and legs).", Default = 8, Min = 2, Max = 30, Suffix = " Studs", Rounding = 1 })
-    hitboxExpanderDepbox:AddSlider("hitboxRange_Slider", { Text = "Range", Tooltip = "Only Killers closer than this get an expanded hitbox.", Default = 350, Min = 50, Max = 1000, Suffix = " Studs" })
-    hitboxExpanderDepbox:AddDropdown("hitboxExcludedKillers_Dropdown", { Text = "Excluded Killers", Tooltip = "Killers that keep their original hitbox. Giant and Jane are always skipped, because the game ignores normal shots on them.", Values = killerNames, Multi = true, Searchable = true, AllowNull = true })
-    hitboxExpanderDepbox:AddDivider()
+    local hitboxExpanderSettings = toggles.hitboxExpander_Toggle:AddSettings({ Width = 280 })
+    hitboxExpanderSettings:AddSlider("hitboxSize_Slider", { Text = "Hitbox Size", Tooltip = "Smallest size of each resized hit part (head, arms and legs).", Default = 8, Min = 2, Max = 30, Suffix = " Studs", Rounding = 1 })
+    hitboxExpanderSettings:AddSlider("hitboxRange_Slider", { Text = "Range", Tooltip = "Only Killers closer than this get an expanded hitbox.", Default = 350, Min = 50, Max = 1000, Suffix = " Studs" })
+    hitboxExpanderSettings:AddDropdown("hitboxExcludedKillers_Dropdown", { Text = "Excluded Killers", Tooltip = "Killers that keep their original hitbox. Giant and Jane are always skipped, because the game ignores normal shots on them.", Values = killerNames, Multi = true, Searchable = true, AllowNull = true })
 
-    hitboxExpanderDepbox:SetupDependencies({ { toggles.hitboxExpander_Toggle, true } })
 
     -- Killers the game never registers normal shots on.
     local immuneKillers = { Giant = true, Jane = true }
@@ -8402,29 +8370,25 @@ end
 
 ui.visuals.esp:AddToggle("killerESP_Toggle", { Text = "Killer ESP" })
 
-local killerESPDepbox = ui.visuals.esp:AddDependencyBox()
+local killerESPSettings = toggles.killerESP_Toggle:AddSettings({ Width = 280 })
 
-killerESPDepbox:AddDropdown("excludedKillers_Dropdown", { Text = "Excluded Killers", Values = killerNames, Default = { "Giant", "Jane" }, Multi = true, Searchable = true })
-killerESPDepbox:AddSlider("killerESPDistance_Slider", { Text = "Range", Tooltip = "How far away to show ESP on killers", Default = 150, Min = 100, Max = 1000, Suffix = " Studs" })
-killerESPDepbox:AddDropdown("killerESPBoxType_Dropdown", { Text = "Box Type", Tooltip = "2D draws a flat box around the killer, 3D draws a wireframe box.", Values = { "2D", "3D" }, Default = 1 })
-killerESPDepbox:AddToggle("killerESPHealthBar_Toggle", { Text = "Health Bar", Tooltip = "Shows a health bar next to the killer.", Default = true })
-utils.addRainbowSettings(killerESPDepbox:AddLabel("ESP Color"):AddColorPicker("killerESPColor_ColorPicker",{ Title = "ESP Color", Default = Color3.fromRGB(255, 0, 0), Transparency = nil }), "killerESPColor_ColorPicker", "rainbowESPColor_Toggle")
-killerESPDepbox:AddToggle("toggleKillersNametags_Toggle", { Text = "Enable Name Tags" })
-killerESPDepbox:AddDivider()
+killerESPSettings:AddDropdown("excludedKillers_Dropdown", { Text = "Excluded Killers", Values = killerNames, Default = { "Giant", "Jane" }, Multi = true, Searchable = true })
+killerESPSettings:AddSlider("killerESPDistance_Slider", { Text = "Range", Tooltip = "How far away to show ESP on killers", Default = 150, Min = 100, Max = 1000, Suffix = " Studs" })
+killerESPSettings:AddDropdown("killerESPBoxType_Dropdown", { Text = "Box Type", Tooltip = "2D draws a flat box around the killer, 3D draws a wireframe box.", Values = { "2D", "3D" }, Default = 1 })
+killerESPSettings:AddToggle("killerESPHealthBar_Toggle", { Text = "Health Bar", Tooltip = "Shows a health bar next to the killer.", Default = true })
+utils.addRainbowSettings(killerESPSettings:AddLabel("ESP Color"):AddColorPicker("killerESPColor_ColorPicker",{ Title = "ESP Color", Default = Color3.fromRGB(255, 0, 0), Transparency = nil }), "killerESPColor_ColorPicker", "rainbowESPColor_Toggle")
+killerESPSettings:AddToggle("toggleKillersNametags_Toggle", { Text = "Enable Name Tags" })
 
-local killerNametagDepbox = killerESPDepbox:AddDependencyBox()
-utils.addRainbowSettings(killerNametagDepbox:AddLabel("Name Tag Color"):AddColorPicker("killerNameTagColor_ColorPicker",{ Title = "Name Tag Color", Default = Color3.fromRGB(255, 255, 255), Transparency = nil }), "killerNameTagColor_ColorPicker", "rainbowNameTagColor_Toggle")
-killerNametagDepbox:AddSlider("textSize_Slider", { Text = "Text Size", Default = 15, Min = 10, Max = 50 })
-killerNametagDepbox:AddDivider()
+local killerNametagSettings = toggles.toggleKillersNametags_Toggle:AddSettings({ Width = 240 })
+utils.addRainbowSettings(killerNametagSettings:AddLabel("Name Tag Color"):AddColorPicker("killerNameTagColor_ColorPicker",{ Title = "Name Tag Color", Default = Color3.fromRGB(255, 255, 255), Transparency = nil }), "killerNameTagColor_ColorPicker", "rainbowNameTagColor_Toggle")
+killerNametagSettings:AddSlider("textSize_Slider", { Text = "Text Size", Default = 15, Min = 10, Max = 50 })
 
-killerESPDepbox:AddToggle("killerArrows_Toggle", { Text = "Offscreen Arrows", Tooltip = "Edge-of-screen arrows pointing to killers behind or beside you." })
+killerESPSettings:AddToggle("killerArrows_Toggle", { Text = "Offscreen Arrows", Tooltip = "Edge-of-screen arrows pointing to killers behind or beside you." })
 
 do
-    local killerArrowDepbox = killerESPDepbox:AddDependencyBox()
-    killerArrowDepbox:AddSlider("killerArrowSize_Slider", { Text = "Arrow Size", Default = 16, Min = 8, Max = 40, Suffix = " px" })
-    killerArrowDepbox:AddSlider("killerArrowOffset_Slider", { Text = "Edge Offset", Tooltip = "How far from the screen edge the arrows are.", Default = 40, Min = 25, Max = 200, Suffix = " px" })
-    killerArrowDepbox:AddDivider()
-    killerArrowDepbox:SetupDependencies({ { toggles.killerArrows_Toggle, true } })
+    local killerArrowSettings = toggles.killerArrows_Toggle:AddSettings({ Width = 240 })
+    killerArrowSettings:AddSlider("killerArrowSize_Slider", { Text = "Arrow Size", Default = 16, Min = 8, Max = 40, Suffix = " px" })
+    killerArrowSettings:AddSlider("killerArrowOffset_Slider", { Text = "Edge Offset", Tooltip = "How far from the screen edge the arrows are.", Default = 40, Min = 25, Max = 200, Suffix = " px" })
 end
 
 -- [Visuals / Controls] Fog, FOV, and anti-effects
@@ -8432,9 +8396,8 @@ end
 ui.visuals.screen:AddToggle("removeFog_Toggle", { Text = "Remove Fog" })
 ui.visuals.screen:AddToggle("enableFOV_Toggle", { Text = "Enable FOV" })
 
-local fieldOfViewDepbox = ui.visuals.screen:AddDependencyBox()
-fieldOfViewDepbox:AddSlider("fieldOfViewValue_Slider", { Text = "Value", Default = 80, Min = 80, Max = 120 })
-fieldOfViewDepbox:AddDivider()
+local fieldOfViewSettings = toggles.enableFOV_Toggle:AddSettings({ Width = 220 })
+fieldOfViewSettings:AddSlider("fieldOfViewValue_Slider", { Text = "Value", Default = 80, Min = 80, Max = 120 })
 
 ui.visuals.screen:AddToggle("antiInk_Toggle", { Text = "Anti Ink", Tooltip = "Disables the black ink popup from Eyeless Jack." })
 ui.visuals.screen:AddToggle("antiTailsPopup_Toggle", { Text = "Anti Tails Popup", Tooltip = "Disables the popup from Tails Doll." })
@@ -8443,14 +8406,9 @@ ui.visuals.screen:AddToggle("antiTailsPopup_Toggle", { Text = "Anti Tails Popup"
 
 ui.visuals.weapon:AddToggle("disableScopeOverlay_Toggle", { Text = "Disable Scope Overlay", Tooltip = "Removes the black overlay when aiming through a scope, on any weapon. The zoom is kept." })
 
-local scopeOverlayDepbox = ui.visuals.weapon:AddDependencyBox()
-scopeOverlayDepbox:AddToggle("keepScopeCrosshair_Toggle", { Text = "Keep Crosshair", Tooltip = "Shows the normal crosshair while scoped, since the scope's own reticle goes away with the overlay.", Default = true })
-scopeOverlayDepbox:AddDivider()
+local scopeOverlaySettings = toggles.disableScopeOverlay_Toggle:AddSettings({ Width = 230 })
+scopeOverlaySettings:AddToggle("keepScopeCrosshair_Toggle", { Text = "Keep Crosshair", Tooltip = "Shows the normal crosshair while scoped, since the scope's own reticle goes away with the overlay.", Default = true })
 
-killerESPDepbox:SetupDependencies({ { toggles.killerESP_Toggle, true } })
-killerNametagDepbox:SetupDependencies({ { toggles.toggleKillersNametags_Toggle, true } })
-fieldOfViewDepbox:SetupDependencies({ { toggles.enableFOV_Toggle, true } })
-scopeOverlayDepbox:SetupDependencies({ { toggles.disableScopeOverlay_Toggle, true } })
 
 -- [Visuals / Fog] Toggle lifecycle and property-change connections
 local fogConnections = {}
@@ -9399,14 +9357,12 @@ do
 
     hitboxVisualizerGroup:AddToggle("visualizeHitbox_Toggle", { Text = "Visualize Hitbox", Tooltip = "Draws a box around each Killer that covers every part a shot can hit." })
 
-    local visualizeHitboxDepbox = hitboxVisualizerGroup:AddDependencyBox()
-    utils.addRainbowSettings(visualizeHitboxDepbox:AddLabel("Hitbox Color"):AddColorPicker("hitboxVisualizeColor_ColorPicker", { Title = "Hitbox Color", Default = Color3.fromRGB(255, 60, 60), Transparency = nil }), "hitboxVisualizeColor_ColorPicker", "rainbowHitboxColor_Toggle")
-    visualizeHitboxDepbox:AddSlider("hitboxVisualizeFill_Slider", { Text = "Fill Transparency", Default = 1, Min = 0, Max = 1, Rounding = 2 })
-    visualizeHitboxDepbox:AddSlider("hitboxVisualizeRange_Slider", { Text = "Range", Tooltip = "How far away to show hitboxes on killers", Default = 150, Min = 50, Max = 1000, Suffix = " Studs" })
-    visualizeHitboxDepbox:AddToggle("hitboxVisualizeWallCheck_Toggle", { Text = "Wall Check", Tooltip = "Only outline Killers that are visible.", Default = true })
-    visualizeHitboxDepbox:AddDivider()
+    local visualizeHitboxSettings = toggles.visualizeHitbox_Toggle:AddSettings({ Width = 270 })
+    utils.addRainbowSettings(visualizeHitboxSettings:AddLabel("Hitbox Color"):AddColorPicker("hitboxVisualizeColor_ColorPicker", { Title = "Hitbox Color", Default = Color3.fromRGB(255, 60, 60), Transparency = nil }), "hitboxVisualizeColor_ColorPicker", "rainbowHitboxColor_Toggle")
+    visualizeHitboxSettings:AddSlider("hitboxVisualizeFill_Slider", { Text = "Fill Transparency", Default = 1, Min = 0, Max = 1, Rounding = 2 })
+    visualizeHitboxSettings:AddSlider("hitboxVisualizeRange_Slider", { Text = "Range", Tooltip = "How far away to show hitboxes on killers", Default = 150, Min = 50, Max = 1000, Suffix = " Studs" })
+    visualizeHitboxSettings:AddToggle("hitboxVisualizeWallCheck_Toggle", { Text = "Wall Check", Tooltip = "Only outline Killers that are visible.", Default = true })
 
-    visualizeHitboxDepbox:SetupDependencies({ { toggles.visualizeHitbox_Toggle, true } })
 
     -- Killers the game never registers normal shots on.
     local immuneKillers = { Giant = true, Jane = true }
@@ -9821,7 +9777,7 @@ do
 
     portraitGroup:AddToggle("killerPortrait_Toggle", { Text = "Killer Portrait", Tooltip = "Shows a small live 3D preview of the nearest Killer, with its name and health." })
 
-    local portraitDepbox = portraitGroup:AddDependencyBox()
+    local portraitSettings = toggles.killerPortrait_Toggle:AddSettings({ Width = 240 })
 
     local function makePlaceholder(): BasePart
         local part = Instance.new("Part")
@@ -9835,7 +9791,7 @@ do
     -- The Viewport needs an object to start with; an invisible part stands in until a Killer is picked.
     local portraitViewport: any = nil
     local viewportCreated, viewportError = pcall(function()
-        portraitViewport = portraitDepbox:AddViewport("killerPortrait_Viewport", {
+        portraitViewport = portraitGroup:AddViewport("killerPortrait_Viewport", {
             Object = makePlaceholder(),
             Clone = false,
             Interactive = false,
@@ -9851,13 +9807,23 @@ do
         portraitViewport:SetFieldOfView(40)
     end
 
-    local nameLabel = portraitDepbox:AddLabel("Nearest Killer: none")
-    local healthLabel = portraitDepbox:AddLabel("Health: -")
-    portraitDepbox:AddToggle("killerPortraitWallCheck_Toggle", { Text = "Wall Check", Tooltip = "Only shows the nearest Killer that is visible to you.", Default = true })
-    portraitDepbox:AddSlider("killerPortraitHeight_Slider", { Text = "Viewport Height", Default = 180, Min = 100, Max = 300, Suffix = " px" })
-    portraitDepbox:AddDivider()
+    local nameLabel = portraitGroup:AddLabel("Nearest Killer: none")
+    local healthLabel = portraitGroup:AddLabel("Health: -")
+    portraitSettings:AddToggle("killerPortraitWallCheck_Toggle", { Text = "Wall Check", Tooltip = "Only shows the nearest Killer that is visible to you.", Default = true })
+    portraitSettings:AddDropdown("killerPortraitExcluded_Dropdown", { Text = "Excluded Killers", Tooltip = "Killers that are never shown in the portrait.", Values = killerNames, Default = { "Giant", "Jane" }, Multi = true, Searchable = true })
+    portraitSettings:AddSlider("killerPortraitHeight_Slider", { Text = "Viewport Height", Default = 180, Min = 100, Max = 300, Suffix = " px" })
 
-    portraitDepbox:SetupDependencies({ { toggles.killerPortrait_Toggle, true } })
+    -- The preview only shows while the feature is on (the toggle itself and its options stay visible).
+    local function setPortraitPanelVisible(visible: boolean)
+        if portraitViewport and typeof(portraitViewport.SetVisible) == "function" then
+            portraitViewport:SetVisible(visible)
+        end
+        nameLabel:SetVisible(visible)
+        healthLabel:SetVisible(visible)
+    end
+
+    setPortraitPanelVisible(false)
+
 
     local portrait = {
         connection = nil,
@@ -9973,9 +9939,10 @@ do
 
         local bestKiller, bestRoot, bestHumanoid
         local bestDistance = math.huge
+        local excluded = options.killerPortraitExcluded_Dropdown.Value or {}
 
         for _, killer in ipairs(folder:GetChildren()) do
-            if killer:IsA("Model") then
+            if killer:IsA("Model") and not excluded[killer.Name] then
                 local root = killer:FindFirstChild("HumanoidRootPart")
                 local humanoid = killer:FindFirstChildOfClass("Humanoid")
 
@@ -10090,7 +10057,9 @@ do
         end
     end
 
+    -- Obsidian's OnChanged replaces any earlier handler, so the panel visibility and the render loop share this one.
     toggles.killerPortrait_Toggle:OnChanged(function(enabled)
+        setPortraitPanelVisible(enabled)
         stopPortrait()
 
         if not enabled then
@@ -10131,20 +10100,18 @@ do
 
         trajectoryGroup:AddToggle("trajectoryPreview_Toggle", { Text = "Grenade Trajectory", Tooltip = "Draws the flight path and landing spot of the M16A2's grenade launcher (M203) while it is equipped in grenade mode." })
 
-        local trajectoryDepbox = trajectoryGroup:AddDependencyBox()
+        local trajectorySettings = toggles.trajectoryPreview_Toggle:AddSettings({ Width = 270 })
 
-        utils.addRainbowSettings(trajectoryDepbox:AddLabel("Path Color"):AddColorPicker("trajectoryPathColor_ColorPicker", { Title = "Path Color", Default = Color3.fromRGB(0, 229, 255) }), "trajectoryPathColor_ColorPicker", "rainbowTrajectoryPathColor_Toggle")
-        utils.addRainbowSettings(trajectoryDepbox:AddLabel("Landing Color"):AddColorPicker("trajectoryLandingColor_ColorPicker", { Title = "Landing Color", Default = Color3.fromRGB(255, 170, 0) }), "trajectoryLandingColor_ColorPicker", "rainbowTrajectoryLandingColor_Toggle")
-        trajectoryDepbox:AddSlider("trajectoryThickness_Slider", { Text = "Line Thickness", Default = 2, Min = 1, Max = 5 })
-        trajectoryDepbox:AddSlider("trajectoryMarkerSize_Slider", { Text = "Landing Marker Size", Tooltip = "Radius of the ring drawn where the grenade lands. Only a visual size, not the explosion radius.", Default = 3, Min = 1, Max = 10, Suffix = " Studs" })
-        trajectoryDepbox:AddToggle("trajectoryShowInfo_Toggle", { Text = "Show Distance / Time", Tooltip = "Shows the flight distance and flight time next to the landing spot.", Default = true })
-        trajectoryDepbox:AddToggle("trajectoryKillerHighlight_Toggle", { Text = "Highlight Killer On Hit", Tooltip = "When the grenade is predicted to hit a killer, that killer and the path turn the hit color.", Default = true })
+        utils.addRainbowSettings(trajectorySettings:AddLabel("Path Color"):AddColorPicker("trajectoryPathColor_ColorPicker", { Title = "Path Color", Default = Color3.fromRGB(0, 229, 255) }), "trajectoryPathColor_ColorPicker", "rainbowTrajectoryPathColor_Toggle")
+        utils.addRainbowSettings(trajectorySettings:AddLabel("Landing Color"):AddColorPicker("trajectoryLandingColor_ColorPicker", { Title = "Landing Color", Default = Color3.fromRGB(255, 170, 0) }), "trajectoryLandingColor_ColorPicker", "rainbowTrajectoryLandingColor_Toggle")
+        trajectorySettings:AddSlider("trajectoryThickness_Slider", { Text = "Line Thickness", Default = 2, Min = 1, Max = 5 })
+        trajectorySettings:AddSlider("trajectoryMarkerSize_Slider", { Text = "Landing Marker Size", Tooltip = "Radius of the ring drawn where the grenade lands. Only a visual size, not the explosion radius.", Default = 3, Min = 1, Max = 10, Suffix = " Studs" })
+        trajectorySettings:AddToggle("trajectoryShowInfo_Toggle", { Text = "Show Distance / Time", Tooltip = "Shows the flight distance and flight time next to the landing spot.", Default = true })
+        trajectorySettings:AddToggle("trajectoryKillerHighlight_Toggle", { Text = "Highlight Killer On Hit", Tooltip = "When the grenade is predicted to hit a killer, that killer and the path turn the hit color.", Default = true })
 
-        local trajectoryKillerDepbox = trajectoryDepbox:AddDependencyBox()
-        utils.addRainbowSettings(trajectoryKillerDepbox:AddLabel("Killer Hit Color"):AddColorPicker("trajectoryKillerColor_ColorPicker", { Title = "Killer Hit Color", Default = Color3.fromRGB(0, 255, 0) }), "trajectoryKillerColor_ColorPicker", "rainbowTrajectoryKillerColor_Toggle")
+        local trajectoryKillerSettings = toggles.trajectoryKillerHighlight_Toggle:AddSettings({ Width = 200 })
+        utils.addRainbowSettings(trajectoryKillerSettings:AddLabel("Killer Hit Color"):AddColorPicker("trajectoryKillerColor_ColorPicker", { Title = "Killer Hit Color", Default = Color3.fromRGB(0, 255, 0) }), "trajectoryKillerColor_ColorPicker", "rainbowTrajectoryKillerColor_Toggle")
 
-        trajectoryDepbox:SetupDependencies({ { toggles.trajectoryPreview_Toggle, true } })
-        trajectoryKillerDepbox:SetupDependencies({ { toggles.trajectoryKillerHighlight_Toggle, true } })
 
         local LAUNCHER_TOOL_NAME = "M16A2/M203"
         local MUZZLE_SPEED = 150 -- Weapon.fire: Part.AssemblyLinearVelocity = Unit * 150
@@ -10851,10 +10818,8 @@ do
 
     ui.visuals.screen:AddToggle("halloweenKillers_Toggle", { Text = "Halloween Killers", Tooltip = "Changes every Killer to its 2026 Halloween appearance." })
 
-    local lanternDepbox = ui.visuals.screen:AddDependencyBox()
-    lanternDepbox:AddToggle("campingLantern_Toggle", { Text = "Camping Lantern", Tooltip = "Gives you the Camping Lantern from the 2026 Halloween event, a tool that doubles as a light source." })
-    lanternDepbox:AddDivider()
-    lanternDepbox:SetupDependencies({ { toggles.halloweenKillers_Toggle, true } })
+    local lanternSettings = toggles.halloweenKillers_Toggle:AddSettings({ Width = 220 })
+    lanternSettings:AddToggle("campingLantern_Toggle", { Text = "Camping Lantern", Tooltip = "Gives you the Camping Lantern from the 2026 Halloween event, a tool that doubles as a light source." })
 
     -- Halloween Killers
     local transformModule: any = nil
@@ -12032,15 +11997,14 @@ end)
 
 ui.weapons.defense:AddToggle("zombieMorph_Toggle", { Text = "Zombie Morph" })
 
-local zombieMorphDepbox = ui.weapons.defense:AddDependencyBox()
+local zombieMorphSettings = toggles.zombieMorph_Toggle:AddSettings({ Width = 240 })
 
-zombieMorphDepbox:AddToggle("disableSelfGlow_Toggle", { Text = "Disable Self Glow", Tooltip = "Disables the green glow from you only." })
-zombieMorphDepbox:AddToggle("normalAppearance_Toggle", { Text = "Normal Appearance", Tooltip = "Shows your normal character instead of the zombie morph's green skin. The morph stays worn, only its look is hidden." })
+zombieMorphSettings:AddToggle("disableSelfGlow_Toggle", { Text = "Disable Self Glow", Tooltip = "Disables the green glow from you only." })
+zombieMorphSettings:AddToggle("normalAppearance_Toggle", { Text = "Normal Appearance", Tooltip = "Shows your normal character instead of the zombie morph's green skin. The morph stays worn, only its look is hidden." })
 
 ui.weapons.defense:AddToggle("obtainArmor_Toggle", { Text = "Obtain Armor" })
 ui.weapons.defense:AddToggle("obtainHelmet_Toggle", { Text = "Obtain Helmet", Disabled = not (getMode() == "Extreme"), DisabledTooltip = "This feature is not available in this mode." })
 
-zombieMorphDepbox:SetupDependencies({ { toggles.zombieMorph_Toggle, true } })
 
 do
     -- Zombie morph appearance
@@ -12268,8 +12232,8 @@ end
 
 ui.weapons.gunOptions:AddToggle("autoReloadWeapons_Toggle", { Text = "Auto Reload" })
 
-local autoReloadDepbox = ui.weapons.gunOptions:AddDependencyBox()
-autoReloadDepbox:AddSlider("autoReloadDelay_Slider", { Text = "Delay", Default = 1, Min = 0.5, Max = 10, Suffix = " Second", Rounding = 1,
+local autoReloadSettings = toggles.autoReloadWeapons_Toggle:AddSettings({ Width = 250 })
+autoReloadSettings:AddSlider("autoReloadDelay_Slider", { Text = "Delay", Default = 1, Min = 0.5, Max = 10, Suffix = " Second", Rounding = 1,
     Callback = function(val)
         options.autoReloadDelay_Slider:SetSuffix(getSuffix(options.autoReloadDelay_Slider, "Second"))
     end
@@ -12404,23 +12368,21 @@ end
 
 ui.weapons.gunOptions:AddToggle("enableGunMods_Toggle", { Text = "Enable Gun Mods", Tooltip = "Usage of any gun mods has a high chance of resulting in a permanent game ban.", Risky = true })
 
-local gunModsDepbox = ui.weapons.gunOptions:AddDependencyBox()
-gunModsDepbox:AddToggle("infiniteAmmoGunMod_Toggle", { Text = "Infinite Ammo", Risky = true })
-gunModsDepbox:AddToggle("fullAutoGunMod_Toggle", { Text = "Fully Automatic", Risky = true })
-gunModsDepbox:AddToggle("fireRateGunMod_Toggle", { Text = "Rapid Fire", Risky = true })
-gunModsDepbox:AddToggle("noOverheatGunMod_Toggle", { Text = "Flamethrower: No Overheat", Tooltip = "Stops the Flamethrower from building heat, so it can be held down for as long as you like with no overheat lockout and no re-press delay. Pair with Infinite Ammo for unlimited gas.", Risky = true })
-gunModsDepbox:AddToggle("noBoltGunMod_Toggle", { Text = "Disable Sniper Bolt", Tooltip = "Skips the bolt-action animation after each shot so Snipers can fire rapidly. Pair with Rapid Fire.", Risky = true })
-gunModsDepbox:AddToggle("noRecoilGunMod_Toggle", { Text = "No Recoil", Tooltip = "Removes the camera kick when firing.", Risky = true })
-gunModsDepbox:AddToggle("noSpreadGunMod_Toggle", { Text = "No Spread", Tooltip = "Removes bullet inaccuracy/spreading out.", Risky = true })
-gunModsDepbox:AddToggle("fastReloadGunMod_Toggle", { Text = "Fast Reload", Tooltip = "Shortens reload (and bolt) animations to a fraction of their normal time.", Risky = true })
-gunModsDepbox:AddSlider("bulletCountGunMod_Slider", { Text = "Bullet Count", Default = 1, Min = 1, Max = 100, Suffix = " Bullet", Risky = true,
+local gunModsSettings = toggles.enableGunMods_Toggle:AddSettings({ Width = 280 })
+gunModsSettings:AddToggle("infiniteAmmoGunMod_Toggle", { Text = "Infinite Ammo", Risky = true })
+gunModsSettings:AddToggle("fullAutoGunMod_Toggle", { Text = "Fully Automatic", Risky = true })
+gunModsSettings:AddToggle("fireRateGunMod_Toggle", { Text = "Rapid Fire", Risky = true })
+gunModsSettings:AddToggle("noOverheatGunMod_Toggle", { Text = "Flamethrower: No Overheat", Tooltip = "Stops the Flamethrower from building heat, so it can be held down for as long as you like with no overheat lockout and no re-press delay. Pair with Infinite Ammo for unlimited gas.", Risky = true })
+gunModsSettings:AddToggle("noBoltGunMod_Toggle", { Text = "Disable Sniper Bolt", Tooltip = "Skips the bolt-action animation after each shot so Snipers can fire rapidly. Pair with Rapid Fire.", Risky = true })
+gunModsSettings:AddToggle("noRecoilGunMod_Toggle", { Text = "No Recoil", Tooltip = "Removes the camera kick when firing.", Risky = true })
+gunModsSettings:AddToggle("noSpreadGunMod_Toggle", { Text = "No Spread", Tooltip = "Removes bullet inaccuracy/spreading out.", Risky = true })
+gunModsSettings:AddToggle("fastReloadGunMod_Toggle", { Text = "Fast Reload", Tooltip = "Shortens reload (and bolt) animations to a fraction of their normal time.", Risky = true })
+gunModsSettings:AddSlider("bulletCountGunMod_Slider", { Text = "Bullet Count", Default = 1, Min = 1, Max = 100, Suffix = " Bullet", Risky = true,
     Callback = function(val)
         options.bulletCountGunMod_Slider:SetSuffix(getSuffix(options.bulletCountGunMod_Slider, "Bullet"))
     end
 })
 
-autoReloadDepbox:SetupDependencies({ { toggles.autoReloadWeapons_Toggle, true } })
-gunModsDepbox:SetupDependencies({ { toggles.enableGunMods_Toggle, true } })
 
 toggles.autoReloadWeapons_Toggle:OnChanged(function(enabled)
     -- Disable sound
@@ -13335,15 +13297,13 @@ end)
 ui.settings.menu:AddToggle("openKeybindMenu_Toggle", { Text = "Open Keybind Menu", Default = window.keybindFrameEnabled, Callback = function(enabled) library.KeybindFrame.Visible = enabled end })
 ui.settings.menu:AddToggle("configKeybinds_Toggle", { Text = "Keybind Menu Visibility", Tooltip = "Show or hide specific keybinds.", Visible = false, Callback = function(enabled) library.KeybindMenu:SetVisibilityControl(enabled) end })
 ui.settings.menu:AddToggle("alwaysOnTop_Toggle", { Text = "Always On Top", Default = window.AlwaysOnTop, Tooltip = "Places the window over all Roblox GUI.", Callback = function(enabled) window:SetAlwaysOnTop(enabled) end })
-ui.settings.notifications:AddToggle("notifSound_Toggle", { Text = "Notification Alert Sounds", Default = true, Callback = function(enabled) window.notifSoundEnabled = enabled end })
+ui.settings.overlays:AddToggle("notifSound_Toggle", { Text = "Notification Alert Sounds", Default = true, Callback = function(enabled) window.notifSoundEnabled = enabled end })
 
-local notifSoundDepbox = ui.settings.notifications:AddDependencyBox()
-notifSoundDepbox:AddSlider("notifAlertVolume_Slider", { Text = "Alert Volume", Default = 1, Min = 0.1, Max = 6, Rounding = 1 })
-notifSoundDepbox:AddDivider()
+local notifSoundSettings = toggles.notifSound_Toggle:AddSettings({ Width = 230 })
+notifSoundSettings:AddSlider("notifAlertVolume_Slider", { Text = "Alert Volume", Default = 1, Min = 0.1, Max = 6, Rounding = 1 })
 
-notifSoundDepbox:SetupDependencies({ { toggles.notifSound_Toggle, true } })
 
-ui.settings.notifications:AddDropdown("NotificationSide", { Text = "Notification Side", Values = { "Left", "Right" }, Default = "Right", Callback = function(val) library:SetNotifySide(val) end })
+ui.settings.overlays:AddDropdown("NotificationSide", { Text = "Notification Side", Values = { "Left", "Right" }, Default = "Right", Callback = function(val) library:SetNotifySide(val) end })
 ui.settings.appearance:AddDropdown("DPIDropdown", { Text = "DPI Scale", Values = { "50%", "75%", "100%", "125%", "150%", "175%", "200%" }, Default = 3,
     Callback = function(val)
         val = val:gsub("%%", "")
@@ -13362,7 +13322,8 @@ ui.settings.menu:AddLabel("Menu bind"):AddKeyPicker("menuKeybind_KeyPicker", { T
 
 -- [UI Settings / Session Info] Draggable overlay with live stats for the current session
 do
-    local sessionInfoToggle = ui.settings.sessionInfo:AddToggle("sessionInfo_Toggle", { Text = "Session Info", Tooltip = "Shows a draggable overlay with live stats for this session." })
+    ui.settings.overlays:AddDivider({ Text = "Overlays" })
+    local sessionInfoToggle = ui.settings.overlays:AddToggle("sessionInfo_Toggle", { Text = "Session Info", Tooltip = "Shows a draggable overlay with live stats for this session." })
     local sessionInfoSettings = sessionInfoToggle:AddSettings({ Width = 300 })
 
     local function buildSessionInfoOverlay()
@@ -14677,7 +14638,7 @@ do
             rebuildSessionInfoText()
         end
 
-        ui.settings.sessionInfo:AddButton({ Text = "Reset Session", Tooltip = "Sets every Session Info stat back to zero at once, including the timer.", Icon = "refresh-ccw", Func = function()
+        ui.settings.overlays:AddButton({ Text = "Reset Session", Tooltip = "Sets every Session Info stat back to zero at once, including the timer.", Icon = "refresh-ccw", Func = function()
             resetSessionInfo()
             pcall(notify, "Info", "Session Info", "Every stat was reset.", 3)
         end })
@@ -14747,6 +14708,614 @@ do
 
     buildSessionInfoOverlay()
 end
+
+-- ============================================================================
+-- [UI Settings / Arraylist] On-screen list of the enabled modules
+-- ============================================================================
+
+utils.buildArraylist = function()
+    -- Typed as any inside this function: the big UI/utility tables are expensive for the type checker to follow here
+    local ui: any, utils: any, library: any, window: any, runService: any, teardownTasks: any = ui, utils, library, window, runService, teardownTasks
+    local Instance: any, UDim2: any, Vector2: any, Color3: any, Enum: any, TweenInfo: any, Font: any = Instance, UDim2, Vector2, Color3, Enum, TweenInfo, Font
+
+    local tweenService = game:GetService("TweenService")
+
+    local ROW_PADDING = 6 -- pixels between a row's text and the edges of its panel
+    local INFO_COLOR = "#a8a8a8"
+    local ANIMATION_TIME = 0.15
+    local POLL_INTERVAL = 0.2 -- modes and values are not toggles, so the list is also re-read on a timer
+
+    -- [Arraylist / Controls]
+    ui.settings.overlays:AddToggle("arraylist_Toggle", { Text = "Arraylist", Tooltip = "Shows a list of every module you have enabled on your screen." })
+
+    local arraylistSettings = toggles.arraylist_Toggle:AddSettings({ Width = 290 })
+    arraylistSettings:AddDropdown("arraylistSide_Dropdown", { Text = "Side", Values = { "Right", "Left" }, Default = 1 })
+    arraylistSettings:AddDropdown("arraylistSort_Dropdown", { Text = "Sort", Values = { "Longest First", "Shortest First", "Alphabetical" }, Default = 1 })
+    arraylistSettings:AddDropdown("arraylistColorMode_Dropdown", { Text = "Color Mode", Tooltip = "Gradient runs a rainbow down the list. Static uses the color picker.", Values = { "Gradient", "Static" }, Default = 1 })
+
+    utils.addRainbowSettings(arraylistSettings:AddLabel("Static Color"):AddColorPicker("arraylistColor_ColorPicker", { Title = "Arraylist Color", Default = Color3.fromRGB(0, 229, 255) }), "arraylistColor_ColorPicker", "rainbowArraylistColor_Toggle")
+
+    arraylistSettings:AddSlider("arraylistTextSize_Slider", { Text = "Text Size", Default = 16, Min = 12, Max = 24, Rounding = 0 })
+    arraylistSettings:AddSlider("arraylistBarWidth_Slider", { Text = "Bar Width", Default = 2, Min = 1, Max = 6, Rounding = 0, Suffix = " px" })
+    arraylistSettings:AddSlider("arraylistBackground_Slider", { Text = "Background Transparency", Default = 0.5, Min = 0, Max = 1, Rounding = 2 })
+    arraylistSettings:AddSlider("arraylistOffsetX_Slider", { Text = "Offset X", Default = 6, Min = 0, Max = 400, Rounding = 0, Suffix = " px" })
+    arraylistSettings:AddSlider("arraylistOffsetY_Slider", { Text = "Offset Y", Default = 6, Min = 0, Max = 600, Rounding = 0, Suffix = " px" })
+    arraylistSettings:AddToggle("arraylistInfo_Toggle", { Text = "Show Info", Tooltip = "Shows a module's mode or value after its name, like Speed Exploit's method.", Default = true })
+    arraylistSettings:AddToggle("arraylistAnimate_Toggle", { Text = "Animations", Default = true })
+
+
+    -- [Arraylist / Modules] The toggles that count as a module.
+    -- id: the toggle that switches the module on.
+    -- requires: toggles that must be on as well (the "Enable ..." master toggles and parent features).
+    -- suffix: optional function returning the mode or value shown after the name.
+    local function value(id: string): any
+        local object = options[id]
+        return object and object.Value
+    end
+
+    local function number(id: string): string?
+        local amount = value(id)
+
+        if type(amount) ~= "number" then
+            return nil
+        end
+
+        return tostring(math.floor(amount * 10 + 0.5) / 10)
+    end
+
+    local modules: { any } = {
+        -- Player
+        { id = "speedExploit_Toggle", name = "Speed Exploit", suffix = function()
+            local method, amount = value("speedExploitMethod_Dropdown"), number("speedExploitAmount_Slider")
+            return method and amount and (method .. " " .. amount) or method
+        end },
+        { id = "speedBypass_Toggle", name = "Speed Bypass" },
+        { id = "toggleFly_Toggle", requires = { "enableFly_Toggle" }, name = "Fly", suffix = function() return number("flyHorizSpeed_Slider") end },
+        { id = "toggleNoclip_Toggle", requires = { "enableNoclip_Toggle" }, name = "Noclip" },
+        { id = "enableJumpPower_Toggle", name = "Jump Power", suffix = function() return number("jumpPowerValue_Slider") end },
+        { id = "autoBacktrack_Toggle", name = "Backtrack" },
+        { id = "outOfBoundsGuard_Toggle", name = "Out-of-Bounds Guard" },
+        { id = "freecam_Toggle", name = "Freecam" },
+        { id = "fakeLag_Toggle", name = "Fake Lag" },
+
+        -- Utility
+        { id = "promptReach_Toggle", name = "Prompt Reach" },
+        { id = "weaponPromptReach_Toggle", name = "Weapon Prompt Reach" },
+        { id = "instantInteract_Toggle", name = "Instant Interact" },
+        { id = "autoOpenDoors_Toggle", name = "Auto Open Doors" },
+        { id = "autoCloseDoors_Toggle", name = "Auto Close Doors" },
+        { id = "doorNoclip_Toggle", name = "Door Noclip" },
+        { id = "autoDrink_Toggle", name = "Auto Drink" },
+        { id = "autoRefill_Toggle", name = "Auto Refill" },
+
+        -- Exploits
+        { id = "enableAimbot_Toggle", name = "Aimbot" },
+        { id = "enableSilentAim_Toggle", name = "Silent Aim" },
+        { id = "enableTriggerbot_Toggle", name = "Triggerbot" },
+        { id = "disableAllKillers_Toggle", name = "Disable Aura" },
+        { id = "killerGodmode_Toggle", name = "Killer Godmode" },
+        { id = "antiSlendermanJumpscare_Toggle", name = "Anti Slenderman Jumpscare" },
+        { id = "slendermanSafeFacing_Toggle", name = "Slenderman Safe Facing" },
+        { id = "autoSafeSpot_Toggle", name = "Auto Safe Spot" },
+        { id = "hitboxExpander_Toggle", name = "Hitbox Expander", suffix = function() return number("hitboxSize_Slider") end },
+        { id = "autoCollect_Toggle", name = "Auto Collect" },
+
+        -- Visuals
+        { id = "killerESP_Toggle", name = "Killer ESP" },
+        { id = "toggleKillersNametags_Toggle", requires = { "killerESP_Toggle" }, name = "Name Tags" },
+        { id = "killerArrows_Toggle", requires = { "killerESP_Toggle" }, name = "Offscreen Arrows" },
+        { id = "removeFog_Toggle", name = "Remove Fog" },
+        { id = "halloweenKillers_Toggle", name = "Halloween Killers" },
+        { id = "campingLantern_Toggle", requires = { "halloweenKillers_Toggle" }, name = "Camping Lantern" },
+        { id = "enableFOV_Toggle", name = "FOV", suffix = function() return number("fieldOfViewValue_Slider") end },
+        { id = "antiInk_Toggle", name = "Anti Ink" },
+        { id = "antiTailsPopup_Toggle", name = "Anti Tails Popup" },
+        { id = "disableScopeOverlay_Toggle", name = "No Scope Overlay" },
+        { id = "visualizeHitbox_Toggle", name = "Hitbox Visualizer" },
+        { id = "killerPortrait_Toggle", name = "Killer Portrait" },
+        { id = "trajectoryPreview_Toggle", name = "Grenade Trajectory" },
+
+        -- World
+        { id = "disableCactuses_Toggle", name = "No Cactuses" },
+        { id = "removeBearTraps_Toggle", name = "No Bear Traps" },
+        { id = "disableRadioactiveZone_Toggle", name = "No Radioactive Zone" },
+        { id = "disableKillParts_Toggle", name = "No Kill Parts" },
+
+        -- Weapons
+        { id = "zombieMorph_Toggle", name = "Zombie Morph" },
+        { id = "autoReloadWeapons_Toggle", name = "Auto Reload" },
+        { id = "autoPickupWeapons_Toggle", name = "Auto Pickup" },
+        { id = "weaponSpam_Toggle", name = "Weapon Spam" },
+        { id = "obtainArmor_Toggle", name = "Auto Armor" },
+        { id = "obtainHelmet_Toggle", name = "Auto Helmet" },
+        { id = "skinChangerAuto_Toggle", name = "Skin Changer" },
+        { id = "enableGunMods_Toggle", name = "Gun Mods", suffix = function() return number("bulletCountGunMod_Slider") end },
+        { id = "infiniteAmmoGunMod_Toggle", requires = { "enableGunMods_Toggle" }, name = "Infinite Ammo" },
+        { id = "fullAutoGunMod_Toggle", requires = { "enableGunMods_Toggle" }, name = "Full Auto" },
+        { id = "fireRateGunMod_Toggle", requires = { "enableGunMods_Toggle" }, name = "Rapid Fire" },
+        { id = "noOverheatGunMod_Toggle", requires = { "enableGunMods_Toggle" }, name = "No Overheat" },
+        { id = "noBoltGunMod_Toggle", requires = { "enableGunMods_Toggle" }, name = "No Sniper Bolt" },
+        { id = "noRecoilGunMod_Toggle", requires = { "enableGunMods_Toggle" }, name = "No Recoil" },
+        { id = "noSpreadGunMod_Toggle", requires = { "enableGunMods_Toggle" }, name = "No Spread" },
+        { id = "fastReloadGunMod_Toggle", requires = { "enableGunMods_Toggle" }, name = "Fast Reload" },
+    }
+
+    -- [Arraylist / State]
+    local state: any = {
+        active = false,
+        busy = false, -- a refresh is running (measuring text can yield)
+        dirty = false, -- something changed, refresh on the next frame
+        rebuild = false, -- a setting changed, recreate every row instead of animating
+        accumulator = 0,
+        container = nil,
+        loop = nil,
+        listener = nil,
+        rows = {}, -- module id -> row
+        order = {}, -- module ids from top to bottom
+        signature = nil,
+        widths = {},
+    }
+
+    local function readConfig(): any
+        local function setting(id: string, fallback: any): any
+            local object = options[id]
+
+            if object and object.Value ~= nil then
+                return object.Value
+            end
+
+            return fallback
+        end
+
+        local function switch(id: string, fallback: any): any
+            local object = toggles[id]
+
+            if object and object.Value ~= nil then
+                return object.Value
+            end
+
+            return fallback
+        end
+
+        return {
+            side = setting("arraylistSide_Dropdown", "Right"),
+            sort = setting("arraylistSort_Dropdown", "Longest First"),
+            size = math.floor(setting("arraylistTextSize_Slider", 16)),
+            barWidth = math.floor(setting("arraylistBarWidth_Slider", 2)),
+            background = setting("arraylistBackground_Slider", 0.5),
+            offsetX = math.floor(setting("arraylistOffsetX_Slider", 6)),
+            offsetY = math.floor(setting("arraylistOffsetY_Slider", 6)),
+            showInfo = switch("arraylistInfo_Toggle", true),
+            animate = switch("arraylistAnimate_Toggle", true),
+        }
+    end
+
+    local function isEnabled(definition: any): boolean
+        local toggle = toggles[definition.id]
+
+        if not toggle or toggle.Value ~= true then
+            return false
+        end
+
+        if definition.requires then
+            for _, requiredId in ipairs(definition.requires) do
+                local required = toggles[requiredId]
+
+                if not required or required.Value ~= true then
+                    return false
+                end
+            end
+        end
+
+        return true
+    end
+
+    local function collectEntries(showInfo: boolean): { any }
+        local entries: { any } = {}
+
+        for _, definition in ipairs(modules) do
+            if isEnabled(definition) then
+                local info = ""
+
+                if showInfo and definition.suffix then
+                    local success, result = pcall(definition.suffix)
+
+                    if success and result ~= nil and result ~= "" then
+                        info = tostring(result)
+                    end
+                end
+
+                local rich = utils.escapeRichText(definition.name)
+
+                if info ~= "" then
+                    rich ..= ' <font color="' .. INFO_COLOR .. '">' .. utils.escapeRichText(info) .. "</font>"
+                end
+
+                table.insert(entries, { id = definition.id, name = definition.name, rich = rich })
+            end
+        end
+
+        return entries
+    end
+
+    -- Text widths are cached by font, size and text. Measuring uses Obsidian's own bounds check, which can yield.
+    local function measure(rich: string, size: number, font: any): number
+        local key = font.Family .. "|" .. font.Weight.Name .. "|" .. size .. "|" .. rich
+        local cached = state.widths[key]
+
+        if cached then
+            return cached
+        end
+
+        local success, width = pcall(function()
+            return (library:GetTextBounds(rich, font, size))
+        end)
+
+        if not success or type(width) ~= "number" then
+            width = math.ceil(#(rich:gsub("<[^>]+>", "")) * size * 0.55)
+        end
+
+        state.widths[key] = width
+
+        return width
+    end
+
+    -- [Arraylist / Rows]
+    local function destroyRows()
+        for id, row in pairs(state.rows) do
+            state.rows[id] = nil
+            row.frame:Destroy()
+        end
+
+        table.clear(state.order)
+        state.signature = nil
+    end
+
+    local function play(instance: any, properties: any)
+        tweenService:Create(instance, TweenInfo.new(ANIMATION_TIME, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), properties):Play()
+    end
+
+    -- Creates an instance and applies the property table to it
+    local function create(className: string, properties: any): any
+        local instance: any = Instance.new(className)
+
+        for key, propertyValue in properties do
+            instance[key] = propertyValue
+        end
+
+        return instance
+    end
+
+    local function createRow(id: string, cfg: any, font: any, height: number): any
+        local rightSide: boolean = cfg.side == "Right"
+        local barWidth: number = cfg.barWidth
+        local padding: number = ROW_PADDING
+
+        local frame = create("Frame", {
+            Name = id,
+            AnchorPoint = Vector2.new(rightSide and 1 or 0, 0),
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0,
+            Size = UDim2.fromOffset(barWidth + padding * 2, height),
+            Parent = state.container,
+        })
+
+        local background = create("Frame", {
+            Name = "Background",
+            BackgroundColor3 = Color3.new(0, 0, 0),
+            BorderSizePixel = 0,
+            Size = UDim2.new(1, -barWidth, 1, 0),
+            Position = UDim2.fromOffset(rightSide and 0 or barWidth, 0),
+            Parent = frame,
+        })
+
+        local bar = create("Frame", {
+            Name = "Bar",
+            BorderSizePixel = 0,
+            Size = UDim2.new(0, barWidth, 1, 0),
+            Position = rightSide and UDim2.new(1, -barWidth, 0, 0) or UDim2.fromOffset(0, 0),
+            Parent = frame,
+        })
+
+        local label = create("TextLabel", {
+            Name = "Text",
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0,
+            RichText = true,
+            FontFace = font,
+            TextSize = cfg.size,
+            TextWrapped = false,
+            TextXAlignment = rightSide and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left,
+            TextYAlignment = Enum.TextYAlignment.Center,
+            Size = UDim2.new(1, -(barWidth + padding * 2), 1, 0),
+            Position = UDim2.fromOffset(rightSide and padding or (barWidth + padding), 0),
+            Text = "",
+            Parent = frame,
+        })
+
+        return { frame = frame, background = background, bar = bar, label = label, width = 0, new = true }
+    end
+
+    local function setHidden(row: any, cfg: any, hidden: boolean)
+        row.background.BackgroundTransparency = hidden and 1 or cfg.background
+        row.bar.BackgroundTransparency = hidden and 1 or 0
+        row.label.TextTransparency = hidden and 1 or 0
+    end
+
+    -- A gradient runs down the rows, or every row uses the picker color. Runs every frame, the rows' colors are never tweened.
+    local function recolor()
+        local modeObject = options.arraylistColorMode_Dropdown
+        local picker = options.arraylistColor_ColorPicker
+
+        if not modeObject then
+            return
+        end
+
+        local static = modeObject.Value == "Static"
+        local pickerColor = picker and picker.Value or Color3.new(1, 1, 1)
+        local phase = os.clock() * (window.rainbowSpeed or 0.1)
+
+        for index, id in ipairs(state.order) do
+            local row = state.rows[id]
+
+            if row then
+                local color = static and pickerColor or Color3.fromHSV((phase + (index - 1) * 0.03) % 1, 0.85, 1)
+
+                row.bar.BackgroundColor3 = color
+                row.label.TextColor3 = color
+            end
+        end
+    end
+
+    local function layout(entries: { any }, cfg: any, font: any)
+        local rightSide = cfg.side == "Right"
+        local height = math.floor(cfg.size * 1.3) -- always a whole number so stacked rows never leave a gap
+
+        -- The container is a zero-width anchor on the screen edge, rows hang off it and are aligned to its edge
+        local container = state.container
+        container.AnchorPoint = rightSide and Vector2.new(1, 0) or Vector2.new(0, 0)
+        container.Position = rightSide and UDim2.new(1, -cfg.offsetX, 0, cfg.offsetY) or UDim2.fromOffset(cfg.offsetX, cfg.offsetY)
+        container.Size = UDim2.fromOffset(0, #entries * height)
+
+        local wanted: { [string]: boolean } = {}
+        table.clear(state.order)
+
+        for index, entry in ipairs(entries) do
+            wanted[entry.id] = true
+            state.order[index] = entry.id
+
+            local row = state.rows[entry.id]
+
+            if not row then
+                row = createRow(entry.id, cfg, font, height)
+                state.rows[entry.id] = row
+            end
+
+            local width = entry.width + ROW_PADDING * 2 + cfg.barWidth
+            local y = (index - 1) * height
+
+            row.width = width
+            row.label.Text = entry.rich
+            row.frame.Size = UDim2.fromOffset(width, height)
+
+            if row.new then
+                row.new = false
+
+                if cfg.animate then
+                    -- Slide in from the screen edge while fading in
+                    row.frame.Position = UDim2.fromOffset(rightSide and (width + 12) or -(width + 12), y)
+                    setHidden(row, cfg, true)
+
+                    play(row.frame, { Position = UDim2.fromOffset(0, y) })
+                    play(row.background, { BackgroundTransparency = cfg.background })
+                    play(row.bar, { BackgroundTransparency = 0 })
+                    play(row.label, { TextTransparency = 0 })
+                else
+                    row.frame.Position = UDim2.fromOffset(0, y)
+                    setHidden(row, cfg, false)
+                end
+            elseif cfg.animate then
+                play(row.frame, { Position = UDim2.fromOffset(0, y) })
+            else
+                row.frame.Position = UDim2.fromOffset(0, y)
+            end
+        end
+
+        -- Rows of modules that were disabled slide back out and are destroyed
+        for id, row in pairs(state.rows) do
+            if not wanted[id] then
+                state.rows[id] = nil
+
+                local frame = row.frame
+
+                if cfg.animate then
+                    play(frame, { Position = UDim2.fromOffset(rightSide and (row.width + 12) or -(row.width + 12), frame.Position.Y.Offset) })
+                    play(row.background, { BackgroundTransparency = 1 })
+                    play(row.bar, { BackgroundTransparency = 1 })
+                    play(row.label, { TextTransparency = 1 })
+
+                    task.delay(ANIMATION_TIME + 0.05, function()
+                        frame:Destroy()
+                    end)
+                else
+                    frame:Destroy()
+                end
+            end
+        end
+
+        recolor()
+    end
+
+    -- [Arraylist / Refresh]
+    local function refreshOnce()
+        local cfg = readConfig()
+        local font: any = library.Scheme and library.Scheme.Font
+
+        if typeof(font) ~= "Font" then
+            font = Font.fromEnum(Enum.Font.Gotham)
+        end
+
+        local fullRebuild = state.rebuild
+        state.rebuild = false
+
+        local entries = collectEntries(cfg.showInfo)
+        local parts = {}
+
+        for index, entry in ipairs(entries) do
+            parts[index] = entry.id .. "=" .. entry.rich
+        end
+
+        local signature = table.concat(parts, "\n")
+
+        if not fullRebuild and signature == state.signature then
+            return
+        end
+
+        for _, entry in ipairs(entries) do
+            entry.width = measure(entry.rich, cfg.size, font) -- can yield
+        end
+
+        if not state.active then
+            return
+        end
+
+        if fullRebuild then
+            destroyRows()
+        end
+
+        table.sort(entries, function(a, b)
+            if cfg.sort == "Alphabetical" then
+                return a.name:lower() < b.name:lower()
+            end
+
+            if a.width ~= b.width then
+                if cfg.sort == "Shortest First" then
+                    return a.width < b.width
+                end
+
+                return a.width > b.width
+            end
+
+            return a.name:lower() < b.name:lower()
+        end)
+
+        layout(entries, cfg, font)
+        state.signature = signature
+    end
+
+    local function refresh()
+        if state.busy or not state.active then
+            return
+        end
+
+        state.busy = true
+
+        local success, err = pcall(refreshOnce)
+
+        state.busy = false
+
+        if not success then
+            warn("[Celestial] Arraylist refresh error:", err)
+        end
+    end
+
+    local function step(deltaTime: number)
+        if not state.active then
+            return
+        end
+
+        state.accumulator += deltaTime
+
+        if not state.busy and (state.dirty or state.accumulator >= POLL_INTERVAL) then
+            state.accumulator = 0
+            state.dirty = false
+            task.spawn(refresh)
+        end
+
+        recolor()
+    end
+
+    local function start()
+        if state.active or not library.ScreenGui then
+            return
+        end
+
+        state.active = true
+
+        local container = Instance.new("Frame")
+        container.Name = "CelestialArraylist"
+        container.BackgroundTransparency = 1
+        container.BorderSizePixel = 0
+        container.Size = UDim2.fromOffset(0, 0)
+        container.Parent = library.ScreenGui
+        state.container = container
+
+        state.rebuild = true
+        state.dirty = true
+        state.accumulator = 0
+
+        -- Instantly update when a toggle changes.
+        if typeof(library.OnToggleChanged) == "function" then
+            state.listener = library:OnToggleChanged(function()
+                state.dirty = true
+            end)
+        end
+
+        state.loop = runService.RenderStepped:Connect(step)
+    end
+
+    local function stop()
+        if not state.active then
+            return
+        end
+
+        state.active = false
+
+        if state.loop then
+            state.loop:Disconnect()
+            state.loop = nil
+        end
+
+        if state.listener then
+            state.listener:Disconnect()
+            state.listener = nil
+        end
+
+        table.clear(state.rows)
+        table.clear(state.order)
+        state.signature = nil
+
+        if state.container then
+            state.container:Destroy()
+            state.container = nil
+        end
+    end
+
+    -- [Arraylist / Wiring]
+    local function requestRebuild()
+        state.rebuild = true
+        state.dirty = true
+    end
+
+    toggles.arraylist_Toggle:OnChanged(function(enabled)
+        if enabled then
+            start()
+        else
+            stop()
+        end
+    end)
+
+    for _, id in ipairs({ "arraylistSide_Dropdown", "arraylistSort_Dropdown", "arraylistTextSize_Slider", "arraylistBarWidth_Slider", "arraylistBackground_Slider", "arraylistOffsetX_Slider", "arraylistOffsetY_Slider" }) do
+        options[id]:OnChanged(requestRebuild)
+    end
+
+    toggles.arraylistInfo_Toggle:OnChanged(requestRebuild)
+    toggles.arraylistAnimate_Toggle:OnChanged(requestRebuild)
+
+    table.insert(teardownTasks, stop)
+end
+
+utils.buildArraylist()
 
 -- [UI Settings / Teardown] Disable active features and clear shared state
 local function unloadModules()
