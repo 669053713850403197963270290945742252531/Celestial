@@ -12,7 +12,7 @@
     08. Utility: teleport, healing, sounds, and interactions
     08b. Waypoints: custom saved positions with one-click teleport and file persistence
     09. Player: movement, phase, speed handling, freecam, and backtrack
-    10. Exploits: Pack-a-Punch, aim controls, Triggerbot, collection, killer controls, and Hitbox Expander
+    10. Exploits: Pack-a-Punch, aim controls, Triggerbot, collection, killer controls, Autofarm, Kill Aura, and Hitbox Expander
     11. Visuals: ESP, FOV, fog, anti-effect handlers, scope overlay removal, Hitbox Visualizer, Killer Portrait, grenade trajectory preview, and Halloween Killers w/Camping Lantern
     12. World: environmental settings, door noclip, and alien / kill-part controls
     13. Weapons: inventory, Pack-a-Punch queue, defense, gun options, and skin changer
@@ -220,7 +220,7 @@ ui.player = {
 
 ui.exploits = {
     aim = tabs.exploits:AddGroupbox({ Side = "Left", Name = "Aim", IconName = assetLib.fetchAsset("Icons/crosshair.png"), Description = "Aimbot, silent aim, triggerbot, and hitboxes" }),
-    killers = tabs.exploits:AddGroupbox({ Side = "Right", Name = "Killers", IconName = assetLib.fetchAsset("Icons/skull.png"), Description = "Aura, godmode, and Slenderman safety" }),
+    killers = tabs.exploits:AddGroupbox({ Side = "Right", Name = "Killers", IconName = assetLib.fetchAsset("Icons/skull.png"), Description = "Aura, godmode, Autofarm, Kill Aura, and Slenderman safety" }),
 }
 
 -- Killer Portrait stays its own groupbox because it is a pop-out panel.
@@ -4194,11 +4194,68 @@ local function isSilentAimEnabled()
     return silentAimToggle ~= nil and silentAimToggle.Value == true
 end
 
+-- The weapon hooks are also needed while Autofarm redirects its own bullets (utils.autofarmAimWanted is set by Autofarm).
+utils.isSilentAimNeeded = function()
+    if library.Unloaded then
+        return false
+    end
+
+    if isSilentAimEnabled() then
+        return true
+    end
+
+    local wanted = utils.autofarmAimWanted
+
+    if type(wanted) == "function" and wanted() == true then
+        return true
+    end
+
+    local killAuraWanted = utils.killAuraAimWanted
+
+    return type(killAuraWanted) == "function" and killAuraWanted() == true
+end
+
 -- Assigned inside the block below; the scanner further down calls it.
 local scanSilentAimWeaponTables
 
 do
     local silentAimBlacklistedNames = { Jane = true, Giant = true }
+
+    local FORCED_AIM_SOURCES = {
+        { key = "autofarmAimTarget", name = "autofarm" },
+        { key = "killAuraAimTarget", name = "killaura" },
+    }
+
+    local function getForcedSilentAimModel()
+        local killersFolder = workspace:FindFirstChild("Killers")
+
+        if not killersFolder then
+            return nil
+        end
+
+        for _, source in ipairs(FORCED_AIM_SOURCES) do
+            local getter = utils[source.key]
+
+            if type(getter) == "function" then
+                local success, model = pcall(getter)
+
+                if success and typeof(model) == "Instance" and model:IsA("Model") and model:IsDescendantOf(killersFolder) then
+                    local humanoid = model:FindFirstChildOfClass("Humanoid")
+
+                    if humanoid and humanoid.Health > 0 then
+                        return model, source.name
+                    end
+                end
+            end
+        end
+
+        return nil
+    end
+
+    -- True while the weapon hooks are running: Silent Aim is on, or Autofarm is redirecting bullets to its Killer.
+    local function isSilentAimActive()
+        return isSilentAimEnabled() or getForcedSilentAimModel() ~= nil
+    end
 
     -- A shot's aim lookup, its spread rolls and its bullets all happen in the same frame, so a lock this young belongs to the current shot.
     local SILENT_AIM_LOCK_LIFETIME = 0.15
@@ -4215,7 +4272,11 @@ do
     local silentAimMissileLocks = setmetatable({}, { __mode = "k" })
 
     local function isValidSilentAimTarget(model)
-        if not model or not model:IsA("Model") or silentAimBlacklistedNames[model.Name] then
+        if not model or not model:IsA("Model") then
+            return false
+        end
+
+        if silentAimBlacklistedNames[model.Name] and model ~= getForcedSilentAimModel() then
             return false
         end
 
@@ -4240,6 +4301,27 @@ do
         end
 
         return nil
+    end
+
+    -- Silent Aim's own toggles, or Kill Aura's while it has a Killer locked
+    local function isWallbangEnabled()
+        if toggles.silentAimWallBang_Toggle.Value then
+            return true
+        end
+
+        local killAuraWallbang = utils.killAuraWallbang
+
+        return type(killAuraWallbang) == "function" and killAuraWallbang() == true
+    end
+
+    local function isNoSpreadEnabled()
+        if toggles.silentAimNoSpread_Toggle.Value then
+            return true
+        end
+
+        local killAuraNoSpread = utils.killAuraNoSpread
+
+        return type(killAuraNoSpread) == "function" and killAuraNoSpread() == true
     end
 
     local function isSilentAimTargetVisible(targetPart, character)
@@ -4390,6 +4472,10 @@ do
         end
 
         local projectileSpeed = tonumber(options.silentAimProjectileSpeed_Slider.Value) or 150
+        local getSpeedMultiplier = utils.getProjectileSpeedMultiplier -- set by the Projectile Speed Multiplier gun mod
+        if type(getSpeedMultiplier) == "function" then
+            projectileSpeed = projectileSpeed * getSpeedMultiplier()
+        end
         if projectileSpeed <= 0 then
             return position
         end
@@ -4407,6 +4493,40 @@ do
         local leadTime = solveSilentAimLeadTime(origin, position, velocity, projectileSpeed)
 
         return position + velocity * leadTime * predictionFactor
+    end
+
+    -- Where a bullet has to go to hit the Killer Autofarm is locked onto: its Head,
+    local function getForcedAimPosition(model, muzzlePosition, source)
+        local rootPart = getSilentAimRootPart(model)
+
+        if not rootPart then
+            return nil
+        end
+
+        local currentCamera = workspace.CurrentCamera or camera
+        local origin = muzzlePosition or (currentCamera and currentCamera.CFrame.Position) or rootPart.Position
+        local aimPartOption = source == "killaura" and options.killAuraAimPart_Dropdown or options.autofarmAimPart_Dropdown
+        local mode = aimPartOption and aimPartOption.Value or "Head"
+        local targetPart
+
+        if mode == "Auto" then
+            local velocity = rootPart.AssemblyLinearVelocity
+            local horizontalSpeed = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
+
+            targetPart = resolveSilentAimPart(model, rootPart, horizontalSpeed, (rootPart.Position - origin).Magnitude)
+        else
+            targetPart = model:FindFirstChild(mode, true)
+
+            if not targetPart or not targetPart:IsA("BasePart") then
+                targetPart = model:FindFirstChild("Head", true)
+            end
+
+            if not targetPart or not targetPart:IsA("BasePart") then
+                targetPart = rootPart
+            end
+        end
+
+        return predictSilentAimPosition(origin, targetPart, rootPart)
     end
 
     -- Returns the Killer model and the position to shoot at, or nil when nothing is inside the FOV.
@@ -4472,6 +4592,19 @@ do
     -- Weapon.screen_to_target: where the shot goes. Also decides which Killer (if any) this shot is locked on.
     local function createScreenToTargetHook(original)
         return function(self, ...)
+            -- Autofarm's / Kill Aura's Killer takes priority over everything else, and does not require Silent Aim to be enabled
+            local forcedModel, forcedSource = getForcedSilentAimModel()
+
+            if forcedModel then
+                local forcedPosition = getForcedAimPosition(forcedModel, getSilentAimMuzzlePosition(self), forcedSource)
+
+                if forcedPosition then
+                    silentAimLock = { model = forcedModel, time = os.clock() }
+
+                    return forcedPosition
+                end
+            end
+
             if isSilentAimEnabled() then
                 local model, predictedPosition = getClosestSilentAimTarget(getSilentAimMuzzlePosition(self))
 
@@ -4490,8 +4623,8 @@ do
     -- Weapon.target_ray_callback: which things the game's short muzzle ray counts as hits.
     local function createRayCallbackHook(original)
         return function(raycastResult, ...)
-            if toggles.silentAimWallBang_Toggle.Value
-                and isSilentAimEnabled()
+            if isWallbangEnabled()
+                and isSilentAimActive()
                 and raycastResult
                 and raycastResult.Instance
                 and getFreshSilentAimLock()
@@ -4506,7 +4639,7 @@ do
     -- Weapon.compute_inaccuracy: spread of every bullet / pellet. Zero while a Killer is locked.
     local function createInaccuracyHook(original)
         return function(self, ...)
-            if isSilentAimEnabled() and toggles.silentAimNoSpread_Toggle.Value and getFreshSilentAimLock() then
+            if isSilentAimActive() and isNoSpreadEnabled() and getFreshSilentAimLock() then
                 return 0
             end
 
@@ -4517,7 +4650,7 @@ do
     -- Weapon.set_missile: runs once for every bullet right after it is created. Remember who it was fired at.
     local function createSetMissileHook(original)
         return function(self, missile, ...)
-            if typeof(missile) == "Instance" and isSilentAimEnabled() then
+            if typeof(missile) == "Instance" and isSilentAimActive() then
                 local lock = getFreshSilentAimLock()
 
                 if lock then
@@ -4536,8 +4669,8 @@ do
             local lockedModel = missile ~= nil and silentAimMissileLocks[missile]
 
             if lockedModel
-                and isSilentAimEnabled()
-                and toggles.silentAimWallBang_Toggle.Value
+                and isSilentAimActive()
+                and isWallbangEnabled()
                 and isValidSilentAimTarget(lockedModel)
                 and typeof(hitPart) == "Instance"
                 and hitPart:IsA("BasePart")
@@ -4744,7 +4877,7 @@ local function requestSilentAimScan(delaySeconds)
         silentAimScanQueued = false
 
         -- While Silent Aim is off the scan stays owed and runs the moment it is enabled.
-        if library.Unloaded or not silentAimScanOwed or not isSilentAimEnabled() then
+        if library.Unloaded or not silentAimScanOwed or not utils.isSilentAimNeeded() then
             return
         end
 
@@ -4752,6 +4885,8 @@ local function requestSilentAimScan(delaySeconds)
         scanSilentAimWeaponTables()
     end)
 end
+
+utils.requestSilentAimScan = requestSilentAimScan -- Autofarm requests a scan when it starts redirecting bullets
 
 local function watchSilentAimContainer(container: Instance?)
     if container then
@@ -4789,7 +4924,7 @@ task.spawn(function()
     while not library.Unloaded do
         task.wait(15)
 
-        if isSilentAimEnabled() and #silentAimHookRecords == 0 then
+        if utils.isSilentAimNeeded() and #silentAimHookRecords == 0 then
             requestSilentAimScan(0)
         end
     end
@@ -5128,6 +5263,8 @@ do
 
         return false
     end
+
+    utils.isProjectileWeaponHeld = isProjectileWeaponHeld
 
     -- True while the keybind (if any), menu state, health and weapon requirements allow firing.
     local function canFire()
@@ -8360,6 +8497,1261 @@ do
     table.insert(teardownTasks, stopExpander)
 end
 
+-- [Exploits / Autofarm] Teleportation, keeping your distance, Auto Fire and Bullet Redirection
+-- Teleports you next to the nearest Killer and steps you sideways or backwards when too close.
+do
+    ui.exploits.killers:AddToggle("autofarm_Toggle", { Text = "Autofarm", Tooltip = "Teleports you near the nearest Killer and keeps you out of its reach. Disable Aura & Killer Godmode is recommended." })
+
+    local autofarmSettings = toggles.autofarm_Toggle:AddSettings({ Width = 300 })
+    autofarmSettings:AddSlider("autofarmFollowDistance_Slider", { Text = "Follow Distance", Tooltip = "How far from the Killer you are teleported..", Default = 30, Min = 15, Max = 80, Suffix = " Studs" })
+    autofarmSettings:AddSlider("autofarmDangerDistance_Slider", { Text = "Danger Distance", Tooltip = "Once any Killer is closer to you than this, you step away.", Default = 18, Min = 8, Max = 40, Suffix = " Studs" })
+    autofarmSettings:AddSlider("autofarmRetreatDistance_Slider", { Text = "Retreat Distance", Tooltip = "How far a step away moves you. It is shortened automatically when a wall is closer, and a direction without enough room or floor is skipped.", Default = 10, Min = 5, Max = 25, Suffix = " Studs" })
+    autofarmSettings:AddDropdown("autofarmRetreatStyle_Dropdown", { Text = "Retreat Style", Tooltip = "Smart: steps whichever way gets you farthest from every Killer.\nSides First: a side step is used whenever it gets you out of reach, backwards only otherwise.\nBackwards Only: always steps straight away from the Killer.", Values = { "Smart", "Sides First", "Backwards Only" }, Default = 1 })
+    autofarmSettings:AddSlider("autofarmRepositionDistance_Slider", { Text = "Reposition Distance", Tooltip = "When the Killer you are locked onto gets farther from you than this, you are teleported next to it again.", Default = 60, Min = 30, Max = 150, Suffix = " Studs" })
+    autofarmSettings:AddSlider("autofarmSearchRange_Slider", { Text = "Search Range", Tooltip = "Only Killers within this many studs of you can be locked onto.", Default = 400, Min = 50, Max = 1500, Suffix = " Studs" })
+    autofarmSettings:AddSlider("autofarmCooldown_Slider", { Text = "Teleport Delay", Tooltip = "Minimum time between two teleports next to a Killer.", Default = 0.15, Min = 0.05, Max = 1, Rounding = 2, Suffix = " s" })
+    autofarmSettings:AddDropdown("autofarmExcludedKillers_Dropdown", { Text = "Excluded Killers", Tooltip = "Killers that are never locked onto. They still count as a danger, so you keep your distance from them.", Values = killerNames, Default = { "Giant", "Jane" }, Multi = true, Searchable = true, AllowNull = true })
+    autofarmSettings:AddToggle("autofarmAutoFire_Toggle", { Text = "Auto Fire", Default = true, Tooltip = "Constantly clicks the mouse with your equipped weapon while you are near the Killer you are locked onto. Nothing is fired while the menu is open, a text box is focused, or a button is under your cursor." })
+    autofarmSettings:AddSlider("autofarmFireInterval_Slider", { Text = "Fire Interval", Tooltip = "Time between two clicks.", Default = 60, Min = 10, Max = 500, Suffix = " ms" })
+    autofarmSettings:AddToggle("autofarmRedirect_Toggle", { Text = "Redirect Bullets", Default = true, Tooltip = "Every shot you fire while Autofarm is locked onto a Killer is aimed at that Killer." })
+    autofarmSettings:AddDropdown("autofarmAimPart_Dropdown", { Text = "Aim Part", Tooltip = "Head: always aims at the head.\nAuto: Silent Aim's rule, head when the Killer is close and standing still, otherwise the body.", Values = { "Head", "HumanoidRootPart", "Auto" }, Default = 1 })
+    autofarmSettings:AddToggle("autofarmWallCheck_Toggle", { Text = "Keep Line of Sight", Default = true, Tooltip = "Only teleports to spots where you can see the Killer, and moves you again when a wall has been between you for a second." })
+    autofarmSettings:AddToggle("autofarmDebugNotifs_Toggle", { Text = "Debug Notifications", Tooltip = "Sends a notification each time Autofarm locks onto a Killer, teleports you or steps away, and when no safe spot was found." })
+
+    local RETREAT_COOLDOWN = 0.1        -- seconds between two steps away
+    local LINE_CHECK_INTERVAL = 0.2     -- seconds between two line of sight checks
+    local LINE_GRACE = 1                -- seconds without line of sight before you are moved
+    local SKIP_TIME = 3                 -- seconds a Killer with no reachable spot is left alone
+    local RING_GAP = 4                  -- the Follow Distance stays at least this far above the Danger Distance
+    local ANGLE_STEP = math.rad(15)     -- spacing of the spots tried around a Killer
+    local ANGLE_COUNT = 24              -- 24 spots of 15 degrees cover the whole ring
+    local LEVEL_TOLERANCE = 4           -- the floor at a spot may differ this much from the floor under the Killer
+    local FLOOR_REACH = 14
+    local TARGET_FLOOR_REACH = 80       -- tall and floating Killers (Giant, Slenderman, Tails Doll) have their root far above the floor
+    local SPOT_PROBE_HEIGHT = 4.5       -- spots are probed for a floor from this far above the floor level of the Killer
+    local STEP_FLOOR_TOLERANCE = 1.5    -- the floor under a step may differ this much from the floor under you
+    local MIN_STEP = 3.5                -- a step shorter than this does not get you anywhere
+    local BODY_CLEARANCE = 1.8          -- wall distance needed beside the character when stepping
+    local SPOT_RADIUS = 2               -- free space needed around a destination
+    local SIDE_BIAS = 4                 -- Smart: a side step wins over stepping back unless back gets you this much farther away
+    local SIDES_FIRST_BIAS = 1000       -- Sides First: any side step that gets you out of reach wins over stepping back
+
+    local farm = {
+        active = false,
+        connection = nil :: RBXScriptConnection?,
+        target = nil :: Model?,         -- the Killer you are locked onto
+        pending = false,                -- the lock has not been teleported to yet
+        lastTeleport = -math.huge,
+        lastRetreat = -math.huge,
+        lastLineCheck = -math.huge,
+        lastWarn = -math.huge,
+        lastNotice = -math.huge,
+        blindSince = nil :: number?,
+        skipped = (setmetatable({}, { __mode = "k" }) :: any) :: { [Model]: number },
+    }
+
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = Enum.RaycastFilterType.Exclude
+    rayParams.RespectCanCollide = true
+
+    local overlapParams = OverlapParams.new()
+    overlapParams.FilterType = Enum.RaycastFilterType.Exclude
+    pcall(function()
+        overlapParams.RespectCanCollide = true
+    end)
+
+    -- Walls are everything except characters and Killers
+    local function refreshFilter(character)
+        local ignored = { character }
+
+        for _, name in ipairs({ "Killers", "Characters to kill" }) do
+            local folder = workspace:FindFirstChild(name)
+
+            if folder then
+                table.insert(ignored, folder)
+            end
+        end
+
+        for _, player in ipairs(players:GetPlayers()) do
+            if player.Character then
+                table.insert(ignored, player.Character)
+            end
+        end
+
+        rayParams.FilterDescendantsInstances = ignored
+        overlapParams.FilterDescendantsInstances = ignored
+    end
+
+    local function debugNotify(text)
+        if toggles.autofarmDebugNotifs_Toggle.Value then
+            notify("Info", "Autofarm", text, 2)
+        end
+    end
+
+    -- Warnings (no safe spot, no Killer in range) are limited so they cannot flood the screen
+    local function debugNotice(text)
+        if toggles.autofarmDebugNotifs_Toggle.Value and os.clock() - farm.lastNotice > 3 then
+            farm.lastNotice = os.clock()
+            notify("Error", "Autofarm", text, 5)
+        end
+    end
+
+    local function followDistance()
+        return options.autofarmFollowDistance_Slider.Value
+    end
+
+    local function dangerDistance()
+        return math.min(options.autofarmDangerDistance_Slider.Value, followDistance() - RING_GAP)
+    end
+
+    local function isExcluded(model)
+        local selected = options.autofarmExcludedKillers_Dropdown.Value
+
+        return type(selected) == "table" and selected[model.Name] == true
+    end
+
+    -- Auto Safe Spot teleports you away while your health is low, so Autofarm does not pull you back in meanwhile
+    local function pausedBySafeSpot(humanoid)
+        local safeSpot = toggles.autoSafeSpot_Toggle
+
+        return safeSpot ~= nil and safeSpot.Value and humanoid.Health <= options.autoSafeSpotHealth_Slider.Value
+    end
+
+    -- Living Killers with the position of their root part
+    local function getKillers()
+        local list = {}
+        local folder = workspace:FindFirstChild("Killers")
+
+        if not folder then
+            return list
+        end
+
+        for _, model in ipairs(folder:GetChildren()) do
+            if model:IsA("Model") and model ~= localplayer.Character then
+                local root = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
+                local humanoid = model:FindFirstChildOfClass("Humanoid")
+
+                if root and humanoid and humanoid.Health > 0 then
+                    table.insert(list, { model = model, root = root, position = root.Position })
+                end
+            end
+        end
+
+        return list
+    end
+
+    local function nearestKiller(killers, position, accept)
+        local best, bestDistance = nil, math.huge
+
+        for _, killer in ipairs(killers) do
+            if not accept or accept(killer) then
+                local distance = (killer.position - position).Magnitude
+
+                if distance < bestDistance then
+                    best, bestDistance = killer, distance
+                end
+            end
+        end
+
+        return best, bestDistance
+    end
+
+    local function nearestDistance(position, killers)
+        local _, distance = nearestKiller(killers, position)
+
+        return distance
+    end
+
+    local function findKiller(killers, model)
+        if model then
+            for _, killer in ipairs(killers) do
+                if killer.model == model then
+                    return killer
+                end
+            end
+        end
+
+        return nil
+    end
+
+    -- The nearest Killer that can be locked onto: not excluded, not given up on a moment ago and within the Search Range
+    local function pickTarget(killers, position, now)
+        local best, distance = nearestKiller(killers, position, function(killer)
+            local expires = farm.skipped[killer.model]
+
+            return not isExcluded(killer.model) and (expires == nil or expires <= now)
+        end)
+
+        if best and distance <= options.autofarmSearchRange_Slider.Value then
+            return best
+        end
+
+        return nil
+    end
+
+    local function floorHit(position, reach)
+        local hit = workspace:Raycast(position, Vector3.new(0, -reach, 0), rayParams)
+
+        return hit
+    end
+
+    -- How far the floor is below a position (nil when there is none)
+    local function floorDistance(position)
+        local hit = floorHit(position, FLOOR_REACH)
+
+        return hit and hit.Distance or nil
+    end
+
+    -- How far the root part sits above the feet of the character
+    local function feetOffset(root)
+        local ok, boxCFrame, boxSize = pcall(root.Parent.GetBoundingBox, root.Parent)
+
+        if ok and boxCFrame and boxSize then
+            return math.clamp(root.Position.Y - (boxCFrame.Position.Y - boxSize.Y / 2), 2, 6)
+        end
+
+        return 3
+    end
+
+    -- Free space around a destination, and room above it for the head
+    local function spotIsFree(destination)
+        for _, part in ipairs(workspace:GetPartBoundsInRadius(destination + Vector3.new(0, 0.5, 0), SPOT_RADIUS, overlapParams)) do
+            if part.CanCollide then
+                return false
+            end
+        end
+
+        return workspace:Raycast(destination, Vector3.new(0, 3, 0), rayParams) == nil
+    end
+
+    local function hasLineOfSight(from, to)
+        return workspace:Raycast(from, to - from, rayParams) == nil
+    end
+
+    -- Free space in a direction, measured at feet, chest and head height and a stud to both sides of the character
+    local function roomAlong(origin, direction, limit)
+        local sideways = Vector3.new(-direction.Z, 0, direction.X)
+        local room = limit
+
+        for _, height in ipairs({ -2, 0, 1.5 }) do
+            for _, lateral in ipairs({ -1, 0, 1 }) do
+                local start = origin + Vector3.new(0, height, 0) + sideways * lateral
+                local hit = workspace:Raycast(start, direction * (limit + BODY_CLEARANCE), rayParams)
+
+                if hit then
+                    room = math.min(room, hit.Distance - BODY_CLEARANCE)
+                end
+            end
+        end
+
+        return room
+    end
+
+    -- Distances of the rings tried around a Killer: the Follow Distance first, then closer ones (down to just outside the
+    -- Danger Distance) when the room is too small or crowded for it
+    local function ringRadii()
+        local radius = followDistance()
+        local smallest = dangerDistance() + RING_GAP
+        local radii = { radius }
+
+        for _, fraction in ipairs({ 0.33, 0.66, 1 }) do
+            local candidate = radius - (radius - smallest) * fraction
+
+            if radii[#radii] - candidate >= 1 then
+                table.insert(radii, candidate)
+            end
+        end
+
+        return radii
+    end
+
+    -- Picks where to stand next to a Killer: on the ring around it, starting at the side you are already on, on the same
+    -- floor level, with room to stand, out of reach of every Killer and (with Keep Line of Sight) in view of it
+    local function planApproach(root, target, killers)
+        refreshFilter(root.Parent)
+
+        local center = target.position
+        local targetFloor = floorHit(center, TARGET_FLOOR_REACH)
+        local levelY = targetFloor and targetFloor.Position.Y or center.Y - 3
+        local offset = feetOffset(root)
+        local gap = dangerDistance()
+        local needSight = toggles.autofarmWallCheck_Toggle.Value
+        local fromTarget = Vector3.new(root.Position.X - center.X, 0, root.Position.Z - center.Z)
+        local startAngle = fromTarget.Magnitude > 0.5 and math.atan2(fromTarget.Z, fromTarget.X) or 0
+
+        for _, radius in ipairs(ringRadii()) do
+            for index = 0, ANGLE_COUNT - 1 do
+                local sign = index % 2 == 1 and 1 or -1
+                local angle = startAngle + sign * math.ceil(index / 2) * ANGLE_STEP
+                local x = center.X + math.cos(angle) * radius
+                local z = center.Z + math.sin(angle) * radius
+                local hit = floorHit(Vector3.new(x, levelY + SPOT_PROBE_HEIGHT, z), FLOOR_REACH)
+
+                if hit and hit.Normal.Y >= 0.7 and math.abs(hit.Position.Y - levelY) <= LEVEL_TOLERANCE then
+                    local destination = hit.Position + Vector3.new(0, offset + 0.3, 0)
+
+                    if nearestDistance(destination, killers) >= gap
+                        and spotIsFree(destination)
+                        and (not needSight or hasLineOfSight(destination + Vector3.new(0, 1.5, 0), center)) then
+                        return { destination = destination, radius = radius, angle = angle }
+                    end
+                end
+            end
+        end
+
+        return nil
+    end
+
+    -- Picks where to go when a Killer is too close: a side step when it keeps every Killer out of reach, otherwise backwards
+    local function planRetreat(root, threat, killers)
+        refreshFilter(root.Parent)
+
+        local origin = root.Position
+        local currentFloor = floorDistance(origin)
+
+        if not currentFloor then
+            return nil
+        end
+
+        local away = Vector3.new(origin.X - threat.position.X, 0, origin.Z - threat.position.Z)
+
+        if away.Magnitude < 0.5 then
+            local look = root.CFrame.LookVector
+
+            away = -Vector3.new(look.X, 0, look.Z)
+        end
+
+        if away.Magnitude < 0.01 then
+            away = Vector3.new(0, 0, 1)
+        end
+
+        away = away.Unit
+
+        local sideways = Vector3.new(-away.Z, 0, away.X)
+        local stepDistance = options.autofarmRetreatDistance_Slider.Value
+        local gap = dangerDistance()
+        local currentClearance = nearestDistance(origin, killers)
+        local style = options.autofarmRetreatStyle_Dropdown.Value
+        local sideBias = style == "Sides First" and SIDES_FIRST_BIAS or SIDE_BIAS
+        local candidates = {}
+
+        if style ~= "Backwards Only" then
+            table.insert(candidates, { kind = "side", direction = sideways })
+            table.insert(candidates, { kind = "side", direction = -sideways })
+        end
+
+        table.insert(candidates, { kind = "back", direction = away })
+
+        local best, fallback
+
+        for _, candidate in ipairs(candidates) do
+            local distance = math.min(stepDistance, roomAlong(origin, candidate.direction, stepDistance))
+
+            if distance >= MIN_STEP then
+                local destination = origin + candidate.direction * distance
+                local destinationFloor = floorDistance(destination)
+                local middleFloor = floorDistance(origin + candidate.direction * (distance * 0.5))
+
+                -- A destination over a gap, a ledge or a pit is no step
+                if destinationFloor and middleFloor
+                    and math.abs(destinationFloor - currentFloor) <= STEP_FLOOR_TOLERANCE
+                    and math.abs(middleFloor - currentFloor) <= STEP_FLOOR_TOLERANCE
+                    and spotIsFree(destination) then
+                    candidate.distance = distance
+                    candidate.destination = destination
+                    candidate.clearance = nearestDistance(destination, killers)
+                    candidate.score = candidate.clearance + (candidate.kind == "side" and sideBias or 0)
+
+                    if candidate.kind == "back" then
+                        candidate.label = "backwards"
+                    else
+                        candidate.label = candidate.direction:Dot(root.CFrame.RightVector) >= 0 and "right" or "left"
+                    end
+
+                    if candidate.clearance >= gap and (not best or candidate.score > best.score) then
+                        best = candidate
+                    end
+
+                    if not fallback or candidate.clearance > fallback.clearance then
+                        fallback = candidate
+                    end
+                end
+            end
+        end
+
+        if best then
+            return best
+        end
+
+        -- Nothing gets you out of reach: take the best option if it is clearly better than staying put
+        if fallback and fallback.clearance > currentClearance + 0.5 then
+            return fallback
+        end
+
+        return nil
+    end
+
+    -- Moves you there, facing the Killer
+    local function moveTo(root, destination, lookAt)
+        local facing = Vector3.new(lookAt.X, destination.Y, lookAt.Z)
+        local cframe = (facing - destination).Magnitude > 0.1 and CFrame.lookAt(destination, facing) or CFrame.new(destination)
+
+        entityLib.teleport(cframe)
+        root.AssemblyLinearVelocity = Vector3.zero
+    end
+
+    local function releaseTarget()
+        farm.target = nil
+        farm.pending = false
+        farm.blindSince = nil
+    end
+
+    local function step()
+        local root = getHRP()
+        local humanoid = getHumanoid()
+
+        if not root or not humanoid or humanoid.Health <= 0 then
+            releaseTarget()
+
+            return
+        end
+
+        if pausedBySafeSpot(humanoid) then
+            return
+        end
+
+        local now = os.clock()
+        local killers = getKillers()
+        local origin = root.Position
+        local boxedIn = false
+
+        -- Keep away: any Killer that gets too close pushes you sideways or backwards
+        local threat, threatDistance = nearestKiller(killers, origin)
+
+        if threat and threatDistance < dangerDistance() and now - farm.lastRetreat >= RETREAT_COOLDOWN then
+            local plan = planRetreat(root, threat, killers)
+
+            if plan then
+                farm.lastRetreat = now
+                farm.blindSince = nil
+                moveTo(root, plan.destination, threat.position)
+                debugNotify(string.format("%s was %s studs away. Stepped %s by %s studs.", utils.bold(threat.model.Name), utils.bold(string.format("%.1f", threatDistance)), utils.bold(plan.label), utils.bold(string.format("%.1f", plan.distance))))
+
+                return
+            end
+
+            -- Nowhere to step to: a fresh spot next to the Killer you are locked onto is the way out
+            boxedIn = true
+            debugNotice("No room to step away from " .. threat.model.Name .. ". Teleporting to a new spot.")
+        end
+
+        -- Lock: keep the current Killer, and take the nearest one when it died, is gone or got excluded
+        local target = findKiller(killers, farm.target)
+
+        if target and isExcluded(target.model) then
+            target = nil
+        end
+
+        if not target then
+            if farm.target then
+                local previous = farm.target:FindFirstChildOfClass("Humanoid")
+
+                debugNotify(utils.bold(farm.target.Name) .. (previous and previous.Health <= 0 and " died." or " is gone."))
+            end
+
+            target = pickTarget(killers, origin, now)
+            farm.target = target and target.model or nil
+            farm.pending = target ~= nil
+            farm.blindSince = nil
+
+            if not target then
+                debugNotice("No Killer to lock onto within range.")
+
+                return
+            end
+
+            debugNotify(string.format("Locked onto %s, %s studs away.", utils.bold(target.model.Name), utils.bold(string.format("%.1f", (target.position - origin).Magnitude))))
+        end
+
+        -- Position: next to a new lock, when it got too far away, or when a wall has been between you for a while
+        local needsMove = farm.pending or boxedIn
+
+        if not needsMove then
+            if (target.position - origin).Magnitude > options.autofarmRepositionDistance_Slider.Value then
+                needsMove = true
+            elseif not toggles.autofarmWallCheck_Toggle.Value then
+                farm.blindSince = nil
+            elseif now - farm.lastLineCheck >= LINE_CHECK_INTERVAL then
+                farm.lastLineCheck = now
+                refreshFilter(root.Parent)
+
+                if hasLineOfSight(origin + Vector3.new(0, 1.5, 0), target.position) then
+                    farm.blindSince = nil
+                else
+                    farm.blindSince = farm.blindSince or now
+                end
+            end
+
+            if farm.blindSince and now - farm.blindSince >= LINE_GRACE then
+                needsMove = true
+            end
+        end
+
+        if not needsMove or now - farm.lastTeleport < options.autofarmCooldown_Slider.Value then
+            return
+        end
+
+        local plan = planApproach(root, target, killers)
+
+        if plan then
+            farm.lastTeleport = now
+            farm.pending = false
+            farm.blindSince = nil
+            moveTo(root, plan.destination, target.position)
+            debugNotify(string.format("Teleported %s studs from %s.", utils.bold(string.format("%.0f", plan.radius)), utils.bold(target.model.Name)))
+
+            return
+        end
+
+        -- No reachable spot around it (a sealed room, no floor): leave it alone for a while and take the next one
+        farm.skipped[target.model] = now + SKIP_TIME
+        releaseTarget()
+        debugNotice("No safe spot near " .. target.model.Name .. ". Trying another Killer.")
+    end
+
+    -- [Stage 2] Auto Fire & Bullet Redirection. Runs on its own connection, so stepping away from a Killer never interrupts it.
+    local fire = {
+        connection = nil :: RBXScriptConnection?,
+        lastClick = -math.huge,
+        guiService = game:GetService("GuiService"),
+    }
+
+    -- The Killer the bullets are redirected to: the one Autofarm is locked onto. Silent Aim reads it through utils.autofarmAimTarget.
+    function fire.getAimTarget()
+        if not farm.active or not toggles.autofarmRedirect_Toggle.Value then
+            return nil
+        end
+
+        local model = farm.target
+
+        if model and model.Parent then
+            return model
+        end
+
+        return nil
+    end
+
+    -- A click at the cursor would press the button under it instead of firing
+    function fire.cursorOverButton()
+        local playerGui = localplayer:FindFirstChildOfClass("PlayerGui")
+
+        if not playerGui then
+            return false
+        end
+
+        local position = uis:GetMouseLocation() - fire.guiService:GetGuiInset()
+        local ok, objects = pcall(playerGui.GetGuiObjectsAtPosition, playerGui, position.X, position.Y)
+
+        if ok then
+            for _, object in ipairs(objects) do
+                if object:IsA("GuiButton") and object.Interactable then
+                    return true
+                end
+            end
+        end
+
+        return false
+    end
+
+    function fire.canFire()
+        if library.Unloaded or library.Toggled or uis:GetFocusedTextBox() then
+            return false
+        end
+
+        local character = localplayer.Character
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+
+        if not humanoid or humanoid.Health <= 0 or pausedBySafeSpot(humanoid) then
+            return false
+        end
+
+        if not character:FindFirstChildOfClass("Tool") then
+            return false
+        end
+
+        -- Only once the teleport next to the Killer has happened, and only at a living Killer
+        local target = farm.target
+        local targetHumanoid = target and target:FindFirstChildOfClass("Humanoid")
+
+        if farm.pending or not targetHumanoid or targetHumanoid.Health <= 0 then
+            return false
+        end
+
+        return not fire.cursorOverButton()
+    end
+
+    function fire.click()
+        if type(mouse1click) == "function" then
+            mouse1click()
+
+            return
+        end
+
+        -- No executor mouse functions: VirtualInputManager clicks where the cursor already is
+        local ok, virtualInput = pcall(game.GetService, game, "VirtualInputManager")
+
+        if ok and virtualInput then
+            local position = uis:GetMouseLocation()
+
+            virtualInput:SendMouseButtonEvent(position.X, position.Y, 0, true, game, 0)
+            virtualInput:SendMouseButtonEvent(position.X, position.Y, 0, false, game, 0)
+        end
+    end
+
+    function fire.step()
+        if not toggles.autofarmAutoFire_Toggle.Value then
+            return
+        end
+
+        local now = os.clock()
+
+        if now - fire.lastClick < options.autofarmFireInterval_Slider.Value / 1000 or not fire.canFire() then
+            return
+        end
+
+        fire.lastClick = now
+        fire.click()
+    end
+
+    local function protectedStep()
+        local ok, err = pcall(step)
+
+        if not ok and os.clock() - farm.lastWarn > 2 then
+            farm.lastWarn = os.clock()
+            warn("[Autofarm] " .. tostring(err))
+        end
+    end
+
+    local function stop()
+        farm.active = false
+
+        if farm.connection then
+            farm.connection:Disconnect()
+            farm.connection = nil
+        end
+
+        if fire.connection then
+            fire.connection:Disconnect()
+            fire.connection = nil
+        end
+
+        releaseTarget()
+        table.clear(farm.skipped)
+    end
+
+    local function start()
+        farm.active = true
+        farm.lastTeleport = -math.huge
+        farm.lastRetreat = -math.huge
+        farm.connection = runService.Heartbeat:Connect(function()
+            if library.Unloaded or not farm.active then
+                stop()
+
+                return
+            end
+
+            protectedStep()
+        end)
+
+        fire.lastClick = -math.huge
+        fire.connection = runService.Heartbeat:Connect(function()
+            if library.Unloaded or not farm.active then
+                return
+            end
+
+            local ok, err = pcall(fire.step)
+
+            if not ok and os.clock() - farm.lastWarn > 2 then
+                farm.lastWarn = os.clock()
+                warn("[Autofarm] Auto Fire: " .. tostring(err))
+            end
+        end)
+    end
+
+    toggles.autofarm_Toggle:OnChanged(function(enabled)
+        if enabled and not farm.active then
+            start()
+
+            -- Bullet Redirection needs the weapon hooks, which are installed by the Silent Aim scan
+            if type(utils.requestSilentAimScan) == "function" then
+                utils.requestSilentAimScan(0)
+            end
+        elseif not enabled and farm.active then
+            stop()
+        end
+    end)
+
+    utils.autofarmAimTarget = fire.getAimTarget
+    utils.autofarmAimWanted = function()
+        return farm.active and toggles.autofarmRedirect_Toggle.Value == true
+    end
+
+    table.insert(teardownTasks, function()
+        utils.autofarmAimTarget = nil
+        utils.autofarmAimWanted = nil
+        stop()
+    end)
+end
+
+-- [Exploits / Kill Aura] Shoots every Killer in range with the weapon you are holding, one after the other.
+do
+    local REACH_PER_MULTIPLIER = 1100 -- studs a bullet flies before the game removes it (8 s at 150 studs/s), per 1x of Projectile Speed
+    local SWITCH_MARGIN = 15 -- studs a new Killer has to be closer by before it takes over from the one being shot at
+    local VISIBILITY_INTERVAL = 0.15 -- seconds a line of sight result is reused
+    local WEAPON_SCAN_INTERVAL = 1 -- seconds between two searches for the weapon object of the held tool
+
+    local ASSIST_NAMES = { "Full Auto", "Rapid Fire", "Infinite Ammo", "No Spread", "No Sniper Bolt", "Fast Reload", "No Recoil" }
+    local ASSIST_TOGGLES = {
+        ["Full Auto"] = "fullAutoGunMod_Toggle",
+        ["Rapid Fire"] = "fireRateGunMod_Toggle",
+        ["Infinite Ammo"] = "infiniteAmmoGunMod_Toggle",
+        ["No Spread"] = "noSpreadGunMod_Toggle",
+        ["No Sniper Bolt"] = "noBoltGunMod_Toggle",
+        ["Fast Reload"] = "fastReloadGunMod_Toggle",
+        ["No Recoil"] = "noRecoilGunMod_Toggle",
+    }
+
+    ui.exploits.killers:AddToggle("killAura_Toggle", { Text = "Kill Aura", Tooltip = "Shoots every Killer in range with the weapon you are holding, one after the other." })
+
+    local killAuraSettings = toggles.killAura_Toggle:AddSettings({ Width = 310 })
+    killAuraSettings:AddDropdown("killAuraTargetMode_Dropdown", { Text = "Target Mode", Tooltip = "Nearest: any Killer in range, closest first. Killers behind walls are shot through with Wallbang (without Wallbang only visible ones are taken).\nVisible: only Killers you have a clear line of sight to, closest first.", Values = { "Nearest", "Visible" }, Default = 1 })
+    killAuraSettings:AddSlider("killAuraRange_Slider", { Text = "Range", Tooltip = "Killers farther than this are left alone.", Default = 500, Min = 20, Max = 3000, Suffix = " Studs" })
+    killAuraSettings:AddDropdown("killAuraExcludedKillers_Dropdown", { Text = "Excluded Killers", Tooltip = "Killers that are never shot at.", Values = killerNames, Default = { "Giant", "Jane" }, Multi = true, Searchable = true, AllowNull = true })
+    killAuraSettings:AddDropdown("killAuraAimPart_Dropdown", { Text = "Aim Part", Tooltip = "Head: always aims at the head.\nAuto: Silent Aim's rule, head when the Killer is close and standing still, otherwise the body.", Values = { "Head", "HumanoidRootPart", "Auto" }, Default = 1 })
+    killAuraSettings:AddToggle("killAuraWallbang_Toggle", { Text = "Wallbang", Default = true, Tooltip = "Bullets fired by the aura fly through walls and other obstructions to reach the Killer." })
+    killAuraSettings:AddToggle("killAuraNoSpread_Toggle", { Text = "No Spread", Default = true, Tooltip = "Bullets fired by the aura ignore weapon inaccuracy and shotgun pellet spread." })
+    killAuraSettings:AddToggle("killAuraGunModAssist_Toggle", { Text = "Gun Mod Assist", Default = true, Risky = true, Tooltip = "While Kill Aura is on, adds the gun mods picked below on top of your own Gun Options." })
+    killAuraSettings:AddDropdown("killAuraGunMods_Dropdown", { Text = "Assist Mods", Tooltip = "Gun mods that Gun Mod Assist enables.", Values = ASSIST_NAMES, Default = { "Full Auto", "Rapid Fire", "Infinite Ammo", "No Spread", "No Sniper Bolt" }, Multi = true, AllowNull = true })
+    killAuraSettings:AddSlider("killAuraSpeedBoost_Slider", { Text = "Projectile Speed", Tooltip = "While Kill Aura is on, bullets fly this many times faster and farther.", Default = 1, Min = 1, Max = 20, Rounding = 1, Suffix = "x", Risky = true })
+    killAuraSettings:AddToggle("killAuraDebugNotifs_Toggle", { Text = "Debug Notifications", Tooltip = "Sends a notification each time Kill Aura kills a Killer." })
+
+    local aura = {
+        active = false,
+        connection = nil :: RBXScriptConnection?,
+        target = nil :: Model?, -- the Killer every bullet is redirected to right now
+        weaponTool = nil, -- the Tool the cached weapon objects belong to
+        weaponObjects = nil, -- every weapon object the game keeps for that Tool (one per fire mode)
+        scanning = false,
+        nextScan = 0,
+        heldWeapon = nil, -- automatic weapon whose trigger Kill Aura is holding down
+        visible = (setmetatable({}, { __mode = "k" }) :: any) :: { [Model]: any }, -- Killer -> { value, time }
+        excluded = {},
+        kills = 0,
+        lastWarn = 0,
+    }
+
+    local function readExcluded(value)
+        table.clear(aura.excluded)
+
+        if type(value) == "table" then
+            for name, enabled in pairs(value) do
+                if enabled then
+                    aura.excluded[name] = true
+                end
+            end
+        end
+    end
+
+    -- [Kill Aura / Gun Mod Assist] While the aura runs, the Gun Mods module asks
+    -- utils.killAuraGunModAssist() / utils.killAuraGunModRange() which mods to add on top of what is switched on in the menu.
+    local assist = { wanted = nil, boost = 1 }
+
+    local function refreshGunMods()
+        local reconcile = utils.reconcileGunMods
+
+        if type(reconcile) == "function" then
+            local success, err = pcall(reconcile)
+
+            if not success then
+                warn("[Kill Aura] Could not refresh the Gun Mods: " .. tostring(err))
+            end
+        end
+    end
+
+    function assist.compute()
+        assist.wanted = nil
+        assist.boost = 1
+
+        if not aura.active or not toggles.killAuraGunModAssist_Toggle.Value then
+            return
+        end
+
+        local selected = options.killAuraGunMods_Dropdown.Value
+        local wanted = {}
+        local count = 0
+
+        if type(selected) == "table" then
+            for _, name in ipairs(ASSIST_NAMES) do
+                if selected[name] then
+                    wanted[ASSIST_TOGGLES[name]] = true
+                    count += 1
+                end
+            end
+        end
+
+        local boost = tonumber(options.killAuraSpeedBoost_Slider.Value) or 1
+
+        if count == 0 and boost <= 1 then
+            return
+        end
+
+        wanted.enableGunMods_Toggle = true
+        assist.wanted = wanted
+        assist.boost = boost
+    end
+
+    function assist.apply()
+        assist.compute()
+        refreshGunMods()
+    end
+
+    function assist.restore()
+        assist.wanted = nil
+        assist.boost = 1
+        refreshGunMods()
+    end
+
+    -- What the Gun Mods module reads (nil / 1 while Kill Aura is off or Gun Mod Assist has nothing to add)
+    utils.killAuraGunModAssist = function()
+        return assist.wanted
+    end
+
+    utils.killAuraGunModRange = function()
+        return assist.boost
+    end
+
+    -- [Kill Aura / Weapon] The game keeps one object per fire mode of every tool. They are found
+    -- once through the garbage collector; the one flagged `equipped` is the one in your hands.
+    local function collectWeaponObjects(tool)
+        local found = {}
+
+        local function consider(object)
+            if type(object) == "table"
+                and rawget(object, "instance") == tool
+                and rawget(object, "equipped") ~= nil
+                and getmetatable(object) ~= nil
+            then
+                table.insert(found, object)
+            end
+        end
+
+        if type(filtergc) == "function" then
+            local success, matches = pcall(filtergc, "table", { Keys = { "instance", "equipped", "ammo" } }, false)
+
+            if success and type(matches) == "table" then
+                for _, object in ipairs(matches) do
+                    consider(object)
+                end
+            end
+        end
+
+        if #found == 0 and type(getgc) == "function" then
+            local success, objects = pcall(getgc, true)
+
+            if success and type(objects) == "table" then
+                for index = 1, #objects do
+                    consider(objects[index])
+
+                    if index % 20000 == 0 then
+                        task.wait()
+
+                        if library.Unloaded then
+                            return found
+                        end
+                    end
+                end
+            end
+        end
+
+        return found
+    end
+
+    local function getEquippedWeapon(tool)
+        if aura.weaponTool ~= tool then
+            aura.weaponTool = tool
+            aura.weaponObjects = nil
+        end
+
+        for _, object in ipairs(aura.weaponObjects or {}) do
+            if rawget(object, "instance") == tool and rawget(object, "equipped") == true then
+                return object
+            end
+        end
+
+        -- Nothing usable cached: search again, off the frame and not more than once a second
+        if not aura.scanning and os.clock() >= aura.nextScan then
+            aura.scanning = true
+            aura.nextScan = os.clock() + WEAPON_SCAN_INTERVAL
+
+            task.spawn(function()
+                local objects = collectWeaponObjects(tool)
+
+                if aura.weaponTool == tool and #objects > 0 then
+                    aura.weaponObjects = objects
+                end
+
+                aura.scanning = false
+            end)
+        end
+
+        return nil
+    end
+
+    -- True while the held weapon fires slow, arcing projectiles: the Crossbow, or the M16A2/M203 in grenade mode
+    local function isProjectileHeld(character, weapon)
+        if weapon and rawget(weapon, "is_grenade") == true then
+            return true
+        end
+
+        local check = utils.isProjectileWeaponHeld -- the Triggerbot's rule
+
+        if type(check) == "function" then
+            local success, result = pcall(check, character)
+
+            return success and result == true
+        end
+
+        local tool = character:FindFirstChildOfClass("Tool")
+
+        return tool ~= nil and string.find(tool.Name, "Crossbow", 1, true) ~= nil
+    end
+
+    -- [Kill Aura / Targets]
+    local function isVisibleFrom(eye, model, root, now)
+        local cached = aura.visible[model]
+
+        if cached and now - cached.time < VISIBILITY_INTERVAL then
+            return cached.value
+        end
+
+        local value = true
+        local checker = utils.isKillerVisible
+
+        if type(checker) == "function" then
+            local success, result = pcall(checker, eye, model, root)
+
+            value = success and result == true
+        end
+
+        if not cached then
+            cached = {}
+            aura.visible[model] = cached
+        end
+
+        cached.value = value
+        cached.time = now
+
+        return value
+    end
+
+    -- How far a bullet can fly: grows with the Projectile Speed Multiplier gun mod
+    local function getReach()
+        local getMultiplier = utils.getProjectileSpeedMultiplier
+        local multiplier = 1
+
+        if type(getMultiplier) == "function" then
+            local success, result = pcall(getMultiplier)
+
+            if success and type(result) == "number" and result >= 1 then
+                multiplier = result
+            end
+        end
+
+        return REACH_PER_MULTIPLIER * multiplier
+    end
+
+    -- The Killer to shoot at next, or nil. Sorted by distance; the Killer being shot at is kept until another one is clearly closer.
+    local function selectTarget(character, root)
+        local folder = workspace:FindFirstChild("Killers")
+
+        if not folder then
+            return nil
+        end
+
+        local range = math.min(tonumber(options.killAuraRange_Slider.Value) or 500, getReach())
+        local needVisible = options.killAuraTargetMode_Dropdown.Value == "Visible" or not toggles.killAuraWallbang_Toggle.Value
+        local head = character:FindFirstChild("Head")
+        local eye = (head and head:IsA("BasePart")) and head.Position or root.Position
+        local origin = root.Position
+        local candidates = {}
+
+        for _, model in ipairs(folder:GetChildren()) do
+            if model:IsA("Model") and model ~= character and not aura.excluded[model.Name] then
+                local humanoid = model:FindFirstChildOfClass("Humanoid")
+                local killerRoot = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
+
+                if humanoid and humanoid.Health > 0 and killerRoot and killerRoot:IsA("BasePart") then
+                    local distance = (killerRoot.Position - origin).Magnitude
+
+                    if distance <= range then
+                        table.insert(candidates, { model = model, root = killerRoot, distance = distance })
+                    end
+                end
+            end
+        end
+
+        if #candidates == 0 then
+            return nil
+        end
+
+        table.sort(candidates, function(a, b)
+            return a.distance < b.distance
+        end)
+
+        local now = os.clock()
+
+        local function eligible(candidate)
+            return not needVisible or isVisibleFrom(eye, candidate.model, candidate.root, now)
+        end
+
+        local best = nil
+
+        for _, candidate in ipairs(candidates) do
+            if eligible(candidate) then
+                best = candidate
+
+                break
+            end
+        end
+
+        if best and aura.target and best.model ~= aura.target then
+            for _, candidate in ipairs(candidates) do
+                if candidate.model == aura.target then
+                    if candidate.distance - best.distance < SWITCH_MARGIN and eligible(candidate) then
+                        best = candidate
+                    end
+
+                    break
+                end
+            end
+        end
+
+        return best
+    end
+
+    -- [Kill Aura / Firing] Presses the trigger via Weapon.button1down with the cursor getter, the same method as the game.
+    -- Which Killer the bullets go to is decided by Silent Aim's hooks, which ask utils.killAuraAimTarget for every shot.
+    local function releaseHold()
+        local weapon = aura.heldWeapon
+        aura.heldWeapon = nil
+
+        if weapon then
+            pcall(function()
+                weapon:button1up()
+            end)
+        end
+    end
+
+    local function fireWeapon(weapon)
+        if weapon.ready ~= true or weapon.reloading or weapon.shooting then
+            return
+        end
+
+        task.spawn(function()
+            local success, err = pcall(weapon.button1down, weapon, uis.GetMouseLocation)
+
+            if not success and os.clock() - aura.lastWarn > 2 then
+                aura.lastWarn = os.clock()
+                warn("[Kill Aura] Could not fire: " .. tostring(err))
+            end
+        end)
+
+        if weapon.is_auto then
+            -- The weapon keeps firing by itself while the trigger is held and is let go when nothing is left to shoot at
+            aura.heldWeapon = weapon
+        else
+            pcall(function()
+                weapon:button1up()
+            end)
+        end
+    end
+
+    local function idle()
+        aura.target = nil
+        releaseHold()
+    end
+
+    local function step()
+        local character = localplayer.Character
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        local tool = character and character:FindFirstChildOfClass("Tool")
+
+        if not (humanoid and humanoid.Health > 0 and root and tool) then
+            idle()
+
+            return
+        end
+
+        local weapon = getEquippedWeapon(tool)
+
+        if not weapon or isProjectileHeld(character, weapon) then
+            idle()
+
+            return
+        end
+
+        local previous = aura.target
+        local best = selectTarget(character, root)
+        local newModel = best and best.model or nil
+
+        -- When the Killer that was being shot at is gone, count it
+        if previous and previous ~= newModel then
+            local previousHumanoid = previous:FindFirstChildOfClass("Humanoid")
+
+            if previousHumanoid and previousHumanoid.Health <= 0 then
+                aura.kills += 1
+
+                if toggles.killAuraDebugNotifs_Toggle.Value then
+                    notify("Info", "Kill Aura", "Killed " .. utils.bold(previous.Name) .. " (" .. aura.kills .. " total)", 3)
+                end
+            end
+        end
+
+        -- Set before the shot, because the weapon hooks read it while the shot is being aimed
+        aura.target = newModel
+
+        if not best then
+            releaseHold()
+
+            return
+        end
+
+        fireWeapon(weapon)
+    end
+
+    local function stop()
+        aura.active = false
+
+        if aura.connection then
+            aura.connection:Disconnect()
+            aura.connection = nil
+        end
+
+        aura.target = nil
+        releaseHold()
+        table.clear(aura.visible)
+        assist.restore() -- aura.active is already false, so the overlay is empty
+    end
+
+    local function start()
+        if aura.active then
+            return
+        end
+
+        if type(filtergc) ~= "function" and type(getgc) ~= "function" then
+            notify("Error", "Kill Aura unavailable", "Your executor has no getgc / filtergc, so the weapon cannot be found.", 15)
+            task.defer(function()
+                if toggles.killAura_Toggle then
+                    toggles.killAura_Toggle:SetValue(false)
+                end
+            end)
+
+            return
+        end
+
+        aura.active = true
+        aura.target = nil
+        aura.kills = 0
+        aura.weaponObjects = nil
+        aura.nextScan = 0
+        readExcluded(options.killAuraExcludedKillers_Dropdown.Value)
+        assist.apply()
+
+        -- The bullet redirection comes from Silent Aim's weapon hooks
+        if type(utils.requestSilentAimScan) == "function" then
+            utils.requestSilentAimScan(0)
+        end
+
+        aura.connection = runService.Heartbeat:Connect(function()
+            if library.Unloaded or not aura.active then
+                stop()
+
+                return
+            end
+
+            local success, err = pcall(step)
+
+            if not success and os.clock() - aura.lastWarn > 2 then
+                aura.lastWarn = os.clock()
+                warn("[Kill Aura] " .. tostring(err))
+            end
+        end)
+    end
+
+    toggles.killAura_Toggle:OnChanged(function(enabled)
+        if enabled then
+            start()
+        else
+            stop()
+        end
+    end)
+
+    local function reapplyAssist()
+        if aura.active then
+            assist.apply()
+        end
+    end
+
+    toggles.killAuraGunModAssist_Toggle:OnChanged(reapplyAssist)
+    options.killAuraGunMods_Dropdown:OnChanged(reapplyAssist)
+    options.killAuraSpeedBoost_Slider:OnChanged(reapplyAssist)
+
+    options.killAuraExcludedKillers_Dropdown:OnChanged(function(value)
+        readExcluded(value)
+    end)
+
+    -- What Silent Aim's weapon hooks ask for (see utils.autofarmAimTarget, which works the same way)
+    utils.killAuraAimTarget = function()
+        if not aura.active then
+            return nil
+        end
+
+        local model = aura.target
+
+        if model and model.Parent then
+            return model
+        end
+
+        return nil
+    end
+
+    utils.killAuraAimWanted = function()
+        return aura.active
+    end
+
+    -- Wallbang / No Spread for the shots Kill Aura aims (their own toggles, so Silent Aim's doesn't have to be on)
+    utils.killAuraWallbang = function()
+        return aura.active and aura.target ~= nil and toggles.killAuraWallbang_Toggle.Value == true
+    end
+
+    utils.killAuraNoSpread = function()
+        return aura.active and aura.target ~= nil and toggles.killAuraNoSpread_Toggle.Value == true
+    end
+
+    readExcluded(options.killAuraExcludedKillers_Dropdown.Value)
+
+    table.insert(teardownTasks, function()
+        utils.killAuraAimTarget = nil
+        utils.killAuraAimWanted = nil
+        utils.killAuraWallbang = nil
+        utils.killAuraNoSpread = nil
+        stop()
+        utils.killAuraGunModAssist = nil
+        utils.killAuraGunModRange = nil
+    end)
+end
+
 -- ============================================================================
 -- 11 | TAB: VISUALS
 -- ============================================================================
@@ -9421,6 +10813,10 @@ do
     -- Killers the game never registers normal shots on.
     local immuneKillers = { Giant = true, Jane = true }
 
+    -- Every folder the visualizer creates is tagged, so whatever a run leaves behind can be found and removed again.
+    local VISUALIZER_ATTRIBUTE = "CelestialHitboxVisualizer"
+    local VISUALIZER_FOLDER_NAMES = { HitboxVisualizer = true, HitboxVisualizerBoxes = true }
+
     local OUTLINE_THICKNESS = 0.03
     local MEASURE_INTERVAL = 1 / 30 -- how often the bounds are measured; the box itself follows the Killer every frame
     local SHRINK_RATE = 1.2         -- how slowly the box lets go of space the limbs just left (it grows at once)
@@ -9435,7 +10831,77 @@ do
         lastError = nil,
         lastRenderError = nil,
         lastStep = nil,
+        leftovers = setmetatable({}, { __mode = "k" }), -- instances that refused to be destroyed, retried by purgeLeftovers
     }
+
+    -- Destroys an instance without ever throwing.
+    local function destroyVisual(instance: any): boolean
+        if typeof(instance) ~= "Instance" then
+            return true
+        end
+
+        local function attempt(): boolean
+            return (pcall(function()
+                instance:Destroy()
+            end))
+        end
+
+        if attempt() then
+            visualizer.leftovers[instance] = nil
+            return true
+        end
+
+        if type(setthreadidentity) == "function" then
+            pcall(setthreadidentity, 8)
+
+            if attempt() then
+                visualizer.leftovers[instance] = nil
+                return true
+            end
+        end
+
+        -- Last resort: make sure it can no longer be seen (each property only exists on some classes, hence the pcalls)
+        pcall(function() (instance :: any).Adornee = nil end)
+        pcall(function() (instance :: any).Visible = false end)
+        pcall(function() instance.Parent = nil end)
+        visualizer.leftovers[instance] = true
+
+        return false
+    end
+
+    -- Retries everything that refused to be destroyed.
+    local function purgeLeftovers(includeOthers: boolean?)
+        for instance in pairs(visualizer.leftovers) do
+            destroyVisual(instance)
+        end
+
+        if not includeOthers then
+            return
+        end
+
+        local containers: { Instance } = { workspace }
+        local gotHui, hui = pcall(gethui)
+
+        if gotHui and typeof(hui) == "Instance" then
+            table.insert(containers, hui)
+        end
+
+        for _, container in ipairs(containers) do
+            for _, child in ipairs(container:GetChildren()) do
+                pcall(function()
+                    local tagged = child:GetAttribute(VISUALIZER_ATTRIBUTE) ~= nil
+                    local legacy = child:IsA("Folder") and VISUALIZER_FOLDER_NAMES[child.Name] == true
+
+                    if (tagged or legacy) and child ~= visualizer.folder and child ~= visualizer.proxyFolder then
+                        destroyVisual(child)
+                    end
+                end)
+            end
+        end
+    end
+
+    -- Anything an earlier run left in the game is cleaned up as soon as the script loads
+    pcall(purgeLeftovers, true)
 
     local function getKillersFolder()
         return killersFolder or workspace:FindFirstChild("Killers")
@@ -9448,6 +10914,7 @@ do
 
         local folder = Instance.new("Folder")
         folder.Name = "HitboxVisualizer"
+        folder:SetAttribute(VISUALIZER_ATTRIBUTE, true)
         folder.Parent = gethui()
         visualizer.folder = folder
 
@@ -9487,6 +10954,7 @@ do
 
         local folder = Instance.new("Folder")
         folder.Name = "HitboxVisualizerBoxes"
+        folder:SetAttribute(VISUALIZER_ATTRIBUTE, true)
         folder.Parent = workspace
         visualizer.proxyFolder = folder
 
@@ -9546,9 +11014,11 @@ do
 
         if entry then
             visualizer.entries[model] = nil
-            pcall(entry.box.Destroy, entry.box)
-            pcall(entry.outline.Destroy, entry.outline)
-            pcall(entry.proxy.Destroy, entry.proxy)
+
+            -- Each part is removed on its own, so one that refuses never keeps the others on screen
+            destroyVisual(entry.box)
+            destroyVisual(entry.outline)
+            destroyVisual(entry.proxy)
         end
     end
 
@@ -9763,23 +11233,27 @@ do
         visualizer.token = nil
 
         if visualizer.connection then
-            visualizer.connection:Disconnect()
+            pcall(function()
+                visualizer.connection:Disconnect()
+            end)
+
             visualizer.connection = nil
         end
 
+        -- Every step is isolated and nothing that fails will stop the rest of the teardown
         for model in pairs(visualizer.entries) do
             releaseEntry(model)
         end
 
-        if visualizer.folder then
-            pcall(visualizer.folder.Destroy, visualizer.folder)
-            visualizer.folder = nil
-        end
+        table.clear(visualizer.entries)
 
-        if visualizer.proxyFolder then
-            pcall(visualizer.proxyFolder.Destroy, visualizer.proxyFolder)
-            visualizer.proxyFolder = nil
-        end
+        destroyVisual(visualizer.folder)
+        visualizer.folder = nil
+
+        destroyVisual(visualizer.proxyFolder)
+        visualizer.proxyFolder = nil
+
+        purgeLeftovers(false)
     end
 
     toggles.visualizeHitbox_Toggle:OnChanged(function(enabled)
@@ -9788,6 +11262,8 @@ do
         if not enabled then
             return
         end
+
+        pcall(purgeLeftovers, true)
 
         local token = {}
         visualizer.token = token
@@ -10883,6 +12359,44 @@ do
 
     local killersGeneration = 0 -- Bumped on every on/off change, so work that was waiting (module download, rig loading) can tell if its outdated
 
+    -- Downloads the transform module source.
+    local function fetchTransformSource(): string?
+        local env: any = getgenv()
+        local requestFunction: any = env.request or env.http_request
+
+        local methods: { () -> any } = {
+            function()
+                return (game :: any).HttpGet(game, TRANSFORM_URL)
+            end,
+            function()
+                if type(requestFunction) ~= "function" then
+                    return nil
+                end
+
+                local response: any = requestFunction({ Url = TRANSFORM_URL, Method = "GET" })
+
+                return type(response) == "table" and response.Body or nil
+            end,
+            function()
+                return (game :: any):HttpGet(TRANSFORM_URL)
+            end,
+        }
+
+        for round = 1, 3 do
+            for _, method in ipairs(methods) do
+                local success, body = pcall(method)
+
+                if success and type(body) == "string" and body ~= "" then
+                    return body
+                end
+            end
+
+            task.wait(0.5 * round)
+        end
+
+        return nil
+    end
+
     local function getTransformModule(): any
         -- Another enable may already be downloading it
         while moduleLoading do
@@ -10896,7 +12410,13 @@ do
         moduleLoading = true
 
         local success, result = pcall(function()
-            return assert(loadstring(game:HttpGet(TRANSFORM_URL)))()
+            local source = fetchTransformSource()
+
+            if not source then
+                error("Could not download " .. TRANSFORM_URL, 0)
+            end
+
+            return assert(loadstring(source))()
         end)
 
         moduleLoading = false
@@ -11176,6 +12696,7 @@ end
 -- [World / Environment] Hazards, radioactive area, kill parts, and door noclip
 
 ui.world.hazards:AddToggle("disableCactuses_Toggle", { Text = "Disable Cactuses" })
+ui.world.hazards:AddToggle("disableBarbedWire_Toggle", { Text = "Disable Barbed Wire", Tooltip = false })
 ui.world.hazards:AddToggle("removeBearTraps_Toggle", { Text = "Remove Bear Traps" })
 ui.world.hazards:AddToggle("disableRadioactiveZone_Toggle", { Text = "Disable Radioactive Zone" })
 ui.world.hazards:AddToggle("disableKillParts_Toggle", { Text = "Disable Kill Parts", Tooltip = "Disables parts that can damage or kill you such as fans/spinners, polluted water, etc." })
@@ -11239,6 +12760,70 @@ do
     end
 
     toggles.disableCactuses_Toggle:OnChanged(function(enabled)
+        if enabled then
+            start()
+        else
+            stop()
+        end
+    end)
+
+    table.insert(teardownTasks, stop)
+end
+
+-- [World / Barbed Wire] Every part of Outside.Barbeles disables touches, so its damage script never fires
+do
+    local originals = {} -- [BasePart] = CanTouch the map gave it
+    local connection: RBXScriptConnection? = nil
+
+    local function disarm(instance: Instance)
+        if not instance:IsA("BasePart") then
+            return
+        end
+
+        if originals[instance] == nil then
+            originals[instance] = instance.CanTouch
+        end
+
+        instance.CanTouch = false
+    end
+
+    local function stop()
+        if connection then
+            connection:Disconnect()
+            connection = nil
+        end
+
+        for part, canTouch in pairs(originals) do
+            if part.Parent then
+                part.CanTouch = canTouch
+            end
+        end
+
+        table.clear(originals)
+    end
+
+    local function start()
+        stop()
+
+        local outside = area51:FindFirstChild("Outside")
+        local barbedWire = outside and outside:FindFirstChild("Barbeles")
+
+        if not barbedWire then
+            notify("Error", "Failed to locate", "Failed to find the barbed wire.", 15)
+            return
+        end
+
+        -- Catches a part the server adds after the toggle is enabled
+        connection = barbedWire.DescendantAdded:Connect(disarm)
+
+        disarm(barbedWire)
+
+        for _, descendant in ipairs(barbedWire:GetDescendants()) do
+            disarm(descendant)
+        end
+    end
+
+    toggles.disableBarbedWire_Toggle:OnChanged(function(enabled)
         if enabled then
             start()
         else
@@ -12128,7 +13713,13 @@ do
         task.spawn(function()
             -- The server builds the morph after the button is touched, so wait for it to show up.
             -- Without a morph there is nothing to swap, so the normal body is left untouched.
-            if not (char and char:WaitForChild("Chest", 10)) then
+            if not char then
+                return
+            end
+
+            local chest = char:WaitForChild("Chest", 10)
+
+            if typeof(chest) ~= "Instance" or chest.Name ~= "Chest" or chest.Parent ~= char then
                 return
             end
 
@@ -12147,6 +13738,11 @@ do
                 table.insert(morphAppearanceConnections, char.DescendantAdded:Connect(function(inst)
                     watchMorphInstance(char, inst)
                 end))
+            end
+
+            -- The morph can be gone again after the wait (death or respawn), so check once more before touching the body
+            if char.Parent == nil or not char:FindFirstChild("Chest") then
+                return
             end
 
             applyMorphAppearance(char, not toggles.normalAppearance_Toggle.Value)
@@ -12436,6 +14032,9 @@ gunModsSettings:AddSlider("bulletCountGunMod_Slider", { Text = "Bullet Count", D
         options.bulletCountGunMod_Slider:SetSuffix(getSuffix(options.bulletCountGunMod_Slider, "Bullet"))
     end
 })
+gunModsSettings:AddSlider("projectileSpeedGunMod_Slider", { Text = "Projectile Speed Multiplier", Default = 1, Min = 1, Max = 20, Rounding = 1, Suffix = "x", Risky = true,
+    Tooltip = "Multiplies how fast bullets fly. Bullets are removed after a fixed time, so they also travel that many times farther."
+})
 
 
 toggles.autoReloadWeapons_Toggle:OnChanged(function(enabled)
@@ -12500,42 +14099,56 @@ local function findGunModTargets(): { any }
     return targets
 end
 
+-- A gun mod is on when its menu toggle is on, or when Kill Aura's Gun Mod Assist is adding it for as long as the aura runs.
+-- Kill Aura never changes the toggles themselves, so there is no state to put back afterwards.
+function utils.isGunModOn(id: string): boolean
+    local control = toggles[id]
+
+    if control and control.Value == true then
+        return true
+    end
+
+    local assisted = type(utils.killAuraGunModAssist) == "function" and utils.killAuraGunModAssist() or nil
+
+    return type(assisted) == "table" and assisted[id] == true
+end
+
 -- What every managed field should currently be overridden to. A field that is absent here must be original.
 local function getDesiredGunMods(): { [string]: any }
     local desired = {}
 
-    if gunModsUnloaded or not toggles.enableGunMods_Toggle.Value then
+    if gunModsUnloaded or not utils.isGunModOn("enableGunMods_Toggle") then
         return desired
     end
 
-    if toggles.infiniteAmmoGunMod_Toggle.Value then
+    if utils.isGunModOn("infiniteAmmoGunMod_Toggle") then
         desired.ammo = math.huge
         desired.stored_ammo = math.huge
     end
 
-    if toggles.fullAutoGunMod_Toggle.Value then
+    if utils.isGunModOn("fullAutoGunMod_Toggle") then
         desired.is_auto = true
         desired.inaccuracy = 0.00001
     end
 
-    if toggles.fireRateGunMod_Toggle.Value then
+    if utils.isGunModOn("fireRateGunMod_Toggle") then
         desired.shoot_wait = 1e-14
         desired.is_auto = true
     end
 
-    if toggles.noBoltGunMod_Toggle.Value then
+    if utils.isGunModOn("noBoltGunMod_Toggle") then
         desired.bolt_fire = false
     end
 
-    if toggles.noRecoilGunMod_Toggle.Value then
+    if utils.isGunModOn("noRecoilGunMod_Toggle") then
         desired.move_camera = gunModNoRecoilMoveCamera
     end
 
-    if toggles.noSpreadGunMod_Toggle.Value then
+    if utils.isGunModOn("noSpreadGunMod_Toggle") then
         desired.inaccuracy = 0.00001
     end
 
-    if toggles.fastReloadGunMod_Toggle.Value then
+    if utils.isGunModOn("fastReloadGunMod_Toggle") then
         desired.reload_wait = gunModFastReloadWait
     end
 
@@ -12655,11 +14268,236 @@ local function removeNoOverheat(weapon)
     gunModHeatHooks[weapon] = nil
 end
 
+-- [Weapons / Gun Mods] Projectile Speed Multiplier
+-- The multiplier scales the launch speed, and with it the distance a bullet flies. 
+local gunModProjectile = {
+    hooks = setmetatable({}, { __mode = "k" }), -- weapon -> { RawSetMissile, HookedSetMissile, Active }
+    tracked = {},                               -- bullet -> where it was on the previous frame
+    connection = nil :: RBXScriptConnection?,
+    params = RaycastParams.new(),
+    warned = false,
+}
+
+gunModProjectile.params.FilterType = Enum.RaycastFilterType.Exclude
+
+-- The current speed multiplier: 1 (normal) unless Gun Mods are on and the slider is above its neutral position.
+function gunModProjectile.multiplier()
+    if gunModsUnloaded or not utils.isGunModOn("enableGunMods_Toggle") then
+        return 1
+    end
+
+    local best = 1
+    local value = options.projectileSpeedGunMod_Slider.Value
+
+    if type(value) == "number" and value > 1 then
+        best = value
+    end
+
+    -- Kill Aura's Projectile Speed only raises the multiplier while the aura runs, it never lowers the slider's own value
+    local boost = type(utils.killAuraGunModRange) == "function" and utils.killAuraGunModRange() or 1
+
+    if type(boost) == "number" and boost > best then
+        best = boost
+    end
+
+    return best
+end
+
+-- Silent Aim leads moving Killers by the bullet speed, so it has to know about the boost
+utils.getProjectileSpeedMultiplier = gunModProjectile.multiplier
+
+function gunModProjectile.stopSweeping()
+    if gunModProjectile.connection then
+        gunModProjectile.connection:Disconnect()
+        gunModProjectile.connection = nil
+    end
+end
+
+function gunModProjectile.sweep()
+    local tracked = gunModProjectile.tracked
+    local params = gunModProjectile.params
+    local character = localplayer.Character
+
+    for bullet, previous in pairs(tracked) do
+        if not bullet.Parent then
+            tracked[bullet] = nil
+        else
+            local current = bullet.Position
+            local ignored = { bullet }
+            local from = previous
+
+            if character then
+                table.insert(ignored, character)
+            end
+
+            for _ = 1, 8 do
+                local path = current - from
+
+                if path.Magnitude < 0.05 then
+                    break
+                end
+
+                params.FilterDescendantsInstances = ignored
+
+                local result = workspace:Raycast(from, path, params)
+
+                if not result then
+                    break
+                end
+
+                local instance = result.Instance
+
+                table.insert(ignored, instance)
+
+                if instance.Name ~= "Bullet" and instance.CanTouch then
+                    -- Touched is reported from where the bullet hit, then the bullet carries on from where it was
+                    local resting = bullet.CFrame
+
+                    bullet.CFrame = resting.Rotation + result.Position
+                    pcall(firesignal, bullet.Touched, instance)
+
+                    if not bullet.Parent then
+                        break
+                    end
+
+                    bullet.CFrame = resting
+                end
+
+                from = result.Position
+            end
+
+            tracked[bullet] = bullet.Parent and current or nil
+        end
+    end
+
+    if next(tracked) == nil then
+        gunModProjectile.stopSweeping()
+    end
+end
+
+function gunModProjectile.track(bullet)
+    gunModProjectile.tracked[bullet] = bullet.Position
+
+    if not gunModProjectile.connection then
+        gunModProjectile.connection = runService.Heartbeat:Connect(function()
+            local success, sweepError = pcall(gunModProjectile.sweep)
+
+            if not success then
+                warn("[Gun Mods] Projectile sweep failed: " .. tostring(sweepError))
+            end
+        end)
+    end
+end
+
+function gunModProjectile.boost(bullet, multiplier)
+    if typeof(bullet) ~= "Instance" or not bullet:IsA("BasePart") then
+        return
+    end
+
+    if type(firesignal) ~= "function" then
+        -- Without firesignal the swept hits cannot be reported, and fast bullets would fly through Killers
+        if not gunModProjectile.warned then
+            gunModProjectile.warned = true
+            warn("[Gun Mods] This executor does not provide firesignal; the Projectile Speed Multiplier is disabled.")
+        end
+
+        return
+    end
+
+    -- The game sets the launch velocity right after set_missile returns, so the boost is applied once that has happened
+    task.defer(function()
+        if gunModsUnloaded or not bullet.Parent or gunModProjectile.tracked[bullet] then
+            return
+        end
+
+        local velocity = bullet.AssemblyLinearVelocity
+
+        if velocity.Magnitude < 1 then
+            return
+        end
+
+        bullet.AssemblyLinearVelocity = velocity * multiplier
+        bullet.CanQuery = false -- other rays (Silent Aim checks, other bullets' sweeps) pass through it
+        gunModProjectile.track(bullet)
+    end)
+end
+
+-- Wraps set_missile, which runs once for every bullet right after it is created.
+function gunModProjectile.apply(weapon)
+    if gunModProjectile.hooks[weapon] then
+        return
+    end
+
+    local rawOriginal = rawget(weapon, "set_missile") -- nil when the weapon inherits it from its class
+
+    if rawOriginal == nil and type(weapon.set_missile) ~= "function" then
+        return
+    end
+
+    local record = { RawSetMissile = rawOriginal, Active = true }
+
+    record.HookedSetMissile = function(self, missile, ...)
+        local original = rawOriginal
+
+        if original == nil then
+            -- Looked up when it is needed, so a hook another feature (Silent Aim) puts on the class later is still called
+            local metatable = getmetatable(self)
+            local index = metatable and metatable.__index
+
+            original = type(index) == "table" and index.set_missile or nil
+        end
+
+        if type(original) == "function" then
+            original(self, missile, ...)
+        end
+
+        if record.Active then
+            local multiplier = gunModProjectile.multiplier()
+
+            if multiplier > 1 then
+                gunModProjectile.boost(missile, multiplier)
+            end
+        end
+    end
+
+    local success, hookError = pcall(rawset, weapon, "set_missile", record.HookedSetMissile)
+
+    if not success then
+        warn("[Gun Mods] Could not hook a weapon for the Projectile Speed Multiplier: " .. tostring(hookError))
+        return
+    end
+
+    gunModProjectile.hooks[weapon] = record
+end
+
+function gunModProjectile.remove(weapon)
+    local record = gunModProjectile.hooks[weapon]
+
+    if not record then
+        return
+    end
+
+    record.Active = false
+
+    -- Only undo what is still ours. If another hook was put on top of ours, ours stays in place and does nothing.
+    if rawget(weapon, "set_missile") == record.HookedSetMissile then
+        rawset(weapon, "set_missile", record.RawSetMissile) -- nil removes the override so the class method shows through again
+    end
+
+    gunModProjectile.hooks[weapon] = nil
+end
+
+function gunModProjectile.shutdown()
+    gunModProjectile.stopSweeping()
+    table.clear(gunModProjectile.tracked)
+end
+
 local function reconcileGunMods()
     local desired = getDesiredGunMods()
     local noOverheat = isNoOverheatDesired()
+    local projectile = gunModProjectile.multiplier() > 1
 
-    if next(desired) == nil and not noOverheat and not gunModsEngaged then
+    if next(desired) == nil and not noOverheat and not projectile and not gunModsEngaged then
         return
     end
 
@@ -12713,14 +14551,22 @@ local function reconcileGunMods()
             removeNoOverheat(weapon)
         end
 
+        if projectile then
+            gunModProjectile.apply(weapon)
+        else
+            gunModProjectile.remove(weapon)
+        end
+
         -- Refresh the on-screen counter so it stops showing the infinite value.
         if ammoRestored and type(weapon.update_ammo_gui) == "function" then
             pcall(weapon.update_ammo_gui, weapon)
         end
     end
 
-    gunModsEngaged = next(desired) ~= nil or noOverheat
+    gunModsEngaged = next(desired) ~= nil or noOverheat or projectile
 end
+
+utils.reconcileGunMods = reconcileGunMods -- Kill Aura's Gun Mod Assist asks for a refresh through this
 
 toggles.enableGunMods_Toggle:OnChanged(reconcileGunMods)
 toggles.infiniteAmmoGunMod_Toggle:OnChanged(reconcileGunMods)
@@ -12732,6 +14578,7 @@ toggles.noRecoilGunMod_Toggle:OnChanged(reconcileGunMods)
 toggles.noSpreadGunMod_Toggle:OnChanged(reconcileGunMods)
 toggles.fastReloadGunMod_Toggle:OnChanged(reconcileGunMods)
 options.bulletCountGunMod_Slider:OnChanged(reconcileGunMods)
+options.projectileSpeedGunMod_Slider:OnChanged(reconcileGunMods)
 
 -- [Weapons / Gun Mods] Backpack listener for newly acquired tools
 
@@ -12775,6 +14622,8 @@ table.insert(teardownTasks, function()
 
     gunModCharacterConnection:Disconnect()
     reconcileGunMods()
+    utils.reconcileGunMods = nil
+    gunModProjectile.shutdown()
 end)
 
 
@@ -12822,6 +14671,17 @@ task.spawn(function()
             connection:Disconnect()
         end
         table.clear(list)
+    end
+
+    local function callGameFunction(callback: any, ...: any)
+        local identity = if type(getthreadidentity) == "function" then getthreadidentity() else nil
+        local results = table.pack(pcall(callback, ...))
+
+        if identity and type(setthreadidentity) == "function" then
+            pcall(setthreadidentity, identity)
+        end
+
+        return table.unpack(results, 1, results.n)
     end
 
     -- Parts the game's apply_skin actually recolors (same condition it uses).
@@ -12898,7 +14758,7 @@ task.spawn(function()
             touched[tool] = record
         end
 
-        local success, err = pcall(skinUtilities.apply_skin, skinUtilities, tool, skinName)
+        local success, err = callGameFunction(skinUtilities.apply_skin, skinUtilities, tool, skinName)
         if not success then
             warn("[Skin Changer] apply_skin failed for " .. tool.Name .. ": " .. tostring(err))
             return false
@@ -12923,7 +14783,7 @@ task.spawn(function()
             realSkin = record.attr
         end
 
-        pcall(skinUtilities.apply_skin, skinUtilities, tool, realSkin)
+        callGameFunction(skinUtilities.apply_skin, skinUtilities, tool, realSkin)
     end
 
     local function resetAll(): number
@@ -14937,6 +16797,12 @@ utils.buildArraylist = function()
             return join(" / ", number("hitboxSize_Slider"), number("hitboxRange_Slider"))
         end },
         { id = "autoCollect_Toggle", name = "Auto Collect" },
+        { id = "autofarm_Toggle", name = "Autofarm", suffix = function()
+            return join(" / ", number("autofarmFollowDistance_Slider"), number("autofarmDangerDistance_Slider"))
+        end },
+        { id = "killAura_Toggle", name = "Kill Aura", suffix = function()
+            return join(" / ", choice("killAuraTargetMode_Dropdown"), number("killAuraRange_Slider"))
+        end },
 
         -- Visuals
         { id = "killerESP_Toggle", name = "Killer ESP", suffix = function()
@@ -14959,6 +16825,7 @@ utils.buildArraylist = function()
 
         -- World
         { id = "disableCactuses_Toggle", name = "No Cactuses" },
+        { id = "disableBarbedWire_Toggle", name = "No Barbed Wire" },
         { id = "removeBearTraps_Toggle", name = "No Bear Traps" },
         { id = "disableRadioactiveZone_Toggle", name = "No Radioactive Zone" },
         { id = "disableKillParts_Toggle", name = "No Kill Parts" },
