@@ -2,6 +2,46 @@ local Workspace = game:GetService("Workspace")
 
 local HalloweenTransformations = {}
 
+-- Diagnostics
+-- A killer that is still loading, already dead, or built a little differently is normal during a round,
+-- so "missing part" notices are silent unless HalloweenTransformations.Debug is set to true. Even with
+-- Debug on, each distinct message is shown only once per session. Real failures (an accessory that could
+-- not be added, a transformation that errored) are always shown, but also only once per distinct message.
+HalloweenTransformations.Debug = false
+
+local reportedMessages: { [string]: boolean } = {}
+
+local function formatReport(...): string
+	local parts = table.pack(...)
+	for index = 1, parts.n do
+		parts[index] = tostring(parts[index])
+	end
+
+	return table.concat(parts, " ")
+end
+
+local function showOnce(...)
+	local message = formatReport(...)
+	if reportedMessages[message] then
+		return
+	end
+
+	reportedMessages[message] = true
+	warn(message)
+end
+
+-- Expected situations: a missing body part or accessory, a killer that was skipped, a folder that is not there.
+local function reportNotice(...)
+	if HalloweenTransformations.Debug then
+		showOnce(...)
+	end
+end
+
+-- Real failures.
+local function reportProblem(...)
+	showOnce(...)
+end
+
 type BodyColorOverrides = {
 	HeadColor3: Color3?,
 	TorsoColor3: Color3?,
@@ -218,7 +258,7 @@ local function ensureCaptainZombieAccessoryAttached(
 )
 	local handle = accoutrement:FindFirstChild("Handle")
 	if not handle or not handle:IsA("BasePart") then
-		warn("Captain Zombie accoutrement has no BasePart Handle:", accoutrement.Name)
+		reportNotice("Captain Zombie accoutrement has no BasePart Handle:", accoutrement.Name)
 		return
 	end
 
@@ -270,7 +310,7 @@ local function ensureCaptainZombieAccessoryAttached(
 		weld.C1 = CFrame.identity
 		weld.Parent = handle
 	else
-		warn("Captain Zombie could not find a Head to attach:", accoutrement.Name)
+		reportNotice("Captain Zombie could not find a Head to attach:", accoutrement.Name)
 	end
 end
 
@@ -298,7 +338,7 @@ local function restoreCaptainZombieOriginalInstance(
 				humanoid:AddAccessory(instance)
 			end)
 			if not ok then
-				warn("Captain Zombie: AddAccessory failed for", instance.Name, err)
+				reportProblem("Captain Zombie: AddAccessory failed for", instance.Name, err)
 				parentableInstance.Parent = model
 			end
 		else
@@ -316,7 +356,7 @@ end
 local function applyCaptainZombieHalloween(parent: any)
 	local zombie = parent:FindFirstChild("Zombie")
 	if not zombie or not zombie:IsA("Humanoid") then
-		warn("Captain Zombie Halloween transformation: missing Humanoid 'Zombie' in", parent:GetFullName())
+		reportNotice("Captain Zombie Halloween transformation: missing Humanoid 'Zombie' in", parent:GetFullName())
 		return
 	end
 
@@ -880,7 +920,7 @@ local function restoreCaptainZombieNormal(model: Model)
 			end)
 
 			if not restored then
-				warn(
+				reportProblem(
 					"Captain Zombie: failed to restore original instance:",
 					instance.Name,
 					err
@@ -1066,7 +1106,7 @@ local function ensureChuckyHandleJoined(model: Model, handle: BasePart, attachme
 	if not rigAttachment
 		or not handleAttachment
 		or not handleAttachment:IsA("Attachment") then
-		warn("Halloween transformation: cannot join", handle:GetFullName(), "- missing attachment", attachmentName)
+		reportNotice("Halloween transformation: cannot join", handle:GetFullName(), "- missing attachment", attachmentName)
 		return
 	end
 
@@ -1092,7 +1132,7 @@ local function normalizeChuckyHandleJoint(model: Model, handle: BasePart, attach
 	if not rigAttachment
 		or not handleAttachment
 		or not handleAttachment:IsA("Attachment") then
-		warn("Halloween transformation: cannot join", handle:GetFullName(), "- missing attachment", attachmentName)
+		reportNotice("Halloween transformation: cannot join", handle:GetFullName(), "- missing attachment", attachmentName)
 		return
 	end
 
@@ -1151,7 +1191,7 @@ local function setChuckyHair(model: Model, halloween: boolean)
 	local hair = model:FindFirstChild("MessyHairBrown")
 	local handle = hair and hair:FindFirstChild("Handle")
 	if not handle or not handle:IsA("BasePart") then
-		warn("Chucky transformation: MessyHairBrown.Handle was not found in", model:GetFullName())
+		reportNotice("Chucky transformation: MessyHairBrown.Handle was not found in", model:GetFullName())
 		return
 	end
 
@@ -1180,7 +1220,7 @@ local function setChuckyHair(model: Model, halloween: boolean)
 	if hairAttachment and hairAttachment:IsA("Attachment") then
 		hairAttachment.CFrame = attachmentCFrame
 	else
-		warn("Chucky transformation: MessyHairBrown.Handle.HairAttachment was not found in", model:GetFullName())
+		reportNotice("Chucky transformation: MessyHairBrown.Handle.HairAttachment was not found in", model:GetFullName())
 	end
 
 	ensureChuckyHandleJoined(model, handle, "HairAttachment")
@@ -1351,7 +1391,7 @@ local function addMarkedHalloweenAccessory(
 	end)
 	if not ok then
 		accessory:Destroy()
-		warn(killerName .. ": Humanoid:AddAccessory failed:", err)
+		reportProblem(killerName .. ": Humanoid:AddAccessory failed:", err)
 		return
 	end
 
@@ -1373,7 +1413,7 @@ end
 local function applyChuckyHalloween(model: Model)
 	local zombie = model:FindFirstChild("Zombie")
 	if not zombie or not zombie:IsA("Humanoid") then
-		warn("Chucky Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName())
+		reportNotice("Chucky Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName())
 		return
 	end
 
@@ -1511,7 +1551,7 @@ local function ensureEyelessJackHandleJoined(model: Model, handle: BasePart, att
 	local handleAttachment = handle:FindFirstChild(attachmentName)
 	if not headAttachment or not headAttachment:IsA("Attachment")
 		or not handleAttachment or not handleAttachment:IsA("Attachment") then
-		warn("Eyeless Jack transformation: cannot join", handle:GetFullName(), "- missing attachment", attachmentName)
+		reportNotice("Eyeless Jack transformation: cannot join", handle:GetFullName(), "- missing attachment", attachmentName)
 		return
 	end
 
@@ -1528,7 +1568,7 @@ local function setEyelessJackHood(model: Model, halloween: boolean)
 	local hood = model:FindFirstChild("HoodOfTheLonelyRaven")
 	local handle = hood and hood:FindFirstChild("Handle")
 	if not handle or not handle:IsA("BasePart") then
-		warn("Eyeless Jack transformation: HoodOfTheLonelyRaven.Handle was not found in", model:GetFullName())
+		reportNotice("Eyeless Jack transformation: HoodOfTheLonelyRaven.Handle was not found in", model:GetFullName())
 		return
 	end
 
@@ -1553,7 +1593,7 @@ local function setEyelessJackHood(model: Model, halloween: boolean)
 			originalPosition.Value = attachmentCFrame.Position
 		end
 	else
-		warn("Eyeless Jack transformation: HoodOfTheLonelyRaven.Handle.HatAttachment was not found in", model:GetFullName())
+		reportNotice("Eyeless Jack transformation: HoodOfTheLonelyRaven.Handle.HatAttachment was not found in", model:GetFullName())
 	end
 
 	ensureEyelessJackHandleJoined(model, handle, "HatAttachment")
@@ -1568,7 +1608,7 @@ local function setEyelessJackAppearance(model: Model, halloween: boolean)
 		maskHandle.Transparency = halloween and 1 or 0
 		ensureEyelessJackHandleJoined(model, maskHandle, "FaceFrontAttachment")
 	else
-		warn("Eyeless Jack transformation: HockeyMask.Handle was not found in", model:GetFullName())
+		reportNotice("Eyeless Jack transformation: HockeyMask.Handle was not found in", model:GetFullName())
 	end
 
 	local shirt = model:FindFirstChildOfClass("Shirt")
@@ -1593,7 +1633,7 @@ local function applyEyelessJackHalloween(model: Model)
 
 	local zombie = model:FindFirstChild("Zombie")
 	if not zombie or not zombie:IsA("Humanoid") then
-		warn("Eyeless Jack Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName())
+		reportNotice("Eyeless Jack Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName())
 		return
 	end
 
@@ -1605,7 +1645,7 @@ local function applyEyelessJackHalloween(model: Model)
 	end)
 	if not added then
 		pumpkin:Destroy()
-		warn("Eyeless Jack: Humanoid:AddAccessory failed:", addError)
+		reportProblem("Eyeless Jack: Humanoid:AddAccessory failed:", addError)
 		-- Leave the mask visible rather than producing a faceless, pumpkinless rig.
 		return
 	end
@@ -1761,7 +1801,7 @@ end
 local function applyFishfaceHalloween(model: Model)
 	local zombie = model:FindFirstChild("Zombie")
 	if not zombie or not zombie:IsA("Humanoid") then
-		warn("Fishface Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName())
+		reportNotice("Fishface Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName())
 		return
 	end
 
@@ -1833,7 +1873,7 @@ local function restoreFishfaceNormal(model: Model)
 			surfaceAppearance.TexturePack = entry[3]
 			surfaceAppearance.Color = Color3.fromRGB(255, 255, 255)
 		else
-			warn("Fishface Normal transformation: missing MeshPart", entry[1], "in", model:GetFullName())
+			reportNotice("Fishface Normal transformation: missing MeshPart", entry[1], "in", model:GetFullName())
 		end
 	end
 end
@@ -1881,14 +1921,14 @@ local function setFreddyClothing(model: Model, shirtTemplate: string, pantsTempl
 	if shirt then
 		shirt.ShirtTemplate = shirtTemplate
 	else
-		warn("Freddy Krueger transformation: Shirt was not found in", model:GetFullName())
+		reportNotice("Freddy Krueger transformation: Shirt was not found in", model:GetFullName())
 	end
 
 	local pants = model:FindFirstChildOfClass("Pants")
 	if pants then
 		pants.PantsTemplate = pantsTemplate
 	else
-		warn("Freddy Krueger transformation: Pants were not found in", model:GetFullName())
+		reportNotice("Freddy Krueger transformation: Pants were not found in", model:GetFullName())
 	end
 end
 
@@ -1898,7 +1938,7 @@ local function setFreddyFaceTexture(model: Model, texture: string)
 	if face and face:IsA("Decal") then
 		face.Texture = texture
 	else
-		warn("Freddy Krueger transformation: HeadVisual.face was not found in", model:GetFullName())
+		reportNotice("Freddy Krueger transformation: HeadVisual.face was not found in", model:GetFullName())
 	end
 end
 
@@ -1909,7 +1949,7 @@ local function setFreddyClawsVertexColor(model: Model, vertexColor: Vector3)
 	if mesh and mesh:IsA("SpecialMesh") then
 		mesh.VertexColor = vertexColor
 	else
-		warn("Freddy Krueger transformation: BluesteelClaws.Handle.Mesh was not found in", model:GetFullName())
+		reportNotice("Freddy Krueger transformation: BluesteelClaws.Handle.Mesh was not found in", model:GetFullName())
 	end
 end
 
@@ -1919,7 +1959,7 @@ local function setFreddyFedoraVisible(model: Model, visible: boolean)
 	local fedora = model:FindFirstChild("Fedora")
 	if not fedora or not fedora:IsA("Accessory") then
 		if visible then
-			warn("Freddy Krueger transformation: the classic Fedora is missing from", model:GetFullName(), "and cannot be rebuilt (MeshPart.MeshId is not scriptable)")
+			reportNotice("Freddy Krueger transformation: the classic Fedora is missing from", model:GetFullName(), "and cannot be rebuilt (MeshPart.MeshId is not scriptable)")
 		end
 		return
 	end
@@ -1999,7 +2039,7 @@ end
 local function applyFreddyHalloween(model: Model)
 	local zombie = model:FindFirstChild("Zombie")
 	if not zombie or not zombie:IsA("Humanoid") then
-		warn("Freddy Krueger Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName())
+		reportNotice("Freddy Krueger Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName())
 		return
 	end
 
@@ -2125,7 +2165,7 @@ local function setFuwattiFaceColor(model: Model, color: Color3)
 	if face and face:IsA("Decal") then
 		face.Color3 = color
 	else
-		warn("Fuwatti transformation: UpperTorso.face was not found in", model:GetFullName())
+		reportNotice("Fuwatti transformation: UpperTorso.face was not found in", model:GetFullName())
 	end
 end
 
@@ -2152,7 +2192,7 @@ end
 local function applyFuwattiHalloween(model: Model)
 	local zombie = model:FindFirstChild("Zombie")
 	if not zombie or not zombie:IsA("Humanoid") then
-		warn("Fuwatti Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName())
+		reportNotice("Fuwatti Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName())
 		return
 	end
 
@@ -2169,7 +2209,7 @@ local function applyFuwattiHalloween(model: Model)
 			markHalloweenObjectForKiller(surfaceAppearance, FUWATTI_KILLER_NAME)
 			surfaceAppearance.Parent = part
 		else
-			warn("Fuwatti Halloween transformation: missing part", entry[1], "in", model:GetFullName())
+			reportNotice("Fuwatti Halloween transformation: missing part", entry[1], "in", model:GetFullName())
 		end
 	end
 
@@ -2188,7 +2228,7 @@ local function applyFuwattiHalloween(model: Model)
 			markHalloweenObjectForKiller(stitches, FUWATTI_KILLER_NAME)
 			stitches.Parent = part
 		else
-			warn("Fuwatti Halloween transformation: missing part", entry[1], "in", model:GetFullName())
+			reportNotice("Fuwatti Halloween transformation: missing part", entry[1], "in", model:GetFullName())
 		end
 	end
 
@@ -2211,7 +2251,7 @@ local function applyFuwattiHalloween(model: Model)
 		markHalloweenObjectForKiller(emitter, FUWATTI_KILLER_NAME)
 		emitter.Parent = upperTorso
 	else
-		warn("Fuwatti Halloween transformation: missing part UpperTorso in", model:GetFullName())
+		reportNotice("Fuwatti Halloween transformation: missing part UpperTorso in", model:GetFullName())
 	end
 
 	addMarkedHalloweenAccessory(
@@ -2432,13 +2472,13 @@ local function applyAoOniHalloween(model: Model)
 			markHalloweenObjectForKiller(surfaceAppearance, AO_ONI_KILLER_NAME)
 			surfaceAppearance.Parent = part
 		else
-			warn("Ao Oni Halloween transformation: missing MeshPart", partName, "in", model:GetFullName())
+			reportNotice("Ao Oni Halloween transformation: missing MeshPart", partName, "in", model:GetFullName())
 		end
 	end
 
 	local zombie = model:FindFirstChild("Zombie")
 	if not zombie or not zombie:IsA("Humanoid") then
-		warn("Ao Oni Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName(), "- Goggles and Hair were not added")
+		reportNotice("Ao Oni Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName(), "- Goggles and Hair were not added")
 		return
 	end
 
@@ -2509,7 +2549,7 @@ local function setGhostfaceAppearance(model: Model, halloween: boolean)
 	if surfaceAppearance then
 		surfaceAppearance.Color = if halloween then GHOSTFACE_HALLOWEEN_HEAD_TINT else GHOSTFACE_NORMAL_HEAD_TINT
 	else
-		warn("Ghostface transformation: Head.SurfaceAppearance was not found in", model:GetFullName())
+		reportNotice("Ghostface transformation: Head.SurfaceAppearance was not found in", model:GetFullName())
 	end
 
 	local knife = model:FindFirstChild("Knife")
@@ -2520,7 +2560,7 @@ local function setGhostfaceAppearance(model: Model, halloween: boolean)
 			then GHOSTFACE_HALLOWEEN_KNIFE_VERTEX_COLOR
 			else GHOSTFACE_NORMAL_KNIFE_VERTEX_COLOR
 	else
-		warn("Ghostface transformation: Knife.Handle.KnifeMesh was not found in", model:GetFullName())
+		reportNotice("Ghostface transformation: Knife.Handle.KnifeMesh was not found in", model:GetFullName())
 	end
 end
 
@@ -2549,7 +2589,7 @@ local function applyGhostfaceHalloween(model: Model)
 
 	local zombie = model:FindFirstChild("Zombie")
 	if not zombie or not zombie:IsA("Humanoid") then
-		warn("Ghostface Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName(), "- Horns were not added")
+		reportNotice("Ghostface Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName(), "- Horns were not added")
 		return
 	end
 
@@ -2682,7 +2722,7 @@ do
 		if hairHandle and hairHandle:IsA("BasePart") then
 			hairHandle.Color = look.hairColor
 		else
-			warn("Granny transformation: Dr. Smyth Hair.Handle was not found in", model:GetFullName())
+			reportNotice("Granny transformation: Dr. Smyth Hair.Handle was not found in", model:GetFullName())
 		end
 
 		local ghostTorso = model:FindFirstChild("GhostTorso")
@@ -2696,7 +2736,7 @@ do
 				restoreGrannyGhostTorsoSurfaceAppearance(ghostTorsoHandle)
 			end
 		else
-			warn("Granny transformation: GhostTorso.Handle was not found in", model:GetFullName())
+			reportNotice("Granny transformation: GhostTorso.Handle was not found in", model:GetFullName())
 		end
 
 		local head = model:FindFirstChild("Head")
@@ -2704,7 +2744,7 @@ do
 		if face and face:IsA("Decal") then
 			face.Texture = look.faceTexture
 		else
-			warn("Granny transformation: Head.face was not found in", model:GetFullName())
+			reportNotice("Granny transformation: Head.face was not found in", model:GetFullName())
 		end
 
 		local bat = model:FindFirstChild("Bat")
@@ -2717,7 +2757,7 @@ do
 			batMesh.VertexColor = look.batVertexColor
 			batMesh.Scale = look.batMeshScale
 		else
-			warn("Granny transformation: Bat.Handle.Mesh was not found in", model:GetFullName())
+			reportNotice("Granny transformation: Bat.Handle.Mesh was not found in", model:GetFullName())
 		end
 	end
 
@@ -2832,7 +2872,7 @@ do
 
 		local zombie = model:FindFirstChild("Zombie")
 		if not zombie or not zombie:IsA("Humanoid") then
-			warn("Granny Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName(), "- accessories were not added")
+			reportNotice("Granny Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName(), "- accessories were not added")
 			return
 		end
 
@@ -2944,14 +2984,14 @@ do
 		if shirt then
 			shirt.ShirtTemplate = look.shirtTemplate
 		else
-			warn("Jack Torrance transformation: Shirt was not found in", model:GetFullName())
+			reportNotice("Jack Torrance transformation: Shirt was not found in", model:GetFullName())
 		end
 
 		local pants = model:FindFirstChildOfClass("Pants")
 		if pants then
 			pants.PantsTemplate = look.pantsTemplate
 		else
-			warn("Jack Torrance transformation: Pants were not found in", model:GetFullName())
+			reportNotice("Jack Torrance transformation: Pants were not found in", model:GetFullName())
 		end
 	end
 
@@ -3034,7 +3074,7 @@ do
 	local function setJackTorranceHead(model: Model, look: any): boolean
 		local head = model:FindFirstChild("Head")
 		if not head or not head:IsA("BasePart") then
-			warn("Jack Torrance transformation: Head was not found in", model:GetFullName())
+			reportNotice("Jack Torrance transformation: Head was not found in", model:GetFullName())
 			return false
 		end
 
@@ -3081,7 +3121,7 @@ do
 
 		local zombie = model:FindFirstChild("Zombie")
 		if not zombie or not zombie:IsA("Humanoid") then
-			warn("Jack Torrance Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName(), "- Tree was not added")
+			reportNotice("Jack Torrance Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName(), "- Tree was not added")
 			return
 		end
 
@@ -3173,14 +3213,14 @@ do
 		if shirt then
 			shirt.ShirtTemplate = look.shirtTemplate
 		else
-			warn("Jason transformation: Shirt was not found in", model:GetFullName())
+			reportNotice("Jason transformation: Shirt was not found in", model:GetFullName())
 		end
 
 		local pants = model:FindFirstChildOfClass("Pants")
 		if pants then
 			pants.PantsTemplate = look.pantsTemplate
 		else
-			warn("Jason transformation: Pants were not found in", model:GetFullName())
+			reportNotice("Jason transformation: Pants were not found in", model:GetFullName())
 		end
 	end
 
@@ -3212,7 +3252,7 @@ do
 			mesh.MeshId = look.macheteMeshId
 			mesh.Scale = look.macheteMeshScale
 		else
-			warn("Jason transformation: Machete.Handle.Mesh was not found in", model:GetFullName())
+			reportNotice("Jason transformation: Machete.Handle.Mesh was not found in", model:GetFullName())
 		end
 	end
 
@@ -3220,7 +3260,7 @@ do
 		local mask = model:FindFirstChild("HockeyMask")
 		if not mask or not mask:IsA("Accessory") then
 			if visible then
-				warn("Jason transformation: the classic HockeyMask is missing from", model:GetFullName(), "and cannot be rebuilt (MeshPart.MeshId is not scriptable)")
+				reportNotice("Jason transformation: the classic HockeyMask is missing from", model:GetFullName(), "and cannot be rebuilt (MeshPart.MeshId is not scriptable)")
 			end
 			return
 		end
@@ -3355,12 +3395,12 @@ do
 		if head and head:IsA("BasePart") then
 			addJasonFace(model, head)
 		else
-			warn("Jason Halloween transformation: Head was not found in", model:GetFullName(), "- eyes and eyebrows were not added")
+			reportNotice("Jason Halloween transformation: Head was not found in", model:GetFullName(), "- eyes and eyebrows were not added")
 		end
 
 		local zombie = model:FindFirstChild("Zombie")
 		if not zombie or not zombie:IsA("Humanoid") then
-			warn("Jason Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName(), "- Hat and Scarves were not added")
+			reportNotice("Jason Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName(), "- Hat and Scarves were not added")
 			return
 		end
 
@@ -3468,14 +3508,14 @@ do
 		if shirt then
 			shirt.ShirtTemplate = look.shirtTemplate
 		else
-			warn("Jeff transformation: Shirt was not found in", model:GetFullName())
+			reportNotice("Jeff transformation: Shirt was not found in", model:GetFullName())
 		end
 
 		local pants = model:FindFirstChildOfClass("Pants")
 		if pants then
 			pants.PantsTemplate = look.pantsTemplate
 		else
-			warn("Jeff transformation: Pants were not found in", model:GetFullName())
+			reportNotice("Jeff transformation: Pants were not found in", model:GetFullName())
 		end
 	end
 
@@ -3485,7 +3525,7 @@ do
 		if face and face:IsA("Decal") then
 			face.Color3 = look.faceColor
 		else
-			warn("Jeff transformation: Head.face was not found in", model:GetFullName())
+			reportNotice("Jeff transformation: Head.face was not found in", model:GetFullName())
 		end
 	end
 
@@ -3497,7 +3537,7 @@ do
 			mesh.MeshId = look.bladeMeshId
 			mesh.TextureId = look.bladeTextureId
 		else
-			warn("Jeff transformation: Blade.Handle.Mesh was not found in", model:GetFullName())
+			reportNotice("Jeff transformation: Blade.Handle.Mesh was not found in", model:GetFullName())
 		end
 	end
 
@@ -3509,7 +3549,7 @@ do
 			mesh.TextureId = look.moltovTextureId
 			mesh.Offset = look.moltovOffset
 		else
-			warn("Jeff transformation: Moltov.Mesh was not found in", model:GetFullName())
+			reportNotice("Jeff transformation: Moltov.Mesh was not found in", model:GetFullName())
 		end
 	end
 
@@ -3591,7 +3631,7 @@ do
 
 		local zombie = model:FindFirstChild("Zombie")
 		if not zombie or not zombie:IsA("Humanoid") then
-			warn("Jeff Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName(), "- Cowl, Hood and Necklace were not added")
+			reportNotice("Jeff Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName(), "- Cowl, Hood and Necklace were not added")
 			return
 		end
 
@@ -3706,14 +3746,14 @@ do
 		if shirt then
 			shirt.ShirtTemplate = look.shirtTemplate
 		else
-			warn("Leatherface transformation: Shirt was not found in", model:GetFullName())
+			reportNotice("Leatherface transformation: Shirt was not found in", model:GetFullName())
 		end
 
 		local pants = model:FindFirstChildOfClass("Pants")
 		if pants then
 			pants.PantsTemplate = look.pantsTemplate
 		else
-			warn("Leatherface transformation: Pants were not found in", model:GetFullName())
+			reportNotice("Leatherface transformation: Pants were not found in", model:GetFullName())
 		end
 	end
 
@@ -3723,7 +3763,7 @@ do
 		if handle and handle:IsA("BasePart") then
 			handle.Color = color
 		else
-			warn("Leatherface transformation:", accessoryName .. ".Handle was not found in", model:GetFullName())
+			reportNotice("Leatherface transformation:", accessoryName .. ".Handle was not found in", model:GetFullName())
 		end
 	end
 
@@ -3731,7 +3771,7 @@ do
 		local hair = model:FindFirstChild(LEATHERFACE_CLASSIC_HAIR_NAME)
 		if not hair or not hair:IsA("Accessory") then
 			if visible then
-				warn(
+				reportNotice(
 					"Leatherface transformation: the classic",
 					LEATHERFACE_CLASSIC_HAIR_NAME,
 					"is missing from",
@@ -3782,7 +3822,7 @@ do
 	local function setLeatherfaceHead(model: Model, look: any)
 		local head = model:FindFirstChild("Head")
 		if not head or not head:IsA("BasePart") then
-			warn("Leatherface transformation: Head was not found in", model:GetFullName())
+			reportNotice("Leatherface transformation: Head was not found in", model:GetFullName())
 			return
 		end
 
@@ -3823,7 +3863,7 @@ do
 
 		local zombie = model:FindFirstChild("Zombie")
 		if not zombie or not zombie:IsA("Humanoid") then
-			warn("Leatherface Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName(), "- Hair was not added")
+			reportNotice("Leatherface Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName(), "- Hair was not added")
 			return
 		end
 
@@ -3894,7 +3934,7 @@ do
 	local function setMichaelKnife(model: Model, look: any)
 		local knife = model:FindFirstChild("Knife")
 		if not knife then
-			warn(MICHAEL_KILLER_NAME .. " transformation: Knife was not found in", model:GetFullName())
+			reportNotice(MICHAEL_KILLER_NAME .. " transformation: Knife was not found in", model:GetFullName())
 			return
 		end
 
@@ -3904,7 +3944,7 @@ do
 				part.Color = look.knifeColor
 				part.Material = look.knifeMaterial
 			else
-				warn(MICHAEL_KILLER_NAME .. " transformation: Knife." .. partName .. " was not found in", model:GetFullName())
+				reportNotice(MICHAEL_KILLER_NAME .. " transformation: Knife." .. partName .. " was not found in", model:GetFullName())
 			end
 		end
 	end
@@ -3916,7 +3956,7 @@ do
 			return handle
 		end
 
-		warn(MICHAEL_KILLER_NAME .. " transformation: HockeyMask.Handle was not found in", model:GetFullName())
+		reportNotice(MICHAEL_KILLER_NAME .. " transformation: HockeyMask.Handle was not found in", model:GetFullName())
 		return nil
 	end
 
@@ -4036,14 +4076,14 @@ do
 		if shirt then
 			shirt.ShirtTemplate = look.shirtTemplate
 		else
-			warn(PENNYWISE_KILLER_NAME .. " transformation: Shirt was not found in", model:GetFullName())
+			reportNotice(PENNYWISE_KILLER_NAME .. " transformation: Shirt was not found in", model:GetFullName())
 		end
 
 		local pants = model:FindFirstChildOfClass("Pants")
 		if pants then
 			pants.PantsTemplate = look.pantsTemplate
 		else
-			warn(PENNYWISE_KILLER_NAME .. " transformation: Pants were not found in", model:GetFullName())
+			reportNotice(PENNYWISE_KILLER_NAME .. " transformation: Pants were not found in", model:GetFullName())
 		end
 
 		local head = model:FindFirstChild("Head")
@@ -4051,14 +4091,14 @@ do
 		if face and face:IsA("Decal") then
 			face.Texture = look.faceTexture
 		else
-			warn(PENNYWISE_KILLER_NAME .. " transformation: Head.face was not found in", model:GetFullName())
+			reportNotice(PENNYWISE_KILLER_NAME .. " transformation: Head.face was not found in", model:GetFullName())
 		end
 
 		local balloon = model:FindFirstChild("Balloon")
 		if balloon and balloon:IsA("BasePart") then
 			balloon.Color = look.balloonColor
 		else
-			warn(PENNYWISE_KILLER_NAME .. " transformation: Balloon was not found in", model:GetFullName())
+			reportNotice(PENNYWISE_KILLER_NAME .. " transformation: Balloon was not found in", model:GetFullName())
 		end
 	end
 
@@ -4074,7 +4114,7 @@ do
 					end
 				end
 			elseif visible then
-				warn(
+				reportNotice(
 					PENNYWISE_KILLER_NAME .. " transformation: the classic",
 					accessoryName,
 					"is missing from",
@@ -4147,7 +4187,7 @@ do
 
 		local zombie = model:FindFirstChild("Zombie")
 		if not zombie or not zombie:IsA("Humanoid") then
-			warn(
+			reportNotice(
 				"Pennywise Halloween transformation: missing Humanoid 'Zombie' in",
 				model:GetFullName(),
 				"- accessories were not added"
@@ -4238,7 +4278,7 @@ do
 		if shirt then
 			shirt.ShirtTemplate = look.shirtTemplate
 		else
-			warn(PINHEAD_KILLER_NAME .. " transformation: Shirt was not found in", model:GetFullName())
+			reportNotice(PINHEAD_KILLER_NAME .. " transformation: Shirt was not found in", model:GetFullName())
 		end
 	end
 
@@ -4251,11 +4291,11 @@ do
 			mesh.TextureId = look.boxTextureId
 			mesh.Scale = look.boxMeshScale
 		else
-			warn(PINHEAD_KILLER_NAME .. " transformation: Box.Handle.Mesh was not found in", model:GetFullName())
+			reportNotice(PINHEAD_KILLER_NAME .. " transformation: Box.Handle.Mesh was not found in", model:GetFullName())
 		end
 	end
 
-	-- Returns the classic PinHat's Handle, or nil (after a warning) if it is gone.
+	-- Returns the classic PinHat's Handle, or nil (after a debug notice) if it is gone.
 	local function findPinheadHatHandle(model: Model): BasePart?
 		local hat = model:FindFirstChild(PINHEAD_HAT_NAME)
 		local handle = hat and hat:FindFirstChild("Handle")
@@ -4263,7 +4303,7 @@ do
 			return handle
 		end
 
-		warn(PINHEAD_KILLER_NAME .. " transformation: PinHat.Handle was not found in", model:GetFullName())
+		reportNotice(PINHEAD_KILLER_NAME .. " transformation: PinHat.Handle was not found in", model:GetFullName())
 		return nil
 	end
 
@@ -4281,7 +4321,7 @@ do
 	local function makePinheadSecondHat(model: Model): Accessory?
 		local hat = model:FindFirstChild(PINHEAD_HAT_NAME)
 		if not hat or not hat:IsA("Accessory") then
-			warn(PINHEAD_KILLER_NAME .. " Halloween transformation: PinHat was not found in", model:GetFullName(), "- PinHat2 was not added")
+			reportNotice(PINHEAD_KILLER_NAME .. " Halloween transformation: PinHat was not found in", model:GetFullName(), "- PinHat2 was not added")
 			return nil
 		end
 
@@ -4291,7 +4331,7 @@ do
 		local handle = clone:FindFirstChild("Handle")
 		local attachment = handle and handle:FindFirstChild(CHUCKY_HAT_POINT_ATTACHMENT)
 		if not handle or not handle:IsA("BasePart") or not attachment or not attachment:IsA("Attachment") then
-			warn(PINHEAD_KILLER_NAME .. " Halloween transformation: PinHat.Handle.HatAttachment was not found in", model:GetFullName(), "- PinHat2 was not added")
+			reportNotice(PINHEAD_KILLER_NAME .. " Halloween transformation: PinHat.Handle.HatAttachment was not found in", model:GetFullName(), "- PinHat2 was not added")
 			clone:Destroy()
 			return nil
 		end
@@ -4312,7 +4352,7 @@ do
 
 		local zombie = model:FindFirstChild("Zombie")
 		if not zombie or not zombie:IsA("Humanoid") then
-			warn("Pinhead Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName(), "- PinHat2 was not added")
+			reportNotice("Pinhead Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName(), "- PinHat2 was not added")
 			return
 		end
 
@@ -4433,7 +4473,7 @@ do
 			if part and part:IsA("BasePart") then
 				part.Material = look.bodyMaterial
 			else
-				warn(RAKE_KILLER_NAME .. " transformation: missing part", partName, "in", model:GetFullName())
+				reportNotice(RAKE_KILLER_NAME .. " transformation: missing part", partName, "in", model:GetFullName())
 			end
 		end
 
@@ -4443,7 +4483,7 @@ do
 			skeletonHandle.Color = look.skeletonColor
 			skeletonHandle.Material = look.skeletonMaterial
 		else
-			warn(RAKE_KILLER_NAME .. " transformation: Skeleton.Handle was not found in", model:GetFullName())
+			reportNotice(RAKE_KILLER_NAME .. " transformation: Skeleton.Handle was not found in", model:GetFullName())
 		end
 
 		for _, ownerName in ipairs(RAKE_CLAW_OWNER_NAMES) do
@@ -4452,7 +4492,7 @@ do
 			if claw and claw:IsA("BasePart") then
 				claw.Color = look.clawColor
 			else
-				warn(RAKE_KILLER_NAME .. " transformation:", ownerName .. ".Claw was not found in", model:GetFullName())
+				reportNotice(RAKE_KILLER_NAME .. " transformation:", ownerName .. ".Claw was not found in", model:GetFullName())
 			end
 		end
 	end
@@ -4463,14 +4503,14 @@ do
 		if weld and weld:IsA("JointInstance") then
 			weld.C0 = c0
 		else
-			warn(RAKE_KILLER_NAME .. " transformation: ZombieHead." .. partName .. "." .. weldName .. " was not found")
+			reportNotice(RAKE_KILLER_NAME .. " transformation: ZombieHead." .. partName .. "." .. weldName .. " was not found")
 		end
 	end
 
 	local function setRakeFace(model: Model, look: any)
 		local zombieHead = model:FindFirstChild("ZombieHead")
 		if not zombieHead then
-			warn(RAKE_KILLER_NAME .. " transformation: ZombieHead was not found in", model:GetFullName())
+			reportNotice(RAKE_KILLER_NAME .. " transformation: ZombieHead was not found in", model:GetFullName())
 			return
 		end
 
@@ -4482,17 +4522,17 @@ do
 			if decal and decal:IsA("Decal") then
 				decal.Color3 = look.mouthDecalColor
 			else
-				warn(RAKE_KILLER_NAME .. " transformation: ZombieHead.Mouth.MouthDecal was not found")
+				reportNotice(RAKE_KILLER_NAME .. " transformation: ZombieHead.Mouth.MouthDecal was not found")
 			end
 
 			local mesh = mouth:FindFirstChild("Mesh")
 			if mesh and mesh:IsA("SpecialMesh") then
 				mesh.Scale = look.mouthMeshScale
 			else
-				warn(RAKE_KILLER_NAME .. " transformation: ZombieHead.Mouth.Mesh was not found")
+				reportNotice(RAKE_KILLER_NAME .. " transformation: ZombieHead.Mouth.Mesh was not found")
 			end
 		else
-			warn(RAKE_KILLER_NAME .. " transformation: ZombieHead.Mouth was not found in", model:GetFullName())
+			reportNotice(RAKE_KILLER_NAME .. " transformation: ZombieHead.Mouth was not found in", model:GetFullName())
 		end
 
 		setRakeWeldC0(zombieHead, "Mouth", "MouthWeld", look.mouthWeldC0)
@@ -4506,7 +4546,7 @@ do
 			if eye and eye:IsA("BasePart") then
 				eye.Color = look.eyeColor
 			else
-				warn(RAKE_KILLER_NAME .. " transformation: ZombieHead." .. eyeName .. " was not found in", model:GetFullName())
+				reportNotice(RAKE_KILLER_NAME .. " transformation: ZombieHead." .. eyeName .. " was not found in", model:GetFullName())
 			end
 		end
 	end
@@ -4518,7 +4558,7 @@ do
 			return handle
 		end
 
-		warn(RAKE_KILLER_NAME .. " transformation: ZombieHead.Handle was not found in", model:GetFullName())
+		reportNotice(RAKE_KILLER_NAME .. " transformation: ZombieHead.Handle was not found in", model:GetFullName())
 		return nil
 	end
 
@@ -4613,7 +4653,7 @@ do
 
 		local zombie = model:FindFirstChild("Zombie")
 		if not zombie or not zombie:IsA("Humanoid") then
-			warn("Rake Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName(), "- Wings and Tail were not added")
+			reportNotice("Rake Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName(), "- Wings and Tail were not added")
 			return
 		end
 
@@ -4672,13 +4712,31 @@ do
 		end
 	end
 
+	-- The eye lasers are Beams on the Head that the eye parts do not drive; they share the eye colour.
+	local ROBOT_BEAM_NAMES = { "Left Beam", "Right Beam" }
+
+	local function setRobotBeamColor(model: Model, color: Color3)
+		local head = model:FindFirstChild("Head")
+		if not head then
+			return
+		end
+
+		for _, beamName in ipairs(ROBOT_BEAM_NAMES) do
+			local beam = head:FindFirstChild(beamName)
+			if beam and beam:IsA("Beam") then
+				beam.Color = ColorSequence.new(color)
+			end
+		end
+	end
+
 	local function setRobotEyeColor(model: Model, color: Color3)
+		setRobotBeamColor(model, color)
 		for _, eyeName in ipairs(ROBOT_EYE_NAMES) do
 			local eye = model:FindFirstChild(eyeName)
 			if eye and eye:IsA("BasePart") then
 				eye.Color = color
 			else
-				warn(ROBOT_KILLER_NAME .. " transformation: missing part", eyeName, "in", model:GetFullName())
+				reportNotice(ROBOT_KILLER_NAME .. " transformation: missing part", eyeName, "in", model:GetFullName())
 			end
 		end
 	end
@@ -4688,7 +4746,7 @@ do
 		if head and head:IsA("BasePart") then
 			head.Transparency = transparency
 		else
-			warn(ROBOT_KILLER_NAME .. " transformation: Head was not found in", model:GetFullName())
+			reportNotice(ROBOT_KILLER_NAME .. " transformation: Head was not found in", model:GetFullName())
 		end
 	end
 
@@ -4722,7 +4780,7 @@ do
 
 		local zombie = model:FindFirstChild("Zombie")
 		if not zombie or not zombie:IsA("Humanoid") then
-			warn("Robot Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName(), "- Helmet was not added and the Head was left visible")
+			reportNotice("Robot Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName(), "- Helmet was not added and the Head was left visible")
 			return
 		end
 
@@ -4788,14 +4846,14 @@ do
 		if tie and tie:IsA("BasePart") then
 			tie.Color = color
 		else
-			warn(SLENDERMAN_KILLER_NAME .. " transformation: Tie was not found in", model:GetFullName())
+			reportNotice(SLENDERMAN_KILLER_NAME .. " transformation: Tie was not found in", model:GetFullName())
 		end
 	end
 
 	local function setSlendermanHeadSize(model: Model, halloween: boolean)
 		local head = model:FindFirstChild("Head")
 		if not head or not head:IsA("BasePart") then
-			warn(SLENDERMAN_KILLER_NAME .. " transformation: Head was not found in", model:GetFullName())
+			reportNotice(SLENDERMAN_KILLER_NAME .. " transformation: Head was not found in", model:GetFullName())
 			return
 		end
 
@@ -4817,7 +4875,7 @@ do
 	local function setSlendermanTentacles(model: Model, halloween: boolean)
 		local tentacles = model:FindFirstChild("Tentacles")
 		if not tentacles then
-			warn(SLENDERMAN_KILLER_NAME .. " transformation: Tentacles was not found in", model:GetFullName())
+			reportNotice(SLENDERMAN_KILLER_NAME .. " transformation: Tentacles was not found in", model:GetFullName())
 			return
 		end
 
@@ -4866,7 +4924,7 @@ do
 
 		local zombie = model:FindFirstChild("Zombie")
 		if not zombie or not zombie:IsA("Humanoid") then
-			warn("Slenderman Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName(), "- EvilPumpkin was not added and the Head was left at its classic size")
+			reportNotice("Slenderman Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName(), "- EvilPumpkin was not added and the Head was left at its classic size")
 			return
 		end
 
@@ -4982,7 +5040,7 @@ do
 				-- so a limb is never left invisible without one.
 				part.Transparency = SMILE_DOG_HALLOWEEN_PART_TRANSPARENCY
 			else
-				warn(SMILE_DOG_KILLER_NAME .. " Halloween transformation: missing part", entry[1], "in", model:GetFullName())
+				reportNotice(SMILE_DOG_KILLER_NAME .. " Halloween transformation: missing part", entry[1], "in", model:GetFullName())
 			end
 		end
 	end
@@ -4995,7 +5053,7 @@ do
 			if part and part:IsA("BasePart") then
 				part.Transparency = SMILE_DOG_NORMAL_PART_TRANSPARENCY
 			else
-				warn(SMILE_DOG_KILLER_NAME .. " Normal transformation: missing part", entry[1], "in", model:GetFullName())
+				reportNotice(SMILE_DOG_KILLER_NAME .. " Normal transformation: missing part", entry[1], "in", model:GetFullName())
 			end
 		end
 	end
@@ -5172,7 +5230,7 @@ do
 		for containerName, rows in pairs(SONIC_PARTS) do
 			local container = model:FindFirstChild(containerName)
 			if not container then
-				warn(SONIC_KILLER_NAME .. " transformation: missing", containerName, "in", model:GetFullName())
+				reportNotice(SONIC_KILLER_NAME .. " transformation: missing", containerName, "in", model:GetFullName())
 				continue
 			end
 
@@ -5242,7 +5300,7 @@ do
 		local head = model:FindFirstChild("Head1")
 		local mainHead = head and head:FindFirstChild("Main Head")
 		if not head or not mainHead or not mainHead:IsA("BasePart") then
-			warn(SONIC_KILLER_NAME .. " Halloween transformation: missing Head1.Main Head in", model:GetFullName(), "- Teeth were not added")
+			reportNotice(SONIC_KILLER_NAME .. " Halloween transformation: missing Head1.Main Head in", model:GetFullName(), "- Teeth were not added")
 			return
 		end
 
@@ -5257,7 +5315,7 @@ do
 			local arm = model:FindFirstChild(side.arm)
 			local hand = arm and arm:FindFirstChild(side.hand)
 			if not arm or not hand or not hand:IsA("BasePart") then
-				warn(SONIC_KILLER_NAME .. " Halloween transformation: missing " .. side.arm .. "." .. side.hand .. " in", model:GetFullName(), "- Fur was not added")
+				reportNotice(SONIC_KILLER_NAME .. " Halloween transformation: missing " .. side.arm .. "." .. side.hand .. " in", model:GetFullName(), "- Fur was not added")
 				continue
 			end
 
@@ -5472,7 +5530,7 @@ do
 		for containerName, rows in pairs(TAILS_DOLL_COLORED_PARTS) do
 			local container = model:FindFirstChild(containerName)
 			if not container then
-				warn(TAILS_DOLL_KILLER_NAME .. " transformation: missing", containerName, "in", model:GetFullName())
+				reportNotice(TAILS_DOLL_KILLER_NAME .. " transformation: missing", containerName, "in", model:GetFullName())
 				continue
 			end
 
@@ -5518,7 +5576,7 @@ do
 		for _, group in ipairs(TAILS_DOLL_HIDDEN_PARTS) do
 			local container = model:FindFirstChild(group.container)
 			if not container then
-				warn(TAILS_DOLL_KILLER_NAME .. " transformation: missing", group.container, "in", model:GetFullName())
+				reportNotice(TAILS_DOLL_KILLER_NAME .. " transformation: missing", group.container, "in", model:GetFullName())
 				continue
 			end
 
@@ -5544,7 +5602,19 @@ do
 					(part :: any)[property] = value
 				end
 			else
-				warn(TAILS_DOLL_KILLER_NAME .. " transformation: missing " .. entry.container .. "." .. entry.part .. " in", model:GetFullName())
+				reportNotice(TAILS_DOLL_KILLER_NAME .. " transformation: missing " .. entry.container .. "." .. entry.part .. " in", model:GetFullName())
+			end
+		end
+
+		-- The gem's glow follows the gem's colour.
+		local gemContainer = model:FindFirstChild("Gem1")
+		local gemPart = gemContainer and gemContainer:FindFirstChild("GemBright")
+		local gemLight = gemPart and gemPart:FindFirstChildOfClass("PointLight")
+		if gemLight then
+			if halloween then
+				gemLight.Color = C.AMBER
+			else
+				gemLight.Color = C.GEM_RED
 			end
 		end
 
@@ -5556,7 +5626,7 @@ do
 				jumpscare.Value = TAILS_DOLL_JUMPSCARE_IMAGE_IDS.Normal
 			end
 		else
-			warn(TAILS_DOLL_KILLER_NAME .. " transformation: missing IntValue JumpscareImageId in", model:GetFullName())
+			reportNotice(TAILS_DOLL_KILLER_NAME .. " transformation: missing IntValue JumpscareImageId in", model:GetFullName())
 		end
 	end
 
@@ -5611,7 +5681,7 @@ do
 		local head = model:FindFirstChild("Head1")
 		local mainHead = head and head:FindFirstChild("Main Head")
 		if not head or not mainHead or not mainHead:IsA("BasePart") then
-			warn(TAILS_DOLL_KILLER_NAME .. " Halloween transformation: missing Head1.Main Head in", model:GetFullName(), "- the Head was not added")
+			reportNotice(TAILS_DOLL_KILLER_NAME .. " Halloween transformation: missing Head1.Main Head in", model:GetFullName(), "- the Head was not added")
 			return
 		end
 
@@ -5695,7 +5765,7 @@ do
 		local torso = model:FindFirstChild("Torso1")
 		local mainTorso = torso and torso:FindFirstChild("Main Torso")
 		if not torso or not mainTorso or not mainTorso:IsA("BasePart") then
-			warn(TAILS_DOLL_KILLER_NAME .. " Halloween transformation: missing Torso1.Main Torso in", model:GetFullName(), "- Pants and Wings were not added")
+			reportNotice(TAILS_DOLL_KILLER_NAME .. " Halloween transformation: missing Torso1.Main Torso in", model:GetFullName(), "- Pants and Wings were not added")
 			return
 		end
 
@@ -5729,7 +5799,7 @@ do
 			local container = model:FindFirstChild(tail.container)
 			local main = container and container:FindFirstChild(tail.main)
 			if not container or not main or not main:IsA("BasePart") then
-				warn(TAILS_DOLL_KILLER_NAME .. " Halloween transformation: missing " .. tail.container .. "." .. tail.main .. " in", model:GetFullName(), "- the tail was not added")
+				reportNotice(TAILS_DOLL_KILLER_NAME .. " Halloween transformation: missing " .. tail.container .. "." .. tail.main .. " in", model:GetFullName(), "- the tail was not added")
 				continue
 			end
 
@@ -5946,7 +6016,7 @@ do
 					end
 				end
 			elseif visible then
-				warn("Wendigo transformation: the classic", accessoryName, "is missing from", model:GetFullName(), "and cannot be rebuilt (MeshPart.MeshId is not scriptable)")
+				reportNotice("Wendigo transformation: the classic", accessoryName, "is missing from", model:GetFullName(), "and cannot be rebuilt (MeshPart.MeshId is not scriptable)")
 			end
 		end
 	end
@@ -5975,7 +6045,7 @@ do
 				surfaceAppearance.TexturePack = entry[3]
 				surfaceAppearance.Color = Color3.fromRGB(255, 255, 255)
 			else
-				warn("Wendigo Normal transformation: missing MeshPart", entry[1], "in", model:GetFullName())
+				reportNotice("Wendigo Normal transformation: missing MeshPart", entry[1], "in", model:GetFullName())
 			end
 		end
 	end
@@ -5985,7 +6055,7 @@ do
 		local mask = model:FindFirstChild("Mask")
 		local handle = mask and mask:FindFirstChild("Handle")
 		if not handle or not handle:IsA("BasePart") then
-			warn("Wendigo Halloween transformation: Mask.Handle was not found in", model:GetFullName(), "- the mask textures were not added")
+			reportNotice("Wendigo Halloween transformation: Mask.Handle was not found in", model:GetFullName(), "- the mask textures were not added")
 			return
 		end
 
@@ -6103,12 +6173,12 @@ do
 		if head and head:IsA("BasePart") then
 			addWendigoEyes(model, head)
 		else
-			warn("Wendigo Halloween transformation: Head was not found in", model:GetFullName(), "- the eyes were not added")
+			reportNotice("Wendigo Halloween transformation: Head was not found in", model:GetFullName(), "- the eyes were not added")
 		end
 
 		local zombie = model:FindFirstChild("Zombie")
 		if not zombie or not zombie:IsA("Humanoid") then
-			warn("Wendigo Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName(), "- the cloak, ponchos, belt, axes and guitar were not added")
+			reportNotice("Wendigo Halloween transformation: missing Humanoid 'Zombie' in", model:GetFullName(), "- the cloak, ponchos, belt, axes and guitar were not added")
 			return
 		end
 
@@ -6298,7 +6368,7 @@ do
 					restoreYetiSurfaceAppearance(part, entry[2], entry[3])
 				end
 			else
-				warn(YETI_KILLER_NAME .. " transformation: missing MeshPart", entry[1], "in", model:GetFullName())
+				reportNotice(YETI_KILLER_NAME .. " transformation: missing MeshPart", entry[1], "in", model:GetFullName())
 			end
 		end
 	end
@@ -6354,7 +6424,7 @@ do
 		local club = model:FindFirstChild("Club")
 		local handle = club and club:FindFirstChild("Handle")
 		if not club or not club:IsA("Tool") or not handle or not handle:IsA("BasePart") then
-			warn(YETI_KILLER_NAME .. " transformation: Club.Handle was not found in", model:GetFullName())
+			reportNotice(YETI_KILLER_NAME .. " transformation: Club.Handle was not found in", model:GetFullName())
 			return
 		end
 
@@ -6364,14 +6434,14 @@ do
 		if mesh and mesh:IsA("SpecialMesh") then
 			mesh.Scale = look.meshScale
 		else
-			warn(YETI_KILLER_NAME .. " transformation: Club.Handle.Mesh was not found in", model:GetFullName())
+			reportNotice(YETI_KILLER_NAME .. " transformation: Club.Handle.Mesh was not found in", model:GetFullName())
 		end
 
 		local hitSound = handle:FindFirstChild("HitSound")
 		if hitSound and hitSound:IsA("Sound") then
 			hitSound.PlaybackSpeed = look.hitSoundSpeed
 		else
-			warn(YETI_KILLER_NAME .. " transformation: Club.Handle.HitSound was not found in", model:GetFullName())
+			reportNotice(YETI_KILLER_NAME .. " transformation: Club.Handle.HitSound was not found in", model:GetFullName())
 		end
 
 		if halloween then
@@ -6383,7 +6453,7 @@ do
 		local yetiHead = model:FindFirstChild(YETI_LOOK.headAccessoryName)
 		if not yetiHead or not yetiHead:IsA("Accessory") then
 			if visible then
-				warn(
+				reportNotice(
 					YETI_KILLER_NAME .. " transformation: the classic",
 					YETI_LOOK.headAccessoryName,
 					"is missing from",
@@ -6509,7 +6579,7 @@ do
 
 		local zombie = model:FindFirstChild("Zombie")
 		if not zombie or not zombie:IsA("Humanoid") then
-			warn(
+			reportNotice(
 				"Yeti Halloween transformation: missing Humanoid 'Zombie' in",
 				model:GetFullName(),
 				"- MonsterHead and the beards were not added and the YetiHead was left visible"
@@ -6613,7 +6683,7 @@ do
 		if face and face:IsA("Decal") then
 			face.Color3 = look.faceColor
 		else
-			warn(ZOMBIE_KILLER_NAME .. " transformation: Head.face was not found in", model:GetFullName())
+			reportNotice(ZOMBIE_KILLER_NAME .. " transformation: Head.face was not found in", model:GetFullName())
 		end
 
 		for _, partName in ipairs(ZOMBIE_TRANSLUCENT_PART_NAMES) do
@@ -6621,7 +6691,7 @@ do
 			if part and part:IsA("BasePart") then
 				part.Transparency = look.transparency
 			else
-				warn(ZOMBIE_KILLER_NAME .. " transformation: missing part", partName, "in", model:GetFullName())
+				reportNotice(ZOMBIE_KILLER_NAME .. " transformation: missing part", partName, "in", model:GetFullName())
 			end
 		end
 	end
@@ -6699,37 +6769,205 @@ local function isJackOKiller(model: Model): boolean
 	return false
 end
 
--- Killers that are dead or are missing a critical body part are never transformed: applying a
--- look to a corpse or a half-destroyed rig only produces broken accessories and joints. Every
--- killer is R15; the R6 list is only a fallback in case a rig ever uses the old body.
-local CRITICAL_PARTS_R15 = { "HumanoidRootPart", "Head", "UpperTorso", "LowerTorso" }
-local CRITICAL_PARTS_R6 = { "HumanoidRootPart", "Head", "Torso" }
+-- A killer model does not arrive in one piece. ChildAdded can fire while the model only holds a couple of
+-- children (Sonic.exe shows up with HumanoidRootPart and Head, and its Humanoid, UpperTorso, LowerTorso and
+-- BodyColors follow tens of milliseconds later; Captain Zombie shows up with a single child). Transforming a
+-- half-built rig either skips it for good or fails halfway through and leaves it half transformed. So a killer
+-- is only transformed once it is complete AND has stopped receiving new descendants; until then the transform
+-- waits for it (see transformWhenReady) instead of giving up.
+local RigReadiness: any
+do
+	local RIG_SETTLE_SECONDS = 0.3 -- no new descendant for this long counts as "finished arriving"
+	local RIG_BUSY_MAX_WAIT_SECONDS = 1.5 -- a complete rig that keeps receiving descendants is transformed anyway after this
+	local RIG_INCOMPLETE_MAX_WAIT_SECONDS = 10 -- a rig that is still missing critical parts is given up on after this
+	local RIG_POLL_SECONDS = 0.1
+	local APPLY_RETRY_LIMIT = 2
+	local APPLY_RETRY_DELAY_SECONDS = 0.75
 
--- Returns nil when the killer is alive and complete, otherwise a short reason it must be skipped.
-local function getUntransformableReason(killer: Model): string?
-	local humanoid = killer:FindFirstChild("Zombie")
-	if not (humanoid and humanoid:IsA("Humanoid")) then
-		humanoid = killer:FindFirstChildOfClass("Humanoid")
-	end
-	if not humanoid then
-		return "it has no Humanoid"
+	-- Killers that are dead are never transformed: applying a look to a corpse only produces broken accessories
+	-- and joints. Every killer is R15; the R6 list is only a fallback in case a rig ever uses the old body.
+	local CRITICAL_PARTS_R15 = { "HumanoidRootPart", "Head", "UpperTorso", "LowerTorso" }
+	local CRITICAL_PARTS_R6 = { "HumanoidRootPart", "Head", "Torso" }
+
+	-- Returns "ready" (alive and complete), "building" (the Humanoid or a critical part has not arrived yet) or
+	-- "dead", plus a short reason when it is not ready.
+	local function inspectKiller(killer: Model): (string, string?)
+		local humanoid = killer:FindFirstChild("Zombie")
+		if not (humanoid and humanoid:IsA("Humanoid")) then
+			humanoid = killer:FindFirstChildOfClass("Humanoid")
+		end
+		if not humanoid then
+			return "building", "it has no Humanoid"
+		end
+
+		if humanoid.Health <= 0 or humanoid:GetState() == Enum.HumanoidStateType.Dead then
+			return "dead", "it is dead"
+		end
+
+		local criticalParts = if humanoid.RigType == Enum.HumanoidRigType.R6
+			then CRITICAL_PARTS_R6
+			else CRITICAL_PARTS_R15
+		for _, partName in ipairs(criticalParts) do
+			local part = killer:FindFirstChild(partName)
+			if not (part and part:IsA("BasePart")) then
+				return "building", "it is missing its " .. partName
+			end
+		end
+
+		return "ready", nil
 	end
 
-	if humanoid.Health <= 0 or humanoid:GetState() == Enum.HumanoidStateType.Dead then
-		return "it is dead"
+	-- When each killer last received a new descendant, and the newest transform request each killer has had.
+	-- Both are weak-keyed so removed killers are collected.
+	local lastRigActivity: { [Instance]: number } = setmetatable({}, { __mode = "k" }) :: any
+	local latestRequest: { [Instance]: number } = setmetatable({}, { __mode = "k" }) :: any
+	local requestCounter = 0
+	local trackedKillersFolder: Instance? = nil
+	local activityConnection: RBXScriptConnection? = nil
+
+	-- The direct child of the Killers folder that holds this instance.
+	local function getKillerRoot(instance: Instance, folder: Instance): Instance?
+		local current: Instance? = instance
+		while current and current.Parent ~= folder do
+			current = current.Parent
+		end
+
+		return current
 	end
 
-	local criticalParts = if humanoid.RigType == Enum.HumanoidRigType.R6
-		then CRITICAL_PARTS_R6
-		else CRITICAL_PARTS_R15
-	for _, partName in ipairs(criticalParts) do
-		local part = killer:FindFirstChild(partName)
-		if not (part and part:IsA("BasePart")) then
-			return "it is missing its " .. partName
+	local function trackRigActivity(folder: Instance)
+		if trackedKillersFolder == folder and activityConnection and activityConnection.Connected then
+			return
+		end
+
+		if activityConnection then
+			activityConnection:Disconnect()
+		end
+
+		trackedKillersFolder = folder
+		activityConnection = folder.DescendantAdded:Connect(function(descendant)
+			local root = getKillerRoot(descendant, folder)
+			if root then
+				lastRigActivity[root] = os.clock()
+			end
+		end)
+	end
+
+	-- "ready", "building", "dead", or "settling" (complete, but still receiving new parts).
+	local function getRigStatus(killer: Model): (string, string?)
+		local state, reason = inspectKiller(killer)
+		if state ~= "ready" then
+			return state, reason
+		end
+
+		local folder = trackedKillersFolder
+		local root = folder and getKillerRoot(killer, folder)
+		local lastActivity = root and lastRigActivity[root]
+		if lastActivity and os.clock() - lastActivity < RIG_SETTLE_SECONDS then
+			return "settling", "it is still receiving new parts"
+		end
+
+		return "ready", nil
+	end
+
+	-- Yields until the killer is ready. Returns "ready", "dead", "timeout" (with the reason) or "stale" (a newer
+	-- request replaced this one, or the killer left the game).
+	local function waitUntilReady(killer: Model, token: number): (string, string?)
+		local startedAt = os.clock()
+		local completeSince: number? = nil
+
+		while true do
+			if latestRequest[killer] ~= token or not killer:IsDescendantOf(Workspace) then
+				return "stale", nil
+			end
+
+			local state, reason = getRigStatus(killer)
+			if state == "ready" or state == "dead" then
+				return state, reason
+			end
+
+			local now = os.clock()
+			if state == "settling" then
+				completeSince = completeSince or now
+				if now - completeSince >= RIG_BUSY_MAX_WAIT_SECONDS then
+					return "ready", nil
+				end
+			else
+				completeSince = nil
+				if now - startedAt >= RIG_INCOMPLETE_MAX_WAIT_SECONDS then
+					return "timeout", reason
+				end
+			end
+
+			task.wait(RIG_POLL_SECONDS)
 		end
 	end
 
-	return nil
+	local function reportApplyFailure(killer: Model, variantName: string, failure: any)
+		reportProblem("HalloweenTransformations: " .. killer.Name .. " " .. variantName .. " application failed for " .. killer:GetFullName() .. ": " .. tostring(failure))
+	end
+
+	-- Every variant is idempotent, so a failed application (a rig that was still arriving) is simply tried again.
+	local function retryApplyLater(killer: Model, variantName: string, variant: VariantConfig, token: number, firstFailure: any)
+		task.spawn(function()
+			local failure = firstFailure
+			for _ = 1, APPLY_RETRY_LIMIT do
+				task.wait(APPLY_RETRY_DELAY_SECONDS)
+				if latestRequest[killer] ~= token or not killer:IsDescendantOf(Workspace) then
+					return
+				end
+
+				local ok, err = pcall(applyVariant, killer, variant)
+				if ok then
+					return
+				end
+				failure = err
+			end
+
+			reportApplyFailure(killer, variantName, failure)
+		end)
+	end
+
+	-- Waits for a killer that is still arriving, then transforms it.
+	local function transformWhenReady(killer: Model, variantName: string, variant: VariantConfig, token: number, explainSkips: boolean)
+		task.spawn(function()
+			local state, reason = waitUntilReady(killer, token)
+			if state == "stale" then
+				return
+			end
+
+			if state ~= "ready" then
+				if explainSkips then
+					reportNotice("HalloweenTransformations: " .. killer.Name .. " was skipped because " .. tostring(reason) .. ":", killer:GetFullName())
+				end
+				return
+			end
+
+			if isJackOKiller(killer) then
+				if explainSkips then
+					reportNotice("HalloweenTransformations: " .. killer.Name .. " was intentionally skipped because it contains a BoolValue named 'JackOKiller' with Value=true:", killer:GetFullName())
+				end
+				return
+			end
+
+			local ok, failure = pcall(applyVariant, killer, variant)
+			if not ok then
+				retryApplyLater(killer, variantName, variant, token, failure)
+			end
+		end)
+	end
+
+	RigReadiness = {
+		track = trackRigActivity,
+		status = getRigStatus,
+		retryApplyLater = retryApplyLater,
+		transformWhenReady = transformWhenReady,
+		newRequest = function(killer: Instance): number
+			requestCounter += 1
+			latestRequest[killer] = requestCounter
+			return requestCounter
+		end,
+	}
 end
 
 local ALL_KILLERS_TARGET = "All"
@@ -6770,7 +7008,7 @@ local function transformKillers(variantName: "Halloween" | "Normal", target: str
 	end
 
 	if typeof(requested) ~= "string" then
-		warn("HalloweenTransformations: expected a killer name or \"" .. ALL_KILLERS_TARGET .. "\", got " .. typeof(requested))
+		reportProblem("HalloweenTransformations: expected a killer name or \"" .. ALL_KILLERS_TARGET .. "\", got " .. typeof(requested))
 		return 0
 	end
 
@@ -6781,7 +7019,7 @@ local function transformKillers(variantName: "Halloween" | "Normal", target: str
 	if not transformEveryKiller then
 		targetName = resolveKillerName(requested)
 		if not targetName then
-			warn(
+			reportProblem(
 				"HalloweenTransformations: no transformation is configured for \"" .. requested
 					.. "\". Use \"" .. ALL_KILLERS_TARGET .. "\" or one of: " .. getConfiguredKillerNames()
 			)
@@ -6791,7 +7029,7 @@ local function transformKillers(variantName: "Halloween" | "Normal", target: str
 
 	local killersFolder = Workspace:FindFirstChild("Killers")
 	if not killersFolder then
-		warn("HalloweenTransformations: Workspace.Killers was not found.")
+		reportProblem("HalloweenTransformations: Workspace.Killers was not found.")
 		return 0
 	end
 
@@ -6803,46 +7041,56 @@ local function transformKillers(variantName: "Halloween" | "Normal", target: str
 		end
 	end
 
+	RigReadiness.track(killersFolder)
+
 	local transformed = 0
 	for _, killer in ipairs(matchingKillers) do
+		-- Every request supersedes whatever this killer was still waiting to do, so a pending Halloween
+		-- transform can never run after a Normal one (or the other way round).
+		local token = RigReadiness.newRequest(killer)
+
 		if isJackOKiller(killer) then
 			-- "All" only reports Ao Oni (the one expected case); a named request
 			-- always explains why that killer was left alone.
 			if not transformEveryKiller or killer.Name == "Ao Oni" then
-				warn("HalloweenTransformations: " .. killer.Name .. " was intentionally skipped because it contains a BoolValue named 'JackOKiller' with Value=true:", killer:GetFullName())
+				reportNotice("HalloweenTransformations: " .. killer.Name .. " was intentionally skipped because it contains a BoolValue named 'JackOKiller' with Value=true:", killer:GetFullName())
 			end
 		else
 			local killerConfig = TRANSFORMATIONS[killer.Name]
 			local variant = killerConfig and killerConfig[variantName]
 			if variant then
-				local unfitReason = getUntransformableReason(killer)
-				if unfitReason then
-					-- Dead or broken killers are expected during a round, so "All" skips them
-					-- silently; a named request explains why that killer was left alone.
-					if not transformEveryKiller then
-						warn("HalloweenTransformations: " .. killer.Name .. " was skipped because " .. unfitReason .. ":", killer:GetFullName())
-					end
-				else
+				local state, reason = RigReadiness.status(killer)
+				if state == "ready" then
 					local ok, failure = pcall(applyVariant, killer, variant)
 					if ok then
 						transformed += 1
 					else
-						warn("HalloweenTransformations: " .. killer.Name .. " " .. variantName .. " application failed for " .. killer:GetFullName() .. ": " .. tostring(failure))
+						RigReadiness.retryApplyLater(killer, variantName, variant, token, failure)
 					end
+				elseif state == "dead" then
+					-- Dead killers are expected during a round, so "All" skips them silently; a named
+					-- request explains why that killer was left alone.
+					if not transformEveryKiller then
+						reportNotice("HalloweenTransformations: " .. killer.Name .. " was skipped because " .. tostring(reason) .. ":", killer:GetFullName())
+					end
+				else
+					-- Still arriving (building or settling): transformed as soon as it is complete.
+					RigReadiness.transformWhenReady(killer, variantName, variant, token, not transformEveryKiller)
 				end
 			end
 		end
 	end
 
 	if #matchingKillers == 0 and not transformEveryKiller then
-		warn("HalloweenTransformations: no killer named \"" .. tostring(targetName) .. "\" is currently in Workspace.Killers.")
+		reportNotice("HalloweenTransformations: no killer named \"" .. tostring(targetName) .. "\" is currently in Workspace.Killers.")
 	end
 
 	return transformed
 end
 
 -- HalloweenTransform("Eyeless Jack") / HalloweenTransform("All"). With no argument it behaves like
--- "All".
+-- "All". The returned number counts the killers transformed right away; a killer that is still
+-- arriving (replicating) is transformed a moment later, as soon as it is complete.
 function HalloweenTransformations.HalloweenTransform(target: string?): number
 	return transformKillers("Halloween", target)
 end
@@ -7186,7 +7434,7 @@ do
 		if not decoration then
 			local outside = findPath(Workspace, OUTSIDE_PATH)
 			if not outside then
-				warn("HalloweenTransformations: Workspace.AREA51.Outside was not found; the decorations were not created.")
+				reportNotice("HalloweenTransformations: Workspace.AREA51.Outside was not found; the decorations were not created.")
 				return 0
 			end
 
@@ -7205,7 +7453,7 @@ do
 				result.Parent = decoration
 				created += 1
 			else
-				warn("HalloweenTransformations: could not build OutsideDecoration." .. name .. ": " .. tostring(result))
+				reportProblem("HalloweenTransformations: could not build OutsideDecoration." .. name .. ": " .. tostring(result))
 			end
 		end
 
@@ -7215,11 +7463,11 @@ do
 	-- Assigns one absolute colour to Texture.Color3 of every Texture under the Model
 	-- at `path`. Nothing is remembered or read back, so the result never depends on
 	-- the colour the Textures have right now. Returns how many Textures were set, or
-	-- 0 (after a warning) if the Model is missing.
+	-- 0 (after a debug notice) if the Model is missing.
 	local function setTextureColors(path: { string }, color: Color3): number
 		local root = findPath(Workspace, path)
 		if not root then
-			warn("HalloweenTransformations: Workspace." .. table.concat(path, ".") .. " was not found; it was left alone.")
+			reportNotice("HalloweenTransformations: Workspace." .. table.concat(path, ".") .. " was not found; it was left alone.")
 			return 0
 		end
 
@@ -7239,7 +7487,7 @@ do
 	local function runStep(label: string, step: () -> ())
 		local ok, failure = pcall(step)
 		if not ok then
-			warn("HalloweenTransformations: map step \"" .. label .. "\" failed: " .. tostring(failure))
+			reportProblem("HalloweenTransformations: map step \"" .. label .. "\" failed: " .. tostring(failure))
 		end
 	end
 

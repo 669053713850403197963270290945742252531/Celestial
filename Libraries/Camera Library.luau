@@ -351,6 +351,22 @@ local playerState = {} do
 		userInputService.MouseBehavior = Enum.MouseBehavior.Default
 	end
 
+	-- The mouse behavior to give back when freecam ends.
+	-- Holding the right mouse button makes the game's camera lock the cursor in place (LockCurrentPosition), but only for as long as
+	-- the button is held, and nothing unlocks it afterwards unless the button is released while that camera is watching.
+	-- Freecam can start or end while the button is down, so the saved value can be a lock that no longer applies. Restoring it
+	-- leaves the cursor stuck in place with the camera turning along with the mouse, so that lock is only brought back
+	-- if the button is still held.
+	local function getRestoredMouseBehavior(saved)
+		if saved == Enum.MouseBehavior.LockCurrentPosition
+			and not userInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+		then
+			return Enum.MouseBehavior.Default
+		end
+
+		return saved or Enum.MouseBehavior.Default
+	end
+
 	-- Restore state
 
 	function playerState.pop()
@@ -375,7 +391,7 @@ local playerState = {} do
 		userInputService.MouseIconEnabled = mouseIconEnabled
 		mouseIconEnabled = nil
 
-		userInputService.MouseBehavior = mouseBehavior
+		userInputService.MouseBehavior = getRestoredMouseBehavior(mouseBehavior)
 		mouseBehavior = nil
 	end
 end

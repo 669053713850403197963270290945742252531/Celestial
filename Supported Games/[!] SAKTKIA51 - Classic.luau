@@ -11,9 +11,9 @@
     07. Home: player, game, and whitelist panels
     08. Utility: teleport, healing, sounds, and interactions
     08b. Waypoints: custom saved positions with one-click teleport and file persistence
-    09. Player: movement, phase, speed handling, freecam, and backtrack
+    09. Player: movement, click TP, phase, speed handling, freecam, and backtrack
     10. Exploits: Pack-a-Punch, aim controls, Triggerbot, collection, killer controls, Autofarm, Kill Aura, and Hitbox Expander
-    11. Visuals: ESP, FOV, fog, anti-effect handlers, scope overlay removal, Hitbox Visualizer, Killer Portrait, grenade trajectory preview, and Halloween Killers w/Camping Lantern
+    11. Visuals: ESP, FOV, fog, anti-effect handlers, scope overlay removal, Hitbox Visualizer, Killer Portrait, grenade trajectory preview, Halloween Killers w/Camping Lantern, and Halloween Map
     12. World: environmental settings, door noclip, and alien / kill-part controls
     13. Weapons: inventory, Pack-a-Punch queue, defense, gun options, and skin changer
     14. Miscellaneous: utility actions and weapon spam
@@ -41,8 +41,6 @@ local saveManager: any = assert(loadstring(game:HttpGet("https://raw.githubuserc
 local options: any = library.Options
 local toggles: any = library.Toggles
 
-library.ForceCheckbox = false
-library.ShowToggleFrameInKeybinds = true
 library.NotifyOnError = true
 
 -- 02 | SERVICES, SHARED CONSTANTS, AND VISUAL DEFAULTS
@@ -186,7 +184,7 @@ local tabs = {
     home = window:AddTab("Home", assetLib.fetchAsset("Icons/house.png"), "Player info, game info, and whitelist"),
     utils = window:AddTab("Utility", assetLib.fetchAsset("Icons/wrench.png"), "Teleports, healing, and interactions"),
     waypoints = window:AddTab("Waypoints", assetLib.fetchAsset("Icons/map-pin.png"), "Save your own positions and teleport to them"),
-    player = window:AddTab("Player", assetLib.fetchAsset("Icons/circle-user-round.png"), "Movement, noclip, phase, camera, and safety"),
+    player = window:AddTab("Player", assetLib.fetchAsset("Icons/circle-user-round.png"), "Movement, click TP, noclip, phase, camera, and safety"),
     exploits = window:AddTab("Exploits", assetLib.fetchAsset("Icons/bug.png"), "Aim, hitboxes, and killer controls"),
     visuals = window:AddTab("Visuals", assetLib.fetchAsset("Icons/eye.png"), "ESP, FOV, effects, hitboxes, and trajectory preview"),
     world = window:AddTab("World", assetLib.fetchAsset("Icons/globe.png"), "Map hazards, ambience, and Alien controls"),
@@ -212,7 +210,7 @@ ui.waypoints = {
 }
 
 ui.player = {
-    movement = tabs.player:AddGroupbox({ Side = "Left", Name = "Movement", IconName = assetLib.fetchAsset("Icons/move.png"), Description = "Speed, fly, and jump power" }),
+    movement = tabs.player:AddGroupbox({ Side = "Left", Name = "Movement", IconName = assetLib.fetchAsset("Icons/move.png"), Description = "Speed, fly, jump power, and click TP" }),
     clipping = tabs.player:AddGroupbox({ Side = "Right", Name = "Noclip & Phase", IconName = assetLib.fetchAsset("Icons/brick-wall.png"), Description = "Get through walls and objects" }),
     safety = tabs.player:AddGroupbox({ Side = "Right", Name = "Safety", IconName = assetLib.fetchAsset("Icons/life-buoy.png"), Description = "Backtrack and out-of-bounds guard" }),
     cameraLag = tabs.player:AddGroupbox({ Side = "Left", Name = "Camera & Lag", IconName = assetLib.fetchAsset("Icons/video.png"), Description = "Freecam and fake lag" }),
@@ -900,6 +898,9 @@ do
     local MENU_EXIT_WAIT = 15
     local MENU_EXIT_TRIES = 4
 
+    -- How many already-left servers a filtered Serverhop remembers so it never picks them again
+    local MAX_VISITED = 80
+
     local serverhopBusy = false
 
     -- Reads/writes executor globals (getgenv()) by key, so the linter does not mistake them for script globals.
@@ -910,12 +911,14 @@ do
 
     -- Runs inside the lobby. Everything is retried because the server silently drops a
     -- TeleportRequested that arrives before it has finished loading the player's menu data.
-    -- REQUEST and RELOAD_SCRIPT are written in front of this body by buildLobbyScript.
+    -- A different server is picked here from Roblox's public server list and joined
+    -- through JoinRequested.
     local LOBBY_BODY = [==[
 local TAG = "[Celestial Serverhop]"
 local MENU_READY_TIMEOUT = 30
 local ATTEMPT_TIMEOUT = 12
-local MAX_ATTEMPTS = 6
+local MAX_ATTEMPTS = 8
+local SERVER_LIST_TRIES = 3
 
 local function log(...)
     warn(TAG, ...)
@@ -934,6 +937,7 @@ end
 
 local players = game:GetService("Players")
 local replicatedStorage = game:GetService("ReplicatedStorage")
+local httpService = game:GetService("HttpService")
 
 local localPlayer = players.LocalPlayer
 while not localPlayer do
@@ -943,6 +947,7 @@ end
 
 local teleportEvents = replicatedStorage:WaitForChild("TeleportEvents", 20)
 local requestEvent = teleportEvents and teleportEvents:WaitForChild("TeleportRequested", 20)
+local joinEvent = teleportEvents and teleportEvents:FindFirstChild("JoinRequested")
 
 if not requestEvent then
     log("this is not the main menu (TeleportEvents is missing), nothing to request")
@@ -1002,6 +1007,64 @@ local function menuLooksReady()
     return true
 end
 
+-- Public servers of the mode's place without the ones that must not be picked again, in a random order.
+-- Servers under the player limit (when the low-player filter is on) come first.
+local function fetchServers()
+    if not joinEvent or not PLACE_ID then
+        return nil
+    end
+
+    for try = 1, SERVER_LIST_TRIES do
+        local ok, decoded = pcall(function()
+            return httpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. PLACE_ID .. "/servers/Public?sortOrder=Asc&excludeFullGames=true&limit=100"))
+        end)
+
+        if ok and type(decoded) == "table" and type(decoded.data) == "table" then
+            return decoded.data
+        end
+
+        log("could not read the server list (try " .. try .. "/" .. SERVER_LIST_TRIES .. "):", tostring(decoded))
+        task.wait(2 * try)
+    end
+
+    return nil
+end
+
+local function rankServers(servers, avoidSet)
+    local preferred, others = {}, {}
+
+    for _, server in ipairs(servers) do
+        local id = server.id
+        local playing = tonumber(server.playing) or 0
+        local capacity = tonumber(server.maxPlayers) or 12
+
+        -- playing > 0 skips empty servers that are about to shut down
+        if type(id) == "string" and not avoidSet[id] and playing > 0 and playing < capacity then
+            if MAX_PLAYERS and playing + 1 <= MAX_PLAYERS then
+                table.insert(preferred, id)
+            else
+                table.insert(others, id)
+            end
+        end
+    end
+
+    local function shuffle(list)
+        for i = #list, 2, -1 do
+            local j = math.random(i)
+            list[i], list[j] = list[j], list[i]
+        end
+    end
+
+    shuffle(preferred)
+    shuffle(others)
+
+    for _, id in ipairs(others) do
+        table.insert(preferred, id)
+    end
+
+    return preferred
+end
+
 local waitStart = os.clock()
 
 while not (menuDataLoaded or menuLooksReady()) and os.clock() - waitStart < MENU_READY_TIMEOUT do
@@ -1010,13 +1073,49 @@ end
 
 log(string.format("menu ready after %.1fs (data event: %s)", os.clock() - waitStart, tostring(menuDataLoaded)))
 
--- Give the server a moment to finish registering the player before the first request
-task.wait(1)
+-- Servers already left in this hop chain are skipped; if that leaves nothing, only the one just left is skipped
+local candidates = {}
+local servers = fetchServers()
+
+if servers then
+    local avoid = {}
+    local decodedOk, avoidList = pcall(function()
+        return httpService:JSONDecode(AVOID_JSON)
+    end)
+
+    if decodedOk and type(avoidList) == "table" then
+        for _, id in ipairs(avoidList) do
+            avoid[id] = true
+        end
+    end
+
+    avoid[LEFT_JOB] = true
+    candidates = rankServers(servers, avoid)
+
+    if #candidates == 0 then
+        candidates = rankServers(servers, { [LEFT_JOB] = true })
+    end
+end
+
+log(#candidates .. " other server(s) to join")
+
+task.wait(1) -- Give the server a moment to finish registering the player before the first request
+
+local nextCandidate = 1
+local candidateTimeouts = 0
 
 for attempt = 1, MAX_ATTEMPTS do
     lastFailure = nil
-    log("requesting '" .. REQUEST .. "' (attempt " .. attempt .. "/" .. MAX_ATTEMPTS .. ")")
-    requestEvent:FireServer(REQUEST)
+
+    local candidate = candidates[nextCandidate]
+
+    if candidate then
+        log("joining server " .. candidate .. " (attempt " .. attempt .. "/" .. MAX_ATTEMPTS .. ")")
+        joinEvent:FireServer(localPlayer.UserId, PLACE_ID, candidate)
+    else
+        log("requesting '" .. REQUEST .. "' (attempt " .. attempt .. "/" .. MAX_ATTEMPTS .. ")")
+        requestEvent:FireServer(REQUEST)
+    end
 
     local sentAt = os.clock()
 
@@ -1026,9 +1125,25 @@ for attempt = 1, MAX_ATTEMPTS do
 
     if lastFailure then
         log("teleport failed:", tostring(lastFailure.result))
+
+        if candidate then
+            nextCandidate += 1
+            candidateTimeouts = 0
+        end
+
         task.wait(lastFailure.result == Enum.TeleportResult.Flooded and 8 or 3)
     else
         log("no teleport started after " .. ATTEMPT_TIMEOUT .. "s, asking again")
+
+        -- A request the server dropped is asked once more, then the next server is tried
+        if candidate then
+            candidateTimeouts += 1
+
+            if candidateTimeouts >= 2 then
+                nextCandidate += 1
+                candidateTimeouts = 0
+            end
+        end
     end
 end
 
@@ -1049,9 +1164,13 @@ log("gave up asking for a server; press Play manually (the script will still rel
             .. "if not ok then warn(" .. string.format("%q", TAG) .. ", 'reload failed:', err) end\n"
     end
 
-    local function buildLobbyScript(requestedMode, reloadScript)
+    local function buildLobbyScript(requestedMode, reloadScript, avoidIds, maxPlayers)
         return "local REQUEST = " .. string.format("%q", requestedMode) .. "\n"
             .. "local RELOAD_SCRIPT = " .. (reloadScript and string.format("%q", reloadScript) or "nil") .. "\n"
+            .. "local PLACE_ID = " .. tostring(game.PlaceId) .. "\n"
+            .. "local AVOID_JSON = " .. string.format("%q", httpService:JSONEncode(avoidIds)) .. "\n"
+            .. "local LEFT_JOB = " .. string.format("%q", game.JobId) .. "\n"
+            .. "local MAX_PLAYERS = " .. (maxPlayers and tostring(maxPlayers) or "nil") .. "\n"
             .. LOBBY_BODY
     end
 
@@ -1072,7 +1191,26 @@ log("gave up asking for a server; press Play manually (the script will still rel
 
         serverhopBusy = true
 
-        local queued, queueError = pcall(queueFunction, buildLobbyScript(getModeRequestName(), reload and buildReloadScript(resume) or nil))
+        -- Servers already left in this hop chain travel with the filter state so they are not picked again
+        local avoidIds = { game.JobId }
+
+        if resume then
+            local visitedList = type(resume.visited) == "table" and resume.visited or {}
+
+            if not table.find(visitedList, game.JobId) then
+                table.insert(visitedList, game.JobId)
+            end
+
+            while #visitedList > MAX_VISITED do
+                table.remove(visitedList, 1)
+            end
+
+            resume.visited = visitedList
+            avoidIds = visitedList
+        end
+
+        local maxPlayers = resume and resume.lowPlayers and resume.maxPlayers or nil
+        local queued, queueError = pcall(queueFunction, buildLobbyScript(getModeRequestName(), reload and buildReloadScript(resume) or nil, avoidIds, maxPlayers))
 
         if not queued then
             serverhopBusy = false
@@ -1108,13 +1246,13 @@ log("gave up asking for a server; press Play manually (the script will still rel
     filterGroup:AddToggle("serverhopLowPlayers_Toggle", { Text = "Prefer Low-Player Servers", Tooltip = "Serverhop keeps hopping until it lands in a server with at least this many players." })
 
     local lowPlayersBox = filterGroup:AddDependencyBox()
-    lowPlayersBox:AddSlider("serverhopMaxPlayers_Slider", { Text = "Max Players", Tooltip = "Servers with more players than this (counting you) are skipped. A server holds 12.", Default = 6, Min = 1, Max = 11 })
+    lowPlayersBox:AddSlider("serverhopMaxPlayers_Slider", { Text = "Max Players", Tooltip = "Servers with more players than this (counting you) are skipped. A server holds 12.", Default = 7, Min = 7, Max = 11 })
     lowPlayersBox:SetupDependencies({ { toggles.serverhopLowPlayers_Toggle, true } })
 
     filterGroup:AddToggle("serverhopKillerFilter_Toggle", { Text = "Skip Servers With Dead Killers", Tooltip = "Serverhop keeps hopping when the killers you care about are already dead in the server you land in." })
 
     local killerFilterBox = filterGroup:AddDependencyBox()
-    killerFilterBox:AddDropdown("serverhopKillers_Dropdown", { Text = "Killers I Care About", Tooltip = "Killers that are not in the server at all are ignored.", Values = killerNames, Multi = true, Searchable = true, AllowNull = true })
+    killerFilterBox:AddDropdown("serverhopKillers_Dropdown", { Text = "Killers I Care About", Tooltip = "Killers that are not in the server at all are ignored.", Values = killerNames, Multi = true, Searchable = true, AllowNull = true, DragSelect = true })
     killerFilterBox:AddDropdown("serverhopKillerMode_Dropdown", { Text = "Skip When", Values = { "Any selected is dead", "All selected are dead" }, Default = 1 })
     killerFilterBox:SetupDependencies({ { toggles.serverhopKillerFilter_Toggle, true } })
 
@@ -2138,10 +2276,7 @@ end
 
 -- [Player / Speed Check Bypass] Controls
 
-ui.player.movement:AddToggle("speedBypass_Toggle", { Text = "Speed Check Bypass", Default = true, Tooltip = "EXPERIMENTAL. Disables the game's client-side movement checks (WalkSpeed, JumpPower, state changes, collision). You should still be cautious when using features in the Player tab." })
-
-local speedBypassSettings = toggles.speedBypass_Toggle:AddSettings({ Width = 250 })
-speedBypassSettings:AddToggle("speedBypassNoAcceleration_Toggle", { Text = "Disable Acceleration", Tooltip = "Removes the slight sliding effect when starting or stopping at high WalkSpeed values. Only applies while on the ground." })
+ui.player.movement:AddToggle("speedBypass_Toggle", { Text = "Speed Check Bypass", Default = true, Tooltip = "EXPERIMENTAL. Disables the game's client-side movement checks (WalkSpeed, JumpPower, state changes, collision)." })
 
 -- [Player / Speed Exploit] Controls
 
@@ -2150,11 +2285,12 @@ ui.player.movement:AddToggle("speedExploit_Toggle", { Text = "Speed Exploit" })
 local speedExploitSettings = toggles.speedExploit_Toggle:AddSettings({ Width = 260 })
 speedExploitSettings:AddDropdown("speedExploitMethod_Dropdown", { Text = "Method", Values = { "WalkSpeed", "Velocity" }, Default = 1 })
 speedExploitSettings:AddSlider("speedExploitAmount_Slider", { Text = "Amount", Default = 20, Min = 16, Max = 100 })
+speedExploitSettings:AddToggle("speedBypassNoAcceleration_Toggle", { Text = "Disable Acceleration", Tooltip = "Removes the slight sliding effect at high WalkSpeed values. Only applies while on the ground." })
 speedExploitSettings:AddLabel("Due to Roblox's physics limitations, high velocity speeds may cause unexpected falling on collisions.", true)
 
 -- [Player / Fly] Controls and input handling
 
-ui.player.movement:AddToggle("enableFly_Toggle", { Text = "Enable Fly", Tooltip = "Unlocks the Fly toggle and its keybind. The Fly speeds are in the gear." })
+ui.player.movement:AddToggle("enableFly_Toggle", { Text = "Enable Fly", Tooltip = "Unlocks the Fly toggle and its keybind.", DisabledTooltip = "This feature requires Speed Check Bypass." })
 
 local flySettings = toggles.enableFly_Toggle:AddSettings({ Width = 270 })
 local flyHorizSpeed_Slider = flySettings:AddSlider("flyHorizSpeed_Slider", { Text = "Horizontal Speed", Tooltip = "The speed you normally go at.", Default = 100, Min = 30, Max = 1000 })
@@ -2168,7 +2304,7 @@ flyBox:SetupDependencies({ { toggles.enableFly_Toggle, true } })
 
 -- [Player / Noclip] Controls
 
-ui.player.clipping:AddToggle("enableNoclip_Toggle", { Text = "Enable Noclip", Tooltip = "Unlocks the Noclip toggle and its keybind." })
+ui.player.clipping:AddToggle("enableNoclip_Toggle", { Text = "Enable Noclip", Tooltip = "Unlocks the Noclip toggle and its keybind.", DisabledTooltip = "This feature requires Speed Check Bypass." })
 
 local noclipBox = ui.player.clipping:AddDependencyBox()
 noclipBox:AddToggle("toggleNoclip_Toggle", { Text = "Noclip" })
@@ -2177,7 +2313,7 @@ noclipBox:SetupDependencies({ { toggles.enableNoclip_Toggle, true } })
 
 -- [Player / Jump Power] Controls
 
-ui.player.movement:AddToggle("enableJumpPower_Toggle", { Text = "Enable JumpPower" })
+ui.player.movement:AddToggle("enableJumpPower_Toggle", { Text = "Enable JumpPower", DisabledTooltip = "This feature requires Speed Check Bypass." })
 
 local jumpPowerSettings = toggles.enableJumpPower_Toggle:AddSettings({ Width = 220 })
 jumpPowerSettings:AddSlider("jumpPowerValue_Slider", { Text = "Value", Default = 50, Min = 50, Max = 200 })
@@ -2337,6 +2473,230 @@ toggles.toggleNoclip_Toggle:OnChanged(function(noclipToggleEnabled)
     end
 end)
 
+-- [Player / Click TP] Teleports you to the spot under your cursor
+do
+    local performClickTP
+
+    ui.player.movement:AddToggle("enableClickTP_Toggle", { Text = "Enable Click TP", Tooltip = "Unlocks the Click TP keybind. Press it to teleport to the spot under your cursor." })
+
+    local clickTPBox = ui.player.movement:AddDependencyBox()
+    clickTPBox:AddLabel("Click TP"):AddKeyPicker("clickTP_KeyPicker", { Text = "Click TP", Default = "T", Mode = "Press", NoUI = true, Disabled = true,
+        Callback = function()
+            performClickTP()
+        end,
+    })
+    clickTPBox:SetupDependencies({ { toggles.enableClickTP_Toggle, true } })
+
+    toggles.enableClickTP_Toggle:OnChanged(function(enabled)
+        local keypicker = options.clickTP_KeyPicker
+        keypicker:SetDisabled(not enabled)
+        keypicker:SetNoUI(not enabled)
+    end)
+
+    local config = {
+        Cooldown = 0.25,
+        NotifyCooldown = 1,
+        MaxDistance = 2000, -- studs the cursor ray reaches
+        WallPush = 2, -- studs away from a wall, slope or ceiling where the floor search starts
+        MaxFloorDrop = 60, -- how far below a wall, slope or ceiling hit the floor is searched
+        MinFloorNormalY = 0.7, -- steeper than this is a wall or a slide, not a floor
+        ClearanceBox = Vector3.new(2.4, 4.6, 2.4), -- room needed around the landing spot (slightly larger than your body)
+        ClearanceLift = 0.35, -- the clearance box sits this far above the root part, so the floor itself is never inside it
+        FloorTolerance = 1.5, -- a nudged landing spot must have floor within this height of the clicked floor
+        NudgeRadii = { 0, 1.5, 3 }, -- the clicked spot first, then rings around it, when it is too tight to stand in
+        NudgeDirections = 8,
+    }
+
+    local solidGroup = "Default"
+
+    for _, group in ipairs(game:GetService("PhysicsService"):GetRegisteredCollisionGroups()) do
+        if group.name == "Survivors" then
+            solidGroup = "Survivors"
+            break
+        end
+    end
+
+    local overlapParams = OverlapParams.new()
+    overlapParams.FilterType = Enum.RaycastFilterType.Exclude
+    overlapParams.RespectCanCollide = true
+    overlapParams.CollisionGroup = solidGroup
+
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = Enum.RaycastFilterType.Exclude
+    rayParams.RespectCanCollide = true
+    rayParams.CollisionGroup = solidGroup
+
+    local lastTeleport = -math.huge
+    local lastNotify = -math.huge
+
+    local function notifyClickTP(description)
+        local now = os.clock()
+
+        if now - lastNotify < config.NotifyCooldown then
+            return
+        end
+
+        lastNotify = now
+        notify("Error", "Click TP", description, 10)
+    end
+
+    -- Your character, Killers and the MapLimit walls are never what the cursor lands on
+    local function refreshFilters(character)
+        local ignored = { character }
+
+        for _, name in ipairs({ "Killers", "Characters to kill" }) do
+            local folder = workspace:FindFirstChild(name)
+
+            if folder then
+                table.insert(ignored, folder)
+            end
+        end
+
+        local area = workspace:FindFirstChild("AREA51")
+        local limit = area and area:FindFirstChild("MapLimit")
+
+        if limit then
+            table.insert(ignored, limit)
+        end
+
+        overlapParams.FilterDescendantsInstances = ignored
+        rayParams.FilterDescendantsInstances = ignored
+    end
+
+    -- Anything solid in the box that is not a character
+    local function isSolid(cframe, size)
+        for _, part in ipairs(workspace:GetPartBoundsInBox(cframe, size, overlapParams)) do
+            local model = part:FindFirstAncestorOfClass("Model")
+
+            if not (model and model:FindFirstChildOfClass("Humanoid")) then
+                return true
+            end
+        end
+
+        return false
+    end
+
+    -- Walkable floor under a spot, searched downward from `fromY`
+    local function findFloor(spot, fromY, drop)
+        local result = workspace:Raycast(Vector3.new(spot.X, fromY, spot.Z), Vector3.new(0, -drop, 0), rayParams)
+
+        if result and result.Normal.Y >= config.MinFloorNormalY then
+            return result
+        end
+
+        return nil
+    end
+
+    -- Calculates where Click TP would put you. Returns the landing position, or nil and the reason.
+    local function planClickTP(hrp, humanoid)
+        local currentCamera = workspace.CurrentCamera
+
+        if not currentCamera then
+            return nil, "There is no camera."
+        end
+
+        local mouse = uis:GetMouseLocation()
+        local ray = currentCamera:ViewportPointToRay(mouse.X, mouse.Y)
+        local hit = workspace:Raycast(ray.Origin, ray.Direction * config.MaxDistance, rayParams)
+
+        if not hit then
+            return nil, "There is nothing under your cursor."
+        end
+
+        local standOffset = humanoid.HipHeight + hrp.Size.Y / 2
+        local center
+
+        if hit.Normal.Y >= config.MinFloorNormalY then
+            center = hit.Position
+        else
+            -- A wall, slope or ceiling: stand next to it, on the floor below
+            local spot = hit.Position + hit.Normal * config.WallPush
+            local floor = findFloor(spot, spot.Y, config.MaxFloorDrop)
+
+            if not floor then
+                return nil, "There is no floor next to that spot."
+            end
+
+            center = floor.Position
+        end
+
+        for _, radius in ipairs(config.NudgeRadii) do
+            local count = radius == 0 and 1 or config.NudgeDirections
+
+            for index = 1, count do
+                local angle = (index - 1) / count * math.pi * 2
+                local spot = center + Vector3.new(math.cos(angle), 0, math.sin(angle)) * radius
+                local floorY = center.Y
+
+                if radius > 0 then
+                    local floor = findFloor(spot, center.Y + config.FloorTolerance, config.FloorTolerance * 2)
+
+                    if not floor then
+                        continue
+                    end
+
+                    floorY = floor.Position.Y
+                end
+
+                local landing = Vector3.new(spot.X, floorY + standOffset, spot.Z)
+
+                if not isSolid(CFrame.new(landing + Vector3.new(0, config.ClearanceLift, 0)), config.ClearanceBox) then
+                    return landing
+                end
+            end
+        end
+
+        return nil, "There is not enough room to stand there."
+    end
+
+    performClickTP = function()
+        if not toggles.enableClickTP_Toggle.Value or uis:GetFocusedTextBox() or not isAlive() then
+            return
+        end
+
+        -- Block if the window is open
+        if library.Toggled then
+            notifyClickTP("Close the menu to use Click TP, the cursor is over it.")
+            return
+        end
+
+        local now = os.clock()
+
+        if now - lastTeleport < config.Cooldown then
+            return
+        end
+
+        lastTeleport = now
+
+        local hrp = getHRP()
+        local humanoid = getHumanoid()
+
+        if not hrp or not humanoid then
+            return
+        end
+
+        local success, landing, reason = pcall(function()
+            refreshFilters(hrp.Parent)
+
+            return planClickTP(hrp, humanoid)
+        end)
+
+        if not success then
+            warn("[Click TP] " .. tostring(landing))
+            return
+        end
+
+        if not landing then
+            notifyClickTP(reason)
+            return
+        end
+
+        -- Only the position changes; the way the character is facing is kept
+        entityLib.teleport(CFrame.new(landing) * hrp.CFrame.Rotation)
+        hrp.AssemblyLinearVelocity = Vector3.zero
+    end
+end
+
 -- [Player / Speed Exploit] Initial configuration and runtime updates
 
 local WALKSPEED_BASE_MAX = 25 -- WalkSpeed slider maximum while Speed Check Bypass is off
@@ -2445,9 +2805,19 @@ options.speedExploitMethod_Dropdown:OnChanged(function()
     local method = options.speedExploitMethod_Dropdown.Value
     local slider = options.speedExploitAmount_Slider
 
+    toggles.speedBypassNoAcceleration_Toggle:SetVisible(method == "WalkSpeed")
+
+    -- Velocity is disabled while the bypass is off.
+    if method == "Velocity" and not toggles.speedBypass_Toggle.Value then
+        options.speedExploitMethod_Dropdown:SetValue("WalkSpeed")
+        notify("Warning", "Speed Exploit", "Velocity needs Speed Check Bypass, or it can get you banned. Speed Exploit has been updated to WalkSpeed.", 10)
+        return
+    end
+
     if method == "Velocity" and toggles.toggleFly_Toggle.Value then
         options.speedExploitMethod_Dropdown:SetValue("WalkSpeed")
         notify("Error", "Incompatible", "Velocity Speed is incompatible with Fly. Speed Exploit has been updated to WalkSpeed.", 10)
+        return
     end
 
     if method == "WalkSpeed" then
@@ -2667,7 +3037,7 @@ do
             if hum.Health <= 0 or hum.Sit or hum.PlatformStand then return end
             if hum.WalkSpeed <= 16 or hum.FloorMaterial == Enum.Material.Air then return end
             if toggles.toggleFly_Toggle.Value then return end
-            if toggles.speedExploit_Toggle.Value and options.speedExploitMethod_Dropdown.Value == "Velocity" then return end
+            if not toggles.speedExploit_Toggle.Value or options.speedExploitMethod_Dropdown.Value ~= "WalkSpeed" then return end
 
             local velocity = root.AssemblyLinearVelocity
             local moveDirection = hum.MoveDirection
@@ -2690,9 +3060,79 @@ do
         end
     end
 
+    -- [Player / Speed Check Bypass] Safeguards: disable some modules while the bypass is off..
+    local lockedToggles = {
+        { Id = "enableFly_Toggle", Name = "Fly" },
+        { Id = "enableNoclip_Toggle", Name = "Noclip" },
+        { Id = "enableJumpPower_Toggle", Name = "JumpPower" },
+    }
+
+    -- A saved config applies every element on its own, in no fixed order, and SetValue still changes a disabled toggle.
+    for _, id in ipairs({ "enableFly_Toggle", "toggleFly_Toggle", "enableNoclip_Toggle", "toggleNoclip_Toggle", "enableJumpPower_Toggle" }) do
+        local toggle = toggles[id]
+        local setValue = toggle.SetValue
+
+        toggle.SetValue = function(self, enabled)
+            if enabled and toggles.speedBypass_Toggle.Value ~= true then
+                return
+            end
+
+            return setValue(self, enabled)
+        end
+    end
+
+    local function applySafeguards()
+        local bypassOn = toggles.speedBypass_Toggle.Value == true
+        local switchedOff = {}
+
+        for _, locked in ipairs(lockedToggles) do
+            local toggle = toggles[locked.Id]
+
+            if bypassOn then
+                if toggle.Disabled then
+                    toggle:SetDisabled(false)
+                end
+            else
+                if toggle.Value then
+                    -- A disabled toggle does not run its callback, so it is unlocked just long enough for the module to disable properly.
+                    if toggle.Disabled then
+                        toggle:SetDisabled(false)
+                    end
+
+                    toggle:SetValue(false)
+                    table.insert(switchedOff, locked.Name)
+                end
+
+                if not toggle.Disabled then
+                    toggle:SetDisabled(true)
+                end
+            end
+        end
+
+        local methodDropdown = options.speedExploitMethod_Dropdown
+
+        if bypassOn then
+            methodDropdown:SetDisabledValues({})
+        else
+            methodDropdown:SetDisabledValues({ "Velocity" })
+
+            if methodDropdown.Value == "Velocity" then
+                methodDropdown:SetValue("WalkSpeed")
+                table.insert(switchedOff, "Velocity speed")
+            end
+        end
+
+        toggles.speedBypassNoAcceleration_Toggle:SetDisabled(not bypassOn)
+
+        if #switchedOff > 0 then
+            notify("Warning", "Speed Check Bypass", "Turned off " .. utils.bold(table.concat(switchedOff, ", ")) .. " because the bypass is disabled. They can get you banned without it and stay locked until it is back on.", 10)
+        end
+    end
+
     toggles.speedBypassNoAcceleration_Toggle:OnChanged(refreshNoAcceleration)
 
     toggles.speedBypass_Toggle:OnChanged(function(enabled)
+        applySafeguards() -- First, so that turning the bypass off disables the risky modules before the checks come back.
         refreshNoAcceleration()
 
         local slider = options.speedExploitAmount_Slider
@@ -2728,6 +3168,7 @@ do
     end
 
     refreshNoAcceleration()
+    applySafeguards()
 end
 
 -- [Player / Phase] Teleports you through a wall to the floor on the other side
@@ -4105,7 +4546,7 @@ ui.exploits.aim:AddToggle("enableAimbot_Toggle", { Text = "Enable Aimbot" })
 local aimbotSettings = toggles.enableAimbot_Toggle:AddSettings({ Width = 280 })
 aimbotSettings:AddDropdown("aimbotHitPart_Dropdown", { Text = "Hit Part", Values = { "Head", "HumanoidRootPart" }, Default = 1 })
 aimbotSettings:AddDropdown("aimbotTargetType_Dropdown", { Text = "Target Type", Values = { "Closest", "Closest to Cursor" }, Default = 2 })
-aimbotSettings:AddDropdown("aimbotExcludedKillers_Dropdown", { Text = "Excluded Killers", Values = killerNames, Default = { "Giant", "Jane" }, Multi = true, Searchable = true })
+aimbotSettings:AddDropdown("aimbotExcludedKillers_Dropdown", { Text = "Excluded Killers", Values = killerNames, Default = { "Giant", "Jane" }, Multi = true, Searchable = true, DragSelect = true })
 aimbotSettings:AddSlider("aimbotMaximumDistance_Slider", { Text = "Range", Tooltip = "Killers farther than this distance will not be targeted.", Default = 100, Min = 10, Max = 2000, Suffix = " Studs", Rounding = 1 })
 aimbotSettings:AddSlider("aimbotSmoothing_Slider", { Text = "Smoothing", Tooltip = "How smooth aimbot should lock onto Killer's.", Default = 400, Min = 10, Max = 1000 })
 aimbotSettings:AddToggle("aimbotVisibilityCheck_Toggle", { Text = "Visibility Check", Tooltip = "Whether to only target Killers that are visible.", Default = true })
@@ -4129,6 +4570,7 @@ utils.addRainbowSettings(silentAimFOVColorSettings:AddLabel("FOV Color"):AddColo
 
 
 ui.misc.objectives:AddToggle("autoCollect_Toggle", { Text = "Auto Collect Ingredients", Tooltip = "Automatically collects all materials/ingredients added in V17.0." })
+ui.misc.objectives:AddToggle("autoPickupCaseFiles_Toggle", { Text = "Auto Pickup Case Files", Tooltip = "Automatically picks up the Case files dropped by Killers." })
 ui.misc.objectives:AddButton({ Text = "Complete Area 51 Personnel", Icon = "trophy",
     Func = function()
         local hrp = getHRP()
@@ -4397,8 +4839,9 @@ do
         return model.PrimaryPart
     end
 
-    local function resolveSilentAimPart(model, rootPart, horizontalSpeed, distance)
-        local mode = options.silentAimHitPart_Dropdown.Value
+    -- modeOverride: lets Autofarm & Kill Aura apply their own Aim Part setting instead of Silent Aim's Hit Part
+    local function resolveSilentAimPart(model, rootPart, horizontalSpeed, distance, modeOverride)
+        local mode = modeOverride or options.silentAimHitPart_Dropdown.Value
         local part
 
         if mode == "Auto" then
@@ -4495,12 +4938,157 @@ do
         return position + velocity * leadTime * predictionFactor
     end
 
-    -- Where a bullet has to go to hit the Killer Autofarm is locked onto: its Head,
-    local function getForcedAimPosition(model, muzzlePosition, source)
+    -- [Silent Aim / Grenade Launcher] The M203's grenade is the one projectile that falls. Kill Aura aims along the launch angle whose
+    -- arc reaches the Killer instead (see solveGrenadeAimPosition).
+    local LAUNCHER_TOOL_NAME = "M16A2/M203"
+    local GRENADE_SPEED = 150 -- Weapon.fire: AssemblyLinearVelocity = Unit * 150 (the Projectile Speed Multiplier gun mod scales it)
+    local GRENADE_UP_FORCE = 10 -- M16A2/M203 set_missile: BodyForce.Force = Vector3.new(0, 10, 0)
+    local GRENADE_MIN_DISTANCE = 12 -- studs: closer Killers are left alone so the blast cannot land on the player
+    local GRENADE_LEAD_ITERATIONS = 6 -- the flight time depends on where the Killer will be, which depends on the flight time
+    local grenadeMass = nil
+
+    -- True for the M16A2/M203 in grenade mode. The PAP M1911 is flagged is_grenade as well, but its rounds cancel gravity
+    -- and fly straight, so it must not be treated as an arc.
+    local function isLauncherWeapon(weapon)
+        if type(weapon) ~= "table" or weapon.is_grenade ~= true then
+            return false
+        end
+
+        local tool = weapon.instance
+
+        return typeof(tool) == "Instance" and string.find(tool.Name, LAUNCHER_TOOL_NAME, 1, true) ~= nil
+    end
+
+    -- The grenade is a 1 x 1 x 1 ball with default density; its mass decides how strongly the 10 studs of lift counter gravity
+    local function getGrenadeMass()
+        if not grenadeMass then
+            local probe = Instance.new("Part")
+            probe.Shape = Enum.PartType.Ball
+            probe.Size = Vector3.new(1, 1, 1)
+            grenadeMass = probe.Mass
+            probe:Destroy()
+        end
+
+        return grenadeMass
+    end
+
+    local function getGrenadeSpeed()
+        local multiplier = 1
+        local getMultiplier = utils.getProjectileSpeedMultiplier
+
+        -- The gun mod only boosts bullets while firesignal exists (same rule as the Grenade Trajectory preview)
+        if type(getMultiplier) == "function" and type(firesignal) == "function" then
+            local success, value = pcall(getMultiplier)
+
+            if success and type(value) == "number" and value > 1 then
+                multiplier = value
+            end
+        end
+
+        return GRENADE_SPEED * multiplier
+    end
+
+    -- Launch direction and flight time that bring a projectile leaving origin at speed through target while it accelerates
+    -- downward at accel.
+    local function solveBallisticDirection(origin, target, speed, accel)
+        local delta = target - origin
+        local distanceSquared = delta:Dot(delta)
+
+        if distanceSquared < 1e-4 then
+            return nil
+        end
+
+        if accel < 1e-3 then
+            return delta.Unit, delta.Magnitude / speed
+        end
+
+        local b = accel * delta.Y - speed * speed
+        local discriminant = b * b - accel * accel * distanceSquared
+
+        if discriminant < 0 then
+            return nil
+        end
+
+        local root = math.sqrt(discriminant)
+        local denominator = 0.5 * accel * accel
+        local timeSquared = (-b - root) / denominator
+
+        if timeSquared <= 1e-6 then
+            timeSquared = (-b + root) / denominator
+        end
+
+        if timeSquared <= 1e-6 then
+            return nil
+        end
+
+        local flightTime = math.sqrt(timeSquared)
+        local launchVelocity = delta / flightTime + Vector3.new(0, 0.5 * accel * flightTime, 0)
+
+        return launchVelocity.Unit, flightTime
+    end
+
+    -- A point on the launch line that makes the grenade reach rootPart's Killer, led by its horizontal movement.
+    local function solveGrenadeAimPosition(origin, rootPart)
+        local position = rootPart.Position
+
+        if (position - origin).Magnitude < GRENADE_MIN_DISTANCE then
+            return nil
+        end
+
+        local speed = getGrenadeSpeed()
+        local accel = workspace.Gravity - GRENADE_UP_FORCE / getGrenadeMass()
+        local velocity = Vector3.zero
+
+        if toggles.silentAimPrediction_Toggle.Value then
+            local linear = rootPart.AssemblyLinearVelocity
+            local horizontal = Vector3.new(linear.X, 0, linear.Z)
+
+            if horizontal.Magnitude <= SILENT_AIM_MAX_TARGET_SPEED then
+                velocity = horizontal
+            end
+        end
+
+        local predictionFactor = tonumber(options.silentAimPredictionFactor_Slider.Value) or 1
+        local aimTarget = position
+        local direction = nil
+
+        for _ = 1, GRENADE_LEAD_ITERATIONS do
+            local solved, flightTime = solveBallisticDirection(origin, aimTarget, speed, accel)
+
+            if not solved then
+                return nil
+            end
+
+            direction = solved
+
+            local led = position + velocity * math.min(flightTime, SILENT_AIM_MAX_LEAD_TIME) * predictionFactor
+
+            if (led - aimTarget).Magnitude < 0.5 then
+                break
+            end
+
+            aimTarget = led
+        end
+
+        -- Weapon.fire only uses the direction (aim point - muzzle).Unit, so any distance along it will work
+        return origin + direction * 100
+    end
+
+    -- Where a bullet has to go to hit the Killer Autofarm or Kill Aura is locked onto.
+    -- Second return value: true when the shot has to be cancelled because the grenade launcher cannot reach the locked Killer.
+    local function getForcedAimPosition(model, muzzlePosition, source, weapon)
         local rootPart = getSilentAimRootPart(model)
 
         if not rootPart then
             return nil
+        end
+
+        -- Grenades hit through the explosion and are aimed at the body: it is the biggest part and the arc leaves no room to correct
+        if source == "killaura" and isLauncherWeapon(weapon) then
+            -- The arc starts where the grenade leaves the launcher, so a camera position cannot act as the muzzle
+            local position = muzzlePosition and solveGrenadeAimPosition(muzzlePosition, rootPart) or nil
+
+            return position, position == nil
         end
 
         local currentCamera = workspace.CurrentCamera or camera
@@ -4513,7 +5101,8 @@ do
             local velocity = rootPart.AssemblyLinearVelocity
             local horizontalSpeed = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
 
-            targetPart = resolveSilentAimPart(model, rootPart, horizontalSpeed, (rootPart.Position - origin).Magnitude)
+            -- "Auto" must not depend on what Silent Aim's Hit Part is set to
+            targetPart = resolveSilentAimPart(model, rootPart, horizontalSpeed, (rootPart.Position - origin).Magnitude, "Auto")
         else
             targetPart = model:FindFirstChild(mode, true)
 
@@ -4527,6 +5116,13 @@ do
         end
 
         return predictSilentAimPosition(origin, targetPart, rootPart)
+    end
+
+    utils.isLauncherWeapon = isLauncherWeapon
+
+    -- Where Kill Aura has to shoot to hit model with weapon. For the M203, nil means no launch angle reaches the Killer.
+    utils.killAuraAimPosition = function(model, weapon)
+        return (getForcedAimPosition(model, getSilentAimMuzzlePosition(weapon), "killaura", weapon))
     end
 
     -- Returns the Killer model and the position to shoot at, or nil when nothing is inside the FOV.
@@ -4596,12 +5192,18 @@ do
             local forcedModel, forcedSource = getForcedSilentAimModel()
 
             if forcedModel then
-                local forcedPosition = getForcedAimPosition(forcedModel, getSilentAimMuzzlePosition(self), forcedSource)
+                local forcedPosition, cancelShot = getForcedAimPosition(forcedModel, getSilentAimMuzzlePosition(self), forcedSource, self)
 
                 if forcedPosition then
                     silentAimLock = { model = forcedModel, time = os.clock() }
 
                     return forcedPosition
+                end
+
+                -- A grenade that cannot reach the Killer is not fired at all: Weapon.fire returns before it spends any ammo
+                -- when screen_to_target gives it no target
+                if cancelShot then
+                    return nil
                 end
             end
 
@@ -4834,6 +5436,8 @@ do
     -- On unload: stop drawing, put the game's original weapon functions back, and remove the FOV circle.
     table.insert(teardownTasks, function()
         silentAimFOVConnection:Disconnect()
+        utils.isLauncherWeapon = nil
+        utils.killAuraAimPosition = nil
 
         for _, record in ipairs(silentAimHookRecords) do
             restoreSilentAimRecord(record)
@@ -5129,77 +5733,167 @@ toggles.enableAimbot_Toggle:OnChanged(function(state)
     end
 end)
 
--- [Exploits / Triggerbot] Auto-fire while the aim point is over a Killer
+-- [Exploits / Triggerbot] Auto-fire while the aim point is over a Killer.
 do
     local triggerbotToggle = ui.exploits.aim:AddToggle("enableTriggerbot_Toggle", { Text = "Enable Triggerbot", Tooltip = "Fires automatically while your aim is on a Killer." })
     triggerbotToggle:AddKeyPicker("triggerbot_KeyPicker", { Text = "Triggerbot", Default = "None", Mode = "Always", NoUI = false })
 
     local triggerbotSettings = toggles.enableTriggerbot_Toggle:AddSettings({ Width = 300 })
-    triggerbotSettings:AddDropdown("triggerbotFireMode_Dropdown", { Text = "Fire Mode", Tooltip = "Click: clicks the mouse repeatedly (semi-auto weapons).\nHold: keeps the mouse button down while on target (automatic weapons).", Values = { "Click", "Hold" }, Default = 1 })
+    triggerbotSettings:AddDropdown("triggerbotFireMode_Dropdown", { Text = "Fire Mode", Tooltip = "Click: pulls the trigger once per Click Interval (semi-auto weapons).\nHold: keeps the trigger held while on target (automatic weapons).", Values = { "Click", "Hold" }, Default = 1 })
     triggerbotSettings:AddDropdown("triggerbotAimSource_Dropdown", { Text = "Aim Source", Tooltip = "Where the check ray starts on screen. Use Screen Center for third person / shift lock.", Values = { "Cursor", "Screen Center" }, Default = 1 })
     triggerbotSettings:AddDropdown("triggerbotHitPart_Dropdown", { Text = "Target Part", Tooltip = "Only fire when the aim point is on this part of the Killer.", Values = { "Any", "Head", "HumanoidRootPart" }, Default = 1 })
-    triggerbotSettings:AddDropdown("triggerbotExcludedKillers_Dropdown", { Text = "Excluded Killers", Values = killerNames, Default = { "Jane" }, Multi = true, Searchable = true })
-    triggerbotSettings:AddSlider("triggerbotRange_Slider", { Text = "Range", Tooltip = "Killers farther than this distance will not trigger.", Default = 200, Min = 30, Max = 2000, Suffix = " Studs", Rounding = 0 })
-    triggerbotSettings:AddSlider("triggerbotTolerance_Slider", { Text = "Tolerance", Tooltip = "Also checks points this many pixels around the aim point, so you do not have to be pixel perfect. 0 = exact.", Default = 5, Min = 0, Max = 50, Suffix = " px", Rounding = 0 })
-    triggerbotSettings:AddSlider("triggerbotDelay_Slider", { Text = "Reaction Delay", Tooltip = "How long the aim point must stay on a Killer before firing.", Default = 0, Min = 0, Max = 500, Suffix = " ms", Rounding = 0 })
-    triggerbotSettings:AddSlider("triggerbotJitter_Slider", { Text = "Delay Randomness", Tooltip = "Adds a random extra 0 - X ms to the reaction delay for every new target.", Default = 0, Min = 0, Max = 250, Suffix = " ms", Rounding = 0 })
-    triggerbotSettings:AddSlider("triggerbotInterval_Slider", { Text = "Click Interval", Tooltip = "Time between clicks in Click mode.", Default = 80, Min = 10, Max = 1000, Suffix = " ms", Rounding = 0 })
+    triggerbotSettings:AddDropdown("triggerbotExcludedKillers_Dropdown", { Text = "Excluded Killers", Values = killerNames, Default = { "Jane" }, Multi = true, Searchable = true, DragSelect = true })
+    triggerbotSettings:AddSlider("triggerbotRange_Slider", { Text = "Range", Tooltip = "Killers farther than this distance will not trigger.", Default = 200, Min = 30, Max = 2000, Suffix = " Studs" })
+    triggerbotSettings:AddSlider("triggerbotTolerance_Slider", { Text = "Tolerance", Tooltip = "Also checks points this many pixels around the aim point, so you do not have to be pixel perfect. 0 = exact.", Default = 5, Min = 0, Max = 50, Suffix = " px" })
+    triggerbotSettings:AddSlider("triggerbotDelay_Slider", { Text = "Reaction Delay", Tooltip = "How long the aim point must stay on a Killer before firing.", Default = 0, Min = 0, Max = 500, Suffix = " ms" })
+    triggerbotSettings:AddSlider("triggerbotJitter_Slider", { Text = "Delay Randomness", Tooltip = "Adds a random extra 0 - X ms to the reaction delay for every new target.", Default = 0, Min = 0, Max = 250, Suffix = " ms" })
+    triggerbotSettings:AddSlider("triggerbotInterval_Slider", { Text = "Click Interval", Tooltip = "Time between clicks in Click mode.", Default = 80, Min = 10, Max = 1000, Suffix = " ms" })
     triggerbotSettings:AddToggle("triggerbotVisibility_Toggle", { Text = "Visibility Check", Tooltip = "Only fire when nothing solid is between you and the Killer.", Default = true })
-    triggerbotSettings:AddToggle("triggerbotRequireTool_Toggle", { Text = "Require Weapon", Tooltip = "Only fire while you are holding a weapon.", Default = true })
     triggerbotSettings:AddToggle("triggerbotExcludeProjectiles_Toggle", { Text = "Exclude Projectiles", Tooltip = "Does not fire while you hold a projectile weapon: the Crossbow and the M16A2/M203 in grenade mode.", Default = true })
 
 
-    local virtualInput = nil
-    pcall(function()
-        virtualInput = game:GetService("VirtualInputManager")
-    end)
-
     local triggerbot = {
         connection = nil,
-        holding = false,
         lastClick = 0,
         target = nil,
         targetSince = 0,
         reaction = 0,
         lastError = nil,
+        lastWarn = -math.huge,
         excluded = {},
         params = RaycastParams.new(),
+        aimPoint = nil :: Vector2?, -- the screen point the Killer was found at - shots are aimed there
+        weaponTool = nil :: Instance?, -- the Tool the cached weapon objects belong to
+        weaponObjects = nil :: { any }?, -- every weapon object the game keeps for that Tool (one per fire mode)
+        scanning = false,
+        nextScan = 0,
+        scanMisses = 0, -- searches in a row that found nothing
+        heldWeapon = nil :: any, -- weapon whose trigger is being held down (Hold mode)
+        SCAN_INTERVAL = 0.5, -- seconds before the weapon object of the held tool is searched for again, doubled while nothing is found
+        SCAN_MAX = 4, -- the longest wait between two such searches
     }
 
     local sampleDirections = { Vector2.new(1, 0), Vector2.new(-1, 0), Vector2.new(0, 1), Vector2.new(0, -1) }
 
-    -- Mouse output: executor functions first, VirtualInputManager as the fallback.
-    local function pressMouse()
-        if type(mouse1press) == "function" then
-            mouse1press()
-        elseif virtualInput then
-            local position = uis:GetMouseLocation()
-            virtualInput:SendMouseButtonEvent(position.X, position.Y, 0, true, game, 0)
+    -- [Triggerbot / Weapon] The game keeps one object per fire mode of every tool. They are found through the garbage
+    -- collector, and the one flagged equipped is the one in your hands.
+    function triggerbot.collect(tool)
+        local found = {}
+
+        local function consider(object)
+            if type(object) == "table"
+                and rawget(object, "instance") == tool
+                and rawget(object, "equipped") ~= nil
+                and getmetatable(object) ~= nil
+            then
+                table.insert(found, object)
+            end
+        end
+
+        if type(filtergc) == "function" then
+            local success, matches = pcall(filtergc, "table", { Keys = { "instance", "equipped", "ammo" } }, false)
+
+            if success and type(matches) == "table" then
+                for _, object in ipairs(matches) do
+                    consider(object)
+                end
+            end
+        end
+
+        if #found == 0 and type(getgc) == "function" then
+            local success, objects = pcall(getgc, true)
+
+            if success and type(objects) == "table" then
+                for index = 1, #objects do
+                    consider(objects[index])
+
+                    if index % 20000 == 0 then
+                        task.wait()
+
+                        if library.Unloaded then
+                            return found
+                        end
+                    end
+                end
+            end
+        end
+
+        return found
+    end
+
+    function triggerbot.getEquippedWeapon(tool)
+        if triggerbot.weaponTool ~= tool then
+            triggerbot.weaponTool = tool
+            triggerbot.weaponObjects = nil
+            triggerbot.nextScan = 0
+            triggerbot.scanMisses = 0
+        end
+
+        for _, object in ipairs(triggerbot.weaponObjects or {}) do
+            if rawget(object, "instance") == tool and rawget(object, "equipped") == true then
+                return object
+            end
+        end
+
+        -- Nothing usable cached: search again, off the frame. A tool that is no weapon never has an object,
+        -- so the search is made less often the longer it keeps finding nothing.
+        if not triggerbot.scanning and os.clock() >= triggerbot.nextScan then
+            triggerbot.scanning = true
+            triggerbot.nextScan = os.clock() + math.min(triggerbot.SCAN_INTERVAL * 2 ^ triggerbot.scanMisses, triggerbot.SCAN_MAX)
+
+            task.spawn(function()
+                local objects = triggerbot.collect(tool)
+
+                if triggerbot.weaponTool == tool and #objects > 0 then
+                    triggerbot.weaponObjects = objects
+                    triggerbot.scanMisses = 0
+                elseif triggerbot.weaponTool == tool then
+                    triggerbot.scanMisses += 1
+                end
+
+                triggerbot.scanning = false
+            end)
+        end
+
+        return nil
+    end
+
+    -- [Triggerbot / Firing] The game calls the cursor getter for every shot.
+    -- It returns the point the Killer was found at, so a hit found through Tolerance is shot at the point that was checked.
+    function triggerbot.cursorGetter()
+        return triggerbot.aimPoint or uis:GetMouseLocation()
+    end
+
+    -- Releases the trigger of a weapon that is being held down
+    function triggerbot.releaseHeld()
+        local weapon = triggerbot.heldWeapon
+        triggerbot.heldWeapon = nil
+
+        if weapon then
+            pcall(function()
+                weapon:button1up()
+            end)
         end
     end
 
-    local function releaseMouse()
-        if type(mouse1release) == "function" then
-            mouse1release()
-        elseif virtualInput then
-            local position = uis:GetMouseLocation()
-            virtualInput:SendMouseButtonEvent(position.X, position.Y, 0, false, game, 0)
-        end
-    end
+    -- Presses the trigger via Weapon.button1down. The call keeps running while an
+    -- automatic weapon fires, so it runs on its own thread. Without `hold`, it shoots once.
+    function triggerbot.press(weapon, hold)
+        task.spawn(function()
+            local success, err = pcall(weapon.button1down, weapon, triggerbot.cursorGetter)
 
-    local function clickMouse()
-        if type(mouse1click) == "function" then
-            mouse1click()
+            if not success and os.clock() - triggerbot.lastWarn > 2 then
+                triggerbot.lastWarn = os.clock()
+                warn("[Triggerbot] Could not fire: " .. tostring(err))
+            end
+        end)
+
+        if hold then
+            triggerbot.heldWeapon = weapon
         else
-            pressMouse()
-            releaseMouse()
-        end
-    end
-
-    local function releaseHeld()
-        if triggerbot.holding then
-            triggerbot.holding = false
-            pcall(releaseMouse)
+            pcall(function()
+                weapon:button1up()
+            end)
         end
     end
 
@@ -5266,9 +5960,9 @@ do
 
     utils.isProjectileWeaponHeld = isProjectileWeaponHeld
 
-    -- True while the keybind (if any), menu state, health and weapon requirements allow firing.
+    -- True while the keybind (if any), health and weapon requirements allow firing.
     local function canFire()
-        if library.Unloaded or library.Toggled or uis:GetFocusedTextBox() then
+        if library.Unloaded then
             return false
         end
 
@@ -5282,10 +5976,6 @@ do
         local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 
         if not humanoid or humanoid.Health <= 0 then
-            return false
-        end
-
-        if toggles.triggerbotRequireTool_Toggle.Value and not character:FindFirstChildOfClass("Tool") then
             return false
         end
 
@@ -5394,34 +6084,44 @@ do
         local model = castForKiller(cam, character, hrp, origin, range, partFilter, visibilityCheck)
 
         if model or tolerance <= 0 then
-            return model
+            return model, origin
         end
 
         for _, direction in ipairs(sampleDirections) do
-            model = castForKiller(cam, character, hrp, origin + direction * tolerance, range, partFilter, visibilityCheck)
+            local point = origin + direction * tolerance
+
+            model = castForKiller(cam, character, hrp, point, range, partFilter, visibilityCheck)
 
             if model then
-                return model
+                return model, point
             end
         end
 
-        return nil
+        return nil, nil
     end
 
     local function step()
-        if not canFire() then
+        local character = localplayer.Character
+        local tool = character and character:FindFirstChildOfClass("Tool")
+
+        -- Only with a living character, a held tool and the keybind allowing it
+        if not tool or not canFire() then
             triggerbot.target = nil
-            releaseHeld()
+            triggerbot.releaseHeld()
             return
         end
 
-        local model = findTarget()
+        -- Looked up before there is a target, so the weapon object is already cached when the first Killer shows up
+        local weapon = triggerbot.getEquippedWeapon(tool)
+        local model, aimPoint = findTarget()
 
         if not model then
             triggerbot.target = nil
-            releaseHeld()
+            triggerbot.releaseHeld()
             return
         end
+
+        triggerbot.aimPoint = aimPoint
 
         local now = os.clock()
 
@@ -5438,18 +6138,33 @@ do
             return
         end
 
-        if options.triggerbotFireMode_Dropdown.Value == "Hold" then
-            if not triggerbot.holding then
-                triggerbot.holding = true
-                pressMouse()
-            end
-        else
-            releaseHeld()
+        -- A tool that is no weapon (or whose weapon object is still being searched for) has nothing to fire
+        if not weapon then
+            return
+        end
 
-            if now - triggerbot.lastClick >= options.triggerbotInterval_Slider.Value / 1000 then
-                triggerbot.lastClick = now
-                clickMouse()
-            end
+        -- The trigger of another weapon (switched while holding) is let go
+        if triggerbot.heldWeapon and triggerbot.heldWeapon ~= weapon then
+            triggerbot.releaseHeld()
+        end
+
+        local hold = options.triggerbotFireMode_Dropdown.Value == "Hold"
+
+        if not hold then
+            triggerbot.releaseHeld()
+        end
+
+        -- Nothing to do while the weapon is still shooting, reloading or equipping. In Hold mode this also presses the trigger
+        -- once an automatic weapon stopped; while it is firing, the held trigger does the work.
+        if weapon.ready ~= true or weapon.reloading or weapon.shooting then
+            return
+        end
+
+        if hold then
+            triggerbot.press(weapon, true)
+        elseif now - triggerbot.lastClick >= options.triggerbotInterval_Slider.Value / 1000 then
+            triggerbot.lastClick = now
+            triggerbot.press(weapon, false)
         end
     end
 
@@ -5460,7 +6175,11 @@ do
         end
 
         triggerbot.target = nil
-        releaseHeld()
+        triggerbot.aimPoint = nil
+        triggerbot.releaseHeld()
+        triggerbot.weaponTool = nil
+        triggerbot.weaponObjects = nil
+        triggerbot.scanMisses = 0
     end
 
     toggles.enableTriggerbot_Toggle:OnChanged(function(enabled)
@@ -5470,8 +6189,14 @@ do
             return
         end
 
-        if type(mouse1click) ~= "function" and type(mouse1press) ~= "function" and not virtualInput then
-            notify("Error", "Triggerbot unavailable", "Your executor has no mouse input functions (mouse1click / mouse1press).", 15)
+        if type(filtergc) ~= "function" and type(getgc) ~= "function" then
+            notify("Error", "Triggerbot unavailable", "Your executor has no getgc / filtergc, so the weapon cannot be found.", 15)
+            task.defer(function()
+                if toggles.enableTriggerbot_Toggle then
+                    toggles.enableTriggerbot_Toggle:SetValue(false)
+                end
+            end)
+
             return
         end
 
@@ -5490,7 +6215,7 @@ do
         options.triggerbotInterval_Slider:SetVisible(value ~= "Hold")
 
         if value ~= "Hold" then
-            releaseHeld()
+            triggerbot.releaseHeld()
         end
     end
 
@@ -5583,6 +6308,103 @@ toggles.autoCollect_Toggle:OnChanged(function(state)
     end
 end)
 
+-- [Exploits / Collection] Auto Pickup Case Files
+do
+    local caseRunning = false
+    local caseConnection: RBXScriptConnection? = nil
+    local caseTracked = setmetatable({}, { __mode = "k" })
+
+    -- Every case file that appears is touched at once.
+    local function pickupCaseFile(model: any)
+        if caseTracked[model] then
+            return
+        end
+
+        caseTracked[model] = true
+
+        task.spawn(function()
+            local function stillWanted()
+                return caseRunning and not library.Unloaded and model:IsDescendantOf(workspace)
+            end
+
+            local hitbox = model:WaitForChild("Hitbox", 3)
+            local pickedUp = false
+
+            -- Keep touching until the model is gone since the first touch is not always accepted
+            while hitbox and stillWanted() do
+                local hrp = getHRP()
+
+                if hrp and isAlive() and hrp:IsDescendantOf(workspace) and hitbox:IsDescendantOf(workspace) then
+                    -- Touch-begin. Skipped and retried later when a part is not in the physics world yet.
+                    if pcall(firetouchinterest, hrp, hitbox, 0) then
+                        task.wait()
+
+                        -- Touch-end only if both parts survived the yield
+                        if hrp:IsDescendantOf(workspace) and hitbox:IsDescendantOf(workspace) then
+                            pcall(firetouchinterest, hrp, hitbox, 1)
+                        end
+
+                        -- The case file vanishing right after a touch means it was collected
+                        task.wait(0.1)
+
+                        if not model:IsDescendantOf(workspace) then
+                            pickedUp = true
+
+                            break
+                        end
+                    end
+                end
+
+                task.wait(0.15)
+            end
+
+            if pickedUp and caseRunning and not library.Unloaded then
+                notify("Success", "Picked up Case file", "A " .. utils.bold("Case file") .. " dropped by a Killer was picked up.", 20)
+            end
+
+            caseTracked[model] = nil
+        end)
+    end
+
+    local function stopAutoPickupCaseFiles()
+        caseRunning = false
+
+        if caseConnection then
+            caseConnection:Disconnect()
+            caseConnection = nil
+        end
+    end
+
+    local function startAutoPickupCaseFiles()
+        caseRunning = true
+
+        caseConnection = workspace.ChildAdded:Connect(function(child)
+            if child.Name == "Case file" and child:IsA("Model") then
+                pickupCaseFile(child)
+            end
+        end)
+
+        -- Several can exist at once, and some may already exist from before the toggle was enabled
+        for _, child in ipairs(workspace:GetChildren()) do
+            if child.Name == "Case file" and child:IsA("Model") then
+                pickupCaseFile(child)
+            end
+        end
+    end
+
+    toggles.autoPickupCaseFiles_Toggle:OnChanged(function(state)
+        if state then
+            if not caseRunning then
+                startAutoPickupCaseFiles()
+            end
+        else
+            stopAutoPickupCaseFiles()
+        end
+    end)
+
+    table.insert(teardownTasks, stopAutoPickupCaseFiles)
+end
+
 -- [Exploits / Killer Controls] Disable Aura and defensive toggles
 
 -- [Exploits / Killer Controls] Disable Aura
@@ -5590,11 +6412,27 @@ end)
 ui.exploits.killers:AddToggle("disableAllKillers_Toggle", { Text = "Disable Aura", Tooltip = "Deals with all nearby killers within the specified amount of studs, using the selected method." })
 
 local disableKillersSettings = toggles.disableAllKillers_Toggle:AddSettings({ Width = 290 })
-disableKillersSettings:AddDropdown("disableAuraMethod_Dropdown", { Text = "Method", Values = { "Kill", "Disable Movement", "Disable Humanoid", "Push" }, Default = 4 })
-disableKillersSettings:AddSlider("disableKillersDistance_Slider", { Text = "Range", Tooltip = "How far away to disable killers", Default = 20, Min = 10, Max = 100, Suffix = " Studs" })
+disableKillersSettings:AddDropdown("disableAuraMethod_Dropdown", { Text = "Method", Tooltip = "Teleport Away does not interact with killers: it moves you away from any killer that gets too close.", Values = { "Kill", "Disable Movement", "Disable Humanoid", "Push", "Teleport Away" }, Default = 4 })
+disableKillersSettings:AddSlider("disableKillersDistance_Slider", { Text = "Range", Tooltip = "How far away to disable killers. Also the range of Emergency Kill.\nTeleport Away does not use it, it has its own Trigger Distance.", Default = 20, Min = 10, Max = 100, Suffix = " Studs" })
+disableKillersSettings:AddSlider("disableAuraTriggerDistance_Slider", { Text = "Trigger Distance", Tooltip = "Teleport Away | You are teleported away when a killer is this close to you, even when it is behind a wall.", Default = 15, Min = 5, Max = 80, Suffix = " Studs" })
+disableKillersSettings:AddSlider("disableAuraTeleportDistance_Slider", { Text = "Teleport Distance", Tooltip = "Teleport Away | How far each teleport moves you.\nKeep it above the Trigger Distance, otherwise you can still end up inside it and get teleported again.", Default = 40, Min = 10, Max = 150, Suffix = " Studs" })
 disableKillersSettings:AddToggle("disableAuraWallCheck_Toggle", { Text = "Wall Check", Tooltip = "Only affects Killers that are visible. Emergency Kill ignores this." })
 disableKillersSettings:AddLabel("Emergency Kill"):AddKeyPicker("emergencyKill_KeyPicker", { Text = "Emergency Kill", Default = "X", Mode = "Hold", NoUI = true, Disabled = true })
-disableKillersSettings:AddToggle("disableAuraDebugNotifs_Toggle", { Text = "Debug Notifications", Tooltip = "Sends a notification each time Disable Aura kills, disables or starts pushing a killer, and while it waits for control of a killer." })
+disableKillersSettings:AddToggle("disableAuraDebugNotifs_Toggle", { Text = "Debug Notifications", Tooltip = "Sends a notification each time Disable Aura kills, disables or starts pushing a killer, moves you away from one, and while it waits for control of a killer." })
+
+-- The two Teleport Away sliders are only made visible while Teleport Away is selected. Wall Check is hidden with it.
+do
+    local function applyMethodVisibility()
+        local teleportAway = tostring(options.disableAuraMethod_Dropdown.Value) == "Teleport Away"
+
+        options.disableAuraTriggerDistance_Slider:SetVisible(teleportAway)
+        options.disableAuraTeleportDistance_Slider:SetVisible(teleportAway)
+        toggles.disableAuraWallCheck_Toggle:SetVisible(not teleportAway)
+    end
+
+    options.disableAuraMethod_Dropdown:OnChanged(applyMethodVisibility)
+    applyMethodVisibility()
+end
 
 -- [Exploits / Killer Controls] Defensive toggles
 
@@ -6397,7 +7235,7 @@ do
     end)
 end
 
--- [Exploits / Killer Controls] Disable Aura: killers it never touches
+-- [Exploits / Killer Controls] Disable Aura: killers it never deals with
 utils.auraIgnoredKillers = {
     ["Giant"] = true,
     ["Jane"] = true,
@@ -6546,7 +7384,7 @@ do
             local hum = model:FindFirstChildOfClass("Humanoid")
             local root = model:FindFirstChild("HumanoidRootPart")
 
-            if hum and root and hum.Health > 0 and entityLib.getEntityDistance(hrp, root) <= range then
+            if hum and root and hum.Health > 0 and not utils.auraIgnoredKillers[model.Name] and entityLib.getEntityDistance(hrp, root) <= range then
                 -- Wait until you own the killer, then kill it on the frame control begins
                 if utils.emergencyControl.check(model, root) then
                     -- The real hit parts come back first, so the ragdoll never starts from an enlarged hitbox (see Hitbox Expander)
@@ -6605,6 +7443,369 @@ do
     end
 end
 
+-- [Exploits / Killer Controls] Disable Aura: Teleport Away
+-- Moves you away from any killer that gets within the Trigger Distance instead of affecting it.
+do
+    local tweenService = game:GetService("TweenService")
+
+    local COOLDOWN = 0.03                -- seconds between two teleports
+    local TWEEN_SPEED = 900              -- studs per second
+    local TWEEN_MIN = 0.04               -- seconds, the shortest tween
+    local TWEEN_MAX = 0.15               -- seconds, the longest tween (a 150 stud teleport)
+    local NOTIFY_INTERVAL = 0.75         -- seconds between two debug notifications
+    local NO_ROOM_INTERVAL = 3           -- seconds between two "no safe spot" debug notifications
+    local FLOOR_REACH = 14
+    local SAMPLE_SPACING = 8             -- the floor is checked every this many studs along the way
+    local SEGMENT_FLOOR_TOLERANCE = 1.5  -- the floor may change this much between two checks (steps and ramps are fine, ledges and pits are not)
+    local TOTAL_FLOOR_TOLERANCE = 6      -- ... and this much over the whole way
+    local MIN_STEP = 3.5                 -- a teleport shorter than this does not get you anywhere
+    local BODY_CLEARANCE = 1.8           -- wall distance needed beside the character
+    local SPOT_RADIUS = 2                -- free space needed around the destination
+    local SHORTEN_STEP = 2               -- when the destination is not free (a wall right behind it), the teleport is shortened by this much and tried again
+    local SHORTEN_TRIES = 4
+    local ARRIVAL_MARGIN = 1             -- the destination has to be this much outside the Trigger Distance
+    local SIDE_BIAS = 4                  -- a side step takes priority over the others unless they get you this much farther away
+    local DIAGONAL_BIAS = 2
+
+    local state = {
+        lastTeleport = -math.huge, lastNotify = -math.huge, lastNoRoom = -math.huge,
+        tween = nil,  -- the tween that is carrying you
+        goal = nil,   -- where it ends (Vector3)
+    }
+
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = Enum.RaycastFilterType.Exclude
+    rayParams.RespectCanCollide = true
+
+    local overlapParams = OverlapParams.new()
+    overlapParams.FilterType = Enum.RaycastFilterType.Exclude
+    pcall(function()
+        overlapParams.RespectCanCollide = true
+    end)
+
+    local function stopTween()
+        local tween = state.tween
+
+        state.tween = nil
+        state.goal = nil
+
+        if tween then
+            pcall(tween.Cancel, tween)
+        end
+    end
+
+    utils.auraTeleportAwayStop = stopTween
+    table.insert(teardownTasks, stopTween)
+
+    -- Walls are everything except characters and Killers
+    local function refreshFilter(character)
+        local ignored = { character }
+
+        for _, name in ipairs({ "Killers", "Characters to kill" }) do
+            local folder = workspace:FindFirstChild(name)
+
+            if folder then
+                table.insert(ignored, folder)
+            end
+        end
+
+        for _, player in ipairs(players:GetPlayers()) do
+            if player.Character then
+                table.insert(ignored, player.Character)
+            end
+        end
+
+        rayParams.FilterDescendantsInstances = ignored
+        overlapParams.FilterDescendantsInstances = ignored
+    end
+
+    -- Every living Killer with the position of its root part, except the ones Disable Aura never deals with (utils.auraIgnoredKillers)
+    local function getKillers()
+        local list = {}
+
+        for _, model in ipairs(killersFolder:GetChildren()) do
+            if model:IsA("Model") and model ~= localplayer.Character and not utils.auraIgnoredKillers[model.Name] then
+                local root = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
+                local humanoid = model:FindFirstChildOfClass("Humanoid")
+
+                if root and humanoid and humanoid.Health > 0 then
+                    table.insert(list, { model = model, root = root, position = root.Position })
+                end
+            end
+        end
+
+        return list
+    end
+
+    local function nearestDistance(position, killers)
+        local best = math.huge
+
+        for _, killer in ipairs(killers) do
+            best = math.min(best, (killer.position - position).Magnitude)
+        end
+
+        return best
+    end
+
+    -- How far the floor is below a position
+    local function floorDistance(position)
+        local hit = workspace:Raycast(position, Vector3.new(0, -FLOOR_REACH, 0), rayParams)
+
+        return hit and hit.Distance or nil
+    end
+
+    -- Free space around a destination, and room above it for the head
+    local function spotIsFree(destination)
+        for _, part in ipairs(workspace:GetPartBoundsInRadius(destination + Vector3.new(0, 0.5, 0), SPOT_RADIUS, overlapParams)) do
+            if part.CanCollide then
+                return false
+            end
+        end
+
+        return workspace:Raycast(destination, Vector3.new(0, 3, 0), rayParams) == nil
+    end
+
+    -- Free space in a direction, measured at feet, chest and head height and a stud to both sides of the character
+    local function roomAlong(origin, direction, limit)
+        local sideways = Vector3.new(-direction.Z, 0, direction.X)
+        local room = limit
+
+        for _, height in ipairs({ -2, 0, 1.5 }) do
+            for _, lateral in ipairs({ -1, 0, 1 }) do
+                local start = origin + Vector3.new(0, height, 0) + sideways * lateral
+                local hit = workspace:Raycast(start, direction * (limit + BODY_CLEARANCE), rayParams)
+
+                if hit then
+                    room = math.min(room, hit.Distance - BODY_CLEARANCE)
+                end
+            end
+        end
+
+        return room
+    end
+
+    -- The floor under the way has to be constant. Returns how far you can go before the floor ends (a gap, a ledge or a pit),
+    -- which is the whole distance when it never does.
+    local function walkableReach(origin, direction, distance, currentFloor)
+        local samples = math.max(1, math.ceil(distance / SAMPLE_SPACING))
+        local previous = currentFloor
+
+        for index = 1, samples do
+            local floor = floorDistance(origin + direction * (distance * index / samples))
+
+            if not floor
+                or math.abs(floor - previous) > SEGMENT_FLOOR_TOLERANCE
+                or math.abs(floor - currentFloor) > TOTAL_FLOOR_TOLERANCE then
+                return distance * (index - 1) / samples
+            end
+
+            previous = floor
+        end
+
+        return distance
+    end
+
+    -- The spot that far away in a direction, at the same height above the floor, so a ramp never puts you inside it or in the air.
+    local function spotAt(origin, direction, distance, currentFloor)
+        local flat = origin + direction * distance
+        local floor = floorDistance(flat)
+
+        if not floor or math.abs(floor - currentFloor) > TOTAL_FLOOR_TOLERANCE then
+            return nil
+        end
+
+        local destination = Vector3.new(flat.X, origin.Y + (currentFloor - floor), flat.Z)
+
+        if not spotIsFree(destination) then
+            return nil
+        end
+
+        return destination
+    end
+
+    -- Picks where to go: whichever of left, right, backwards and the two back diagonals gets you the farthest from every
+    -- killer, preferring a side step.
+    local function planTeleport(root, threat, killers, stepDistance, triggerDistance)
+        refreshFilter(root.Parent)
+
+        local origin = root.Position
+        local currentFloor = floorDistance(origin)
+
+        if not currentFloor then
+            return nil
+        end
+
+        local away = Vector3.new(origin.X - threat.position.X, 0, origin.Z - threat.position.Z)
+
+        if away.Magnitude < 0.5 then
+            local look = root.CFrame.LookVector
+
+            away = -Vector3.new(look.X, 0, look.Z)
+        end
+
+        if away.Magnitude < 0.01 then
+            away = Vector3.new(0, 0, 1)
+        end
+
+        away = away.Unit
+
+        local sideways = Vector3.new(-away.Z, 0, away.X)
+        local arrive = triggerDistance + ARRIVAL_MARGIN
+        local currentClearance = nearestDistance(origin, killers)
+        local candidates = {
+            { kind = "side", direction = sideways, bias = SIDE_BIAS },
+            { kind = "side", direction = -sideways, bias = SIDE_BIAS },
+            { kind = "back", direction = away, bias = 0 },
+            { kind = "diagonal", direction = (away + sideways).Unit, bias = DIAGONAL_BIAS },
+            { kind = "diagonal", direction = (away - sideways).Unit, bias = DIAGONAL_BIAS },
+        }
+        local best, fallback
+
+        for _, candidate in ipairs(candidates) do
+            -- A wall or the end of the floor shortens the teleport instead of ruling the direction out
+            local distance = math.min(stepDistance, roomAlong(origin, candidate.direction, stepDistance))
+
+            if distance >= MIN_STEP then
+                distance = walkableReach(origin, candidate.direction, distance, currentFloor)
+            end
+
+            -- The spot right in front of a wall is not free, so it is moved back gradually
+            local destination
+
+            for _ = 1, SHORTEN_TRIES do
+                if distance < MIN_STEP then
+                    break
+                end
+
+                destination = spotAt(origin, candidate.direction, distance, currentFloor)
+
+                if destination then
+                    break
+                end
+
+                distance -= SHORTEN_STEP
+            end
+
+            if destination then
+                candidate.distance = distance
+                candidate.destination = destination
+                candidate.clearance = nearestDistance(destination, killers)
+                candidate.score = candidate.clearance + candidate.bias
+
+                local right = candidate.direction:Dot(root.CFrame.RightVector) >= 0 and "right" or "left"
+
+                if candidate.kind == "back" then
+                    candidate.label = "backwards"
+                elseif candidate.kind == "diagonal" then
+                    candidate.label = "backwards to the " .. right
+                else
+                    candidate.label = right
+                end
+
+                if candidate.clearance >= arrive and (not best or candidate.score > best.score) then
+                    best = candidate
+                end
+
+                if not fallback or candidate.clearance > fallback.clearance then
+                    fallback = candidate
+                end
+            end
+        end
+
+        if best then
+            return best
+        end
+
+        -- Nothing gets you out of reach: take the best option if it is clearly better than staying put
+        if fallback and fallback.clearance > currentClearance + 0.5 then
+            return fallback
+        end
+
+        return nil
+    end
+
+    -- Called every frame by the Disable Aura loop while Teleport Away is the selected method
+    utils.auraTeleportAway = function(hrp)
+        local now = os.clock()
+
+        -- Gravity and the old momentum must not pull you off the tween
+        if state.tween then
+            hrp.AssemblyLinearVelocity = Vector3.zero
+        end
+
+        if now - state.lastTeleport < COOLDOWN then
+            return
+        end
+
+        local humanoid = getHumanoid()
+
+        if humanoid and humanoid.Health <= 0 then
+            return
+        end
+
+        local triggerDistance = options.disableAuraTriggerDistance_Slider.Value
+        local origin = hrp.Position
+        local killers = getKillers()
+        local threat, threatDistance
+
+        -- The nearest killer inside the Trigger Distance
+        for _, killer in ipairs(killers) do
+            local distance = (killer.position - origin).Magnitude
+
+            if distance <= triggerDistance and (not threatDistance or distance < threatDistance) then
+                threat, threatDistance = killer, distance
+            end
+        end
+
+        if not threat then
+            return
+        end
+
+        -- The tween that is running already ends out of every killer's reach: let it finish
+        if state.tween and state.goal and nearestDistance(state.goal, killers) >= triggerDistance then
+            return
+        end
+
+        local plan = planTeleport(hrp, threat, killers, options.disableAuraTeleportDistance_Slider.Value, triggerDistance)
+
+        if not plan then
+            if toggles.disableAuraDebugNotifs_Toggle.Value and now - state.lastNoRoom >= NO_ROOM_INTERVAL then
+                state.lastNoRoom = now
+                notify("Error", "Disable Aura", "No safe spot to teleport away from " .. utils.bold(threat.model.Name) .. ".", 3)
+            end
+
+            return
+        end
+
+        -- A new teleport replaces the running tween and starts from your current location
+        stopTween()
+        state.lastTeleport = now
+
+        local duration = math.clamp((plan.destination - origin).Magnitude / TWEEN_SPEED, TWEEN_MIN, TWEEN_MAX)
+        local tween = tweenService:Create(hrp, TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { CFrame = CFrame.new(plan.destination) * hrp.CFrame.Rotation })
+
+        state.tween = tween
+        state.goal = plan.destination
+        hrp.AssemblyLinearVelocity = Vector3.zero
+
+        tween.Completed:Connect(function()
+            -- A cancelled tween also completes, and by then a newer one may have taken over
+            if state.tween == tween then
+                state.tween = nil
+                state.goal = nil
+                hrp.AssemblyLinearVelocity = Vector3.zero
+            end
+        end)
+
+        tween:Play()
+
+        if toggles.disableAuraDebugNotifs_Toggle.Value and now - state.lastNotify >= NOTIFY_INTERVAL then
+            state.lastNotify = now
+            notify("Info", "Disable Aura", string.format("%s was %s studs away. Moved %s by %s studs.", utils.bold(threat.model.Name), utils.bold(string.format("%.1f", threatDistance)), utils.bold(plan.label), utils.bold(string.format("%.1f", plan.distance))), 3)
+        end
+    end
+end
+
 -- [Exploits / Killer Controls] Disable Aura: main loop
 do
     local connection = nil
@@ -6636,6 +7837,17 @@ do
             for trackedHum in pairs(affectedKillers) do
                 releaseKiller(trackedHum)
             end
+
+            return
+        end
+
+        if method == "Teleport Away" then
+            for trackedHum in pairs(affectedKillers) do
+                releaseKiller(trackedHum)
+            end
+
+            utils.auraControl.reset()
+            utils.auraTeleportAway(hrp)
 
             return
         end
@@ -6676,6 +7888,7 @@ do
             pushToggled(enabled)
         end
 
+        utils.auraTeleportAwayStop()
         stopLoop()
         utils.auraControl.reset()
 
@@ -7830,7 +9043,7 @@ do
     local hitboxExpanderSettings = toggles.hitboxExpander_Toggle:AddSettings({ Width = 280 })
     hitboxExpanderSettings:AddSlider("hitboxSize_Slider", { Text = "Hitbox Size", Tooltip = "Smallest size of each resized hit part (head, arms and legs).", Default = 8, Min = 2, Max = 30, Suffix = " Studs", Rounding = 1 })
     hitboxExpanderSettings:AddSlider("hitboxRange_Slider", { Text = "Range", Tooltip = "Only Killers closer than this get an expanded hitbox.", Default = 350, Min = 50, Max = 1000, Suffix = " Studs" })
-    hitboxExpanderSettings:AddDropdown("hitboxExcludedKillers_Dropdown", { Text = "Excluded Killers", Tooltip = "Killers that keep their original hitbox. Giant and Jane are always skipped, because the game ignores normal shots on them.", Values = killerNames, Multi = true, Searchable = true, AllowNull = true })
+    hitboxExpanderSettings:AddDropdown("hitboxExcludedKillers_Dropdown", { Text = "Excluded Killers", Tooltip = "Killers that keep their original hitbox.", Values = killerNames, Multi = true, Searchable = true, AllowNull = true, DragSelect = true })
 
 
     -- Killers the game never registers normal shots on.
@@ -8500,29 +9713,66 @@ end
 -- [Exploits / Autofarm] Teleportation, keeping your distance, Auto Fire and Bullet Redirection
 -- Teleports you next to the nearest Killer and steps you sideways or backwards when too close.
 do
-    ui.exploits.killers:AddToggle("autofarm_Toggle", { Text = "Autofarm", Tooltip = "Teleports you near the nearest Killer and keeps you out of its reach. Disable Aura & Killer Godmode is recommended." })
+    ui.exploits.killers:AddToggle("autofarm_Toggle", { Text = "Autofarm", Tooltip = "Teleports you near the nearest Killer, keeps you out of its reach and in its line of sight, and aims every shot you fire at it.\nDisable Aura & Killer Godmode is recommended." })
+
+    -- The three distance sliders depend on each other, so a callback keeps them consistent instead of one silently overriding another.
+    local RING_GAP = 4                  -- the Follow Distance stays at least this far above the Danger Distance
+    local REPOSITION_MARGIN = 10        -- the Reposition Distance stays at least this far above the Follow Distance
+    local DANGER_MIN, FOLLOW_MIN = 8, 15 -- the lowest values of the Danger and Follow sliders
 
     local autofarmSettings = toggles.autofarm_Toggle:AddSettings({ Width = 300 })
-    autofarmSettings:AddSlider("autofarmFollowDistance_Slider", { Text = "Follow Distance", Tooltip = "How far from the Killer you are teleported..", Default = 30, Min = 15, Max = 80, Suffix = " Studs" })
-    autofarmSettings:AddSlider("autofarmDangerDistance_Slider", { Text = "Danger Distance", Tooltip = "Once any Killer is closer to you than this, you step away.", Default = 18, Min = 8, Max = 40, Suffix = " Studs" })
+    autofarmSettings:AddSlider("autofarmFollowDistance_Slider", { Text = "Follow Distance", Tooltip = "How far from the Killer you are teleported.\nDanger Distance is kept below it and Reposition Distance above it, so moving this slider moves them too when they would no longer fit.", Default = 30, Min = FOLLOW_MIN, Max = 80, Suffix = " Studs", Callback = function(value)
+        local danger = options.autofarmDangerDistance_Slider
+        local reposition = options.autofarmRepositionDistance_Slider
+
+        if danger and danger.Value > value - RING_GAP then
+            danger:SetValue(math.max(value - RING_GAP, DANGER_MIN))
+        end
+
+        if reposition and reposition.Value < value + REPOSITION_MARGIN then
+            reposition:SetValue(value + REPOSITION_MARGIN)
+        end
+    end })
+    autofarmSettings:AddSlider("autofarmDangerDistance_Slider", { Text = "Danger Distance", Tooltip = "Once any Killer is closer to you than this, you step away.\nIt has to stay below the Follow Distance, so raising it past that raises the Follow Distance with it.", Default = 18, Min = DANGER_MIN, Max = 40, Suffix = " Studs", Callback = function(value)
+        local follow = options.autofarmFollowDistance_Slider
+
+        if follow and follow.Value < value + RING_GAP then
+            follow:SetValue(value + RING_GAP)
+        end
+    end })
     autofarmSettings:AddSlider("autofarmRetreatDistance_Slider", { Text = "Retreat Distance", Tooltip = "How far a step away moves you. It is shortened automatically when a wall is closer, and a direction without enough room or floor is skipped.", Default = 10, Min = 5, Max = 25, Suffix = " Studs" })
     autofarmSettings:AddDropdown("autofarmRetreatStyle_Dropdown", { Text = "Retreat Style", Tooltip = "Smart: steps whichever way gets you farthest from every Killer.\nSides First: a side step is used whenever it gets you out of reach, backwards only otherwise.\nBackwards Only: always steps straight away from the Killer.", Values = { "Smart", "Sides First", "Backwards Only" }, Default = 1 })
-    autofarmSettings:AddSlider("autofarmRepositionDistance_Slider", { Text = "Reposition Distance", Tooltip = "When the Killer you are locked onto gets farther from you than this, you are teleported next to it again.", Default = 60, Min = 30, Max = 150, Suffix = " Studs" })
+    autofarmSettings:AddSlider("autofarmRepositionDistance_Slider", { Text = "Reposition Distance", Tooltip = "When the Killer you are locked onto gets farther from you than this.\nIt has to stay above the Follow Distance, so lowering it past that lowers the Follow Distance with it.", Default = 60, Min = 30, Max = 150, Suffix = " Studs", Callback = function(value)
+        local follow = options.autofarmFollowDistance_Slider
+
+        if follow and follow.Value > value - REPOSITION_MARGIN then
+            follow:SetValue(math.max(value - REPOSITION_MARGIN, FOLLOW_MIN))
+        end
+    end })
     autofarmSettings:AddSlider("autofarmSearchRange_Slider", { Text = "Search Range", Tooltip = "Only Killers within this many studs of you can be locked onto.", Default = 400, Min = 50, Max = 1500, Suffix = " Studs" })
     autofarmSettings:AddSlider("autofarmCooldown_Slider", { Text = "Teleport Delay", Tooltip = "Minimum time between two teleports next to a Killer.", Default = 0.15, Min = 0.05, Max = 1, Rounding = 2, Suffix = " s" })
-    autofarmSettings:AddDropdown("autofarmExcludedKillers_Dropdown", { Text = "Excluded Killers", Tooltip = "Killers that are never locked onto. They still count as a danger, so you keep your distance from them.", Values = killerNames, Default = { "Giant", "Jane" }, Multi = true, Searchable = true, AllowNull = true })
-    autofarmSettings:AddToggle("autofarmAutoFire_Toggle", { Text = "Auto Fire", Default = true, Tooltip = "Constantly clicks the mouse with your equipped weapon while you are near the Killer you are locked onto. Nothing is fired while the menu is open, a text box is focused, or a button is under your cursor." })
-    autofarmSettings:AddSlider("autofarmFireInterval_Slider", { Text = "Fire Interval", Tooltip = "Time between two clicks.", Default = 60, Min = 10, Max = 500, Suffix = " ms" })
-    autofarmSettings:AddToggle("autofarmRedirect_Toggle", { Text = "Redirect Bullets", Default = true, Tooltip = "Every shot you fire while Autofarm is locked onto a Killer is aimed at that Killer." })
-    autofarmSettings:AddDropdown("autofarmAimPart_Dropdown", { Text = "Aim Part", Tooltip = "Head: always aims at the head.\nAuto: Silent Aim's rule, head when the Killer is close and standing still, otherwise the body.", Values = { "Head", "HumanoidRootPart", "Auto" }, Default = 1 })
-    autofarmSettings:AddToggle("autofarmWallCheck_Toggle", { Text = "Keep Line of Sight", Default = true, Tooltip = "Only teleports to spots where you can see the Killer, and moves you again when a wall has been between you for a second." })
-    autofarmSettings:AddToggle("autofarmDebugNotifs_Toggle", { Text = "Debug Notifications", Tooltip = "Sends a notification each time Autofarm locks onto a Killer, teleports you or steps away, and when no safe spot was found." })
+    autofarmSettings:AddDropdown("autofarmExcludedKillers_Dropdown", { Text = "Excluded Killers", Tooltip = "Killers that are never locked onto. They still count as a danger, so you keep your distance from them.", Values = killerNames, Default = { "Giant", "Jane" }, Multi = true, Searchable = true, AllowNull = true, DragSelect = true })
+    -- Fire Interval is hidden
+    autofarmSettings:AddToggle("autofarmAutoFire_Toggle", { Text = "Auto Fire", Default = true, Callback = function(enabled)
+        local interval = options.autofarmFireInterval_Slider
+
+        if interval then
+            interval:SetVisible(enabled == true)
+        end
+    end, Tooltip = "Fires your equipped weapon while you are near the Killer you are locked onto." })
+    autofarmSettings:AddSlider("autofarmFireInterval_Slider", { Text = "Fire Interval", Tooltip = "Time between two trigger presses of a semi-automatic weapon. Automatic weapons keep firing while the trigger is held.", Default = 60, Min = 10, Max = 500, Suffix = " ms" })
+    options.autofarmFireInterval_Slider:SetVisible(toggles.autofarmAutoFire_Toggle.Value == true)
+    autofarmSettings:AddDropdown("autofarmAimPart_Dropdown", { Text = "Aim Part", Tooltip = "Where the shots Autofarm aims at its Killer hit it.\nHead: always aims at the head.\nHumanoidRootPart: always aims at the body.\nAuto: head when the Killer is close and standing still, otherwise the body.", Values = { "Head", "HumanoidRootPart", "Auto" }, Default = 1 })
+    autofarmSettings:AddToggle("autofarmDebugNotifs_Toggle", { Text = "Debug Notifications", Tooltip = "Shows what Autofarm is doing to each Killer: one while you are locked onto it and one for stepping away from it." })
 
     local RETREAT_COOLDOWN = 0.1        -- seconds between two steps away
     local LINE_CHECK_INTERVAL = 0.2     -- seconds between two line of sight checks
     local LINE_GRACE = 1                -- seconds without line of sight before you are moved
-    local SKIP_TIME = 3                 -- seconds a Killer with no reachable spot is left alone
-    local RING_GAP = 4                  -- the Follow Distance stays at least this far above the Danger Distance
+    local SKIP_TIME = 0.5               -- seconds a Killer with no reachable spot is left alone, doubled each time it happens again
+    local SKIP_MAX = 2                  -- the longest a Killer with no reachable spot is left alone
+    local PLANS_PER_STEP = 2            -- Killers whose approach is planned in one frame
+    local WEAPON_SCAN_INTERVAL = 0.5    -- seconds before the weapon object of the held tool is searched for again, doubled while nothing is found
+    local WEAPON_SCAN_MAX = 4           -- the longest wait between two such searches
     local ANGLE_STEP = math.rad(15)     -- spacing of the spots tried around a Killer
     local ANGLE_COUNT = 24              -- 24 spots of 15 degrees cover the whole ring
     local LEVEL_TOLERANCE = 4           -- the floor at a spot may differ this much from the floor under the Killer
@@ -8535,19 +9785,37 @@ do
     local SPOT_RADIUS = 2               -- free space needed around a destination
     local SIDE_BIAS = 4                 -- Smart: a side step wins over stepping back unless back gets you this much farther away
     local SIDES_FIRST_BIAS = 1000       -- Sides First: any side step that gets you out of reach wins over stepping back
+    local FARM_WEAPON = "RayGun"        -- picked up and equipped whenever you have no weapon
+    local SPAWN_GRACE = 0.5             -- seconds after a respawn before having no weapons, so the game can hand out its own first
+    local GIVE_TIMEOUT = 1              -- seconds to wait for the weapon to show up in your inventory after touching it
+    local GIVE_RETRY_DELAY = 0.5        -- seconds before the weapon is picked up again after an attempt that did not work
+    local REEQUIP_DELAY = 0.25          -- seconds your hands have to stay empty before a weapon is equipped again (a weapon swap is not a deselect)
+    local REEQUIP_COOLDOWN = 0.1        -- seconds between two re-equips
 
     local farm = {
         active = false,
         connection = nil :: RBXScriptConnection?,
         target = nil :: Model?,         -- the Killer you are locked onto
-        pending = false,                -- the lock has not been teleported to yet
+        lockText = nil :: string?,      -- the text of the persistent "Locked onto" notification
         lastTeleport = -math.huge,
         lastRetreat = -math.huge,
         lastLineCheck = -math.huge,
         lastWarn = -math.huge,
-        lastNotice = -math.huge,
+        killerNotes = {} :: { [Model]: any }, -- Killer -> { lock = note?, step = note? } (see alerts.set)
+        diedNote = nil :: any,          -- { handle, text }: the one persistent "died" notification, it shows the Killer that died last
+        noRoomNotes = (setmetatable({}, { __mode = "k" }) :: any) :: { [Model]: any }, -- Killer -> the "No room to step away" notification that is on screen
+        notes = {} :: { [string]: { text: string, handle: any } }, -- persistent notifications that are on screen
+        spawnedAt = -math.huge,         -- when the current character spawned
+        lastGiveAttempt = -math.huge,
+        giving = false,                 -- a weapon pickup is in progress
+        lastWeapon = nil :: string?,    -- the weapon you were holding last, equipped again when it gets deselected
+        unequippedSince = nil :: number?,
+        lastReequip = -math.huge,
+        spawnConnection = nil :: RBXScriptConnection?,
         blindSince = nil :: number?,
+        plannedFollow = nil :: number?, -- the Follow Distance the current spot was planned for, so changing the slider moves you
         skipped = (setmetatable({}, { __mode = "k" }) :: any) :: { [Model]: number },
+        skipStreak = (setmetatable({}, { __mode = "k" }) :: any) :: { [Model]: number }, -- how many times in a row no spot was found
     }
 
     local rayParams = RaycastParams.new()
@@ -8588,12 +9856,232 @@ do
         end
     end
 
-    -- Warnings (no safe spot, no Killer in range) are limited so they cannot flood the screen
-    local function debugNotice(text)
-        if toggles.autofarmDebugNotifs_Toggle.Value and os.clock() - farm.lastNotice > 3 then
-            farm.lastNotice = os.clock()
-            notify("Error", "Autofarm", text, 5)
+    -- [Killer notifications] Everything Autofarm does about a Killer is shown in at most two notifications for that Killer.
+    local alerts = {
+        END_NOTE_TIME = 5,  -- seconds the "is gone" / "is excluded now" notification is active
+        NO_ROOM_TIME = 5,   -- seconds the "No room to step away" notification is active
+        NOTICE_TIME = 5,    -- seconds a "no safe spot" note is active when nothing else happens with that Killer
+        ENDINGS = {
+            died = { title = "Killer died", text = " died." },
+            gone = { title = "Killer gone", text = " is gone." },
+            excluded = { title = "Killer excluded", text = " is excluded now." },
+        } :: { [string]: { title: string, text: string } },
+    }
+
+    function alerts.dismiss(model, kind)
+        local record = farm.killerNotes[model]
+        local note = record and record[kind]
+
+        if not note then
+            return
         end
+
+        record[kind] = nil
+        utils.dismissNotify(note.handle)
+
+        if not record.lock and not record.step then
+            farm.killerNotes[model] = nil
+        end
+    end
+
+    function alerts.dismissAll(model)
+        alerts.dismiss(model, "lock")
+        alerts.dismiss(model, "step")
+    end
+
+    function alerts.clear()
+        local models = {}
+
+        for model in pairs(farm.killerNotes) do
+            table.insert(models, model)
+        end
+
+        for _, model in ipairs(models) do
+            alerts.dismissAll(model)
+        end
+
+        if farm.diedNote then
+            utils.dismissNotify(farm.diedNote.handle)
+            farm.diedNote = nil
+        end
+
+        for model, handle in pairs(farm.noRoomNotes) do
+            utils.dismissNotify(handle)
+            farm.noRoomNotes[model] = nil
+        end
+    end
+
+    -- Shows what happened with a Killer. kind is "lock" or "step". lifetime (seconds)
+    -- makes the note go away on its own unless something else is shown in it first.
+    function alerts.set(model, kind, notificationType, title, text, lifetime)
+        if not toggles.autofarmDebugNotifs_Toggle.Value then
+            return
+        end
+
+        local record = farm.killerNotes[model]
+
+        if not record then
+            record = {}
+            farm.killerNotes[model] = record
+        end
+
+        local note = record[kind]
+
+        if note then
+            -- If its closed manually, keep it closed
+            if note.handle.Destroyed then
+                return
+            end
+        else
+            local handle = notify(notificationType, title, text, 5, true)
+
+            if not handle then
+                if not record.lock and not record.step then
+                    farm.killerNotes[model] = nil
+                end
+
+                return
+            end
+
+            note = { handle = handle, title = title, text = text, version = 0 }
+            record[kind] = note
+        end
+
+        if note.title ~= title then
+            note.handle:ChangeTitle("<b>" .. title .. "</b>") -- notify() makes titles bold, so a changed one has to be bold too
+            note.title = title
+        end
+
+        if note.text ~= text then
+            note.handle:ChangeDescription(text)
+            note.text = text
+        end
+
+        note.version += 1 -- Whatever is shown now replaces the lifetime of what was shown before
+
+        if lifetime then
+            local version = note.version
+
+            task.delay(lifetime, function()
+                local current = farm.killerNotes[model]
+
+                if current and current[kind] == note and note.version == version then
+                    alerts.dismiss(model, kind)
+                end
+            end)
+        end
+    end
+
+    function alerts.setLock(model, text)
+        farm.lockText = text
+        alerts.set(model, "lock", "Info", "Autofarm", text)
+    end
+
+    -- One persistent notification for every Killer that dies: when the next one dies it changes to that Killer.
+    -- If it was closed manually, the next death shows it again.
+    function alerts.showDied(model)
+        if not toggles.autofarmDebugNotifs_Toggle.Value then
+            return
+        end
+
+        local info = alerts.ENDINGS.died
+        local text = utils.bold(model.Name) .. info.text
+        local note = farm.diedNote
+
+        if note and not note.handle.Destroyed then
+            if note.text ~= text then
+                note.handle:ChangeDescription(text)
+                note.text = text
+            end
+
+            return
+        end
+
+        local handle = notify("Info", info.title, text, 5, true)
+
+        farm.diedNote = handle and { handle = handle, text = text } or nil
+    end
+
+    -- "No room to step away" goes away automatically. It is repeated every frame while you are boxed in,
+    -- so a Killer only gets a new one once the previous is gone.
+    function alerts.showNoRoom(model)
+        if not toggles.autofarmDebugNotifs_Toggle.Value then
+            return
+        end
+
+        local shown = farm.noRoomNotes[model]
+
+        if shown and not shown.Destroyed then
+            return
+        end
+
+        farm.noRoomNotes[model] = notify("Error", "Autofarm", "No room to step away from " .. utils.bold(model.Name) .. ". Teleporting to a new spot.", alerts.NO_ROOM_TIME)
+    end
+
+    -- The Killer is over for Autofarm. died / gone end everything about it.
+    function alerts.endKiller(model, ending)
+        local record = farm.killerNotes[model]
+
+        if not record then
+            return
+        end
+
+        local info = alerts.ENDINGS[ending]
+
+        if ending == "excluded" and not record.lock then
+            return
+        end
+
+        -- Read before dismissing: a dismissed note looks the same as one that was manually closed
+        local described = record.lock or record.step
+        local closedByHand = described.handle.Destroyed
+
+        if ending == "excluded" then
+            alerts.dismiss(model, "lock")
+        else
+            alerts.dismissAll(model)
+        end
+
+        if ending == "died" then
+            alerts.showDied(model)
+        elseif not closedByHand then
+            notify("Info", info.title, utils.bold(model.Name) .. info.text, alerts.END_NOTE_TIME)
+        end
+    end
+
+    -- Persistent notifications describe a state and stay on screen for as long as that state lasts.
+    -- Each one has a key, so a new text replaces the old one instead of piling up.
+    local function clearNote(key)
+        local note = farm.notes[key]
+
+        if note then
+            farm.notes[key] = nil
+            utils.dismissNotify(note.handle)
+        end
+    end
+
+    local function clearAllNotes()
+        for key in pairs(farm.notes) do
+            clearNote(key)
+        end
+
+        alerts.clear()
+    end
+
+    local function setNote(key, notificationType, text)
+        if not toggles.autofarmDebugNotifs_Toggle.Value then
+            return
+        end
+
+        local note = farm.notes[key]
+
+        -- The same state again: nothing to do
+        if note and note.text == text then
+            return
+        end
+
+        clearNote(key)
+        farm.notes[key] = { text = text, handle = notify(notificationType, "Autofarm", text, 5, true) }
     end
 
     local function followDistance()
@@ -8674,19 +10162,34 @@ do
         return nil
     end
 
-    -- The nearest Killer that can be locked onto: not excluded, not given up on a moment ago and within the Search Range
-    local function pickTarget(killers, position, now)
-        local best, distance = nearestKiller(killers, position, function(killer)
+    -- The Killers that can be locked onto, nearest first: not excluded, not given up on a moment ago and within the Search Range
+    local function lockCandidates(killers, position, now)
+        local list = {}
+        local range = options.autofarmSearchRange_Slider.Value
+
+        for _, killer in ipairs(killers) do
             local expires = farm.skipped[killer.model]
+            local distance = (killer.position - position).Magnitude
 
-            return not isExcluded(killer.model) and (expires == nil or expires <= now)
-        end)
-
-        if best and distance <= options.autofarmSearchRange_Slider.Value then
-            return best
+            if distance <= range and not isExcluded(killer.model) and (expires == nil or expires <= now) then
+                killer.distance = distance
+                table.insert(list, killer)
+            end
         end
 
-        return nil
+        table.sort(list, function(a, b)
+            return a.distance < b.distance
+        end)
+
+        return list
+    end
+
+    -- A Killer with no reachable spot is left alone for a moment, a little longer every time it happens again in a row
+    local function giveUpOn(model, now)
+        local streak = (farm.skipStreak[model] or 0) + 1
+
+        farm.skipStreak[model] = streak
+        farm.skipped[model] = now + math.min(SKIP_TIME * 2 ^ (streak - 1), SKIP_MAX)
     end
 
     local function floorHit(position, reach)
@@ -8766,7 +10269,7 @@ do
     end
 
     -- Picks where to stand next to a Killer: on the ring around it, starting at the side you are already on, on the same
-    -- floor level, with room to stand, out of reach of every Killer and (with Keep Line of Sight) in view of it
+    -- floor level, with room to stand, out of reach of every Killer and in view of it
     local function planApproach(root, target, killers)
         refreshFilter(root.Parent)
 
@@ -8775,7 +10278,6 @@ do
         local levelY = targetFloor and targetFloor.Position.Y or center.Y - 3
         local offset = feetOffset(root)
         local gap = dangerDistance()
-        local needSight = toggles.autofarmWallCheck_Toggle.Value
         local fromTarget = Vector3.new(root.Position.X - center.X, 0, root.Position.Z - center.Z)
         local startAngle = fromTarget.Magnitude > 0.5 and math.atan2(fromTarget.Z, fromTarget.X) or 0
 
@@ -8792,7 +10294,7 @@ do
 
                     if nearestDistance(destination, killers) >= gap
                         and spotIsFree(destination)
-                        and (not needSight or hasLineOfSight(destination + Vector3.new(0, 1.5, 0), center)) then
+                        and hasLineOfSight(destination + Vector3.new(0, 1.5, 0), center) then
                         return { destination = destination, radius = radius, angle = angle }
                     end
                 end
@@ -8900,10 +10402,190 @@ do
         root.AssemblyLinearVelocity = Vector3.zero
     end
 
+    -- [Weapon] Autofarm enabled without a weapon: Pickup and equip the RayGun.
+    local NON_GIVABLE_WEAPONS = { Crossbow = true, MG42 = true, FreezeGun = true } -- not in workspace.Weapons, only obtainable through Pack-a-Punch / requirements
+
+    local function isWeaponTool(instance)
+        if not instance:IsA("Tool") then
+            return false
+        end
+
+        -- Pack-a-Punched weapons are named "PAP" + the weapon name
+        local name = instance.Name
+
+        if string.sub(name, 1, 3) == "PAP" then
+            name = string.sub(name, 4)
+        end
+
+        if NON_GIVABLE_WEAPONS[name] then
+            return true
+        end
+
+        local weapons = workspace:FindFirstChild("Weapons")
+
+        return weapons ~= nil and weapons:FindFirstChild(name) ~= nil
+    end
+
+    local function containsWeapon(container: Instance?)
+        if not container then
+            return false
+        end
+
+        for _, child in ipairs(container:GetChildren()) do
+            if isWeaponTool(child) then
+                return true
+            end
+        end
+
+        return false
+    end
+
+    local function hasWeapon()
+        return containsWeapon(localplayer:FindFirstChildOfClass("Backpack")) or containsWeapon(localplayer.Character)
+    end
+
+    -- Picks up the RayGun and equips it. Runs in its own thread, so the Heartbeat step never waits for it.
+    local function giveWeapon()
+        farm.giving = true
+        farm.lastGiveAttempt = os.clock()
+
+        task.spawn(function()
+            local ok, err = pcall(function()
+                local character = localplayer.Character
+                local root = getHRP()
+                local weapons = workspace:FindFirstChild("Weapons")
+                local pickup = weapons and weapons:FindFirstChild(FARM_WEAPON)
+                local hitbox = pickup and pickup:FindFirstChild("Hitbox")
+
+                if not root or not hitbox then
+                    setNote("weapon", "Error", "Cannot pick up the " .. utils.bold(FARM_WEAPON) .. ": it is missing or has no hitbox.")
+                    return
+                end
+
+                setNote("weapon", "Info", "No weapon. Picking up the " .. utils.bold(FARM_WEAPON) .. ".")
+                utils.fireTouchEvent(root, hitbox)
+
+                -- Wait for it to arrive, unless you died or Autofarm was turned off meanwhile
+                local started = os.clock()
+                local tool = entityLib.getTool("Specific", FARM_WEAPON)
+
+                while not tool and farm.active and localplayer.Character == character and os.clock() - started < GIVE_TIMEOUT do
+                    task.wait()
+                    tool = entityLib.getTool("Specific", FARM_WEAPON)
+                end
+
+                if not tool then
+                    setNote("weapon", "Error", "The " .. utils.bold(FARM_WEAPON) .. " did not arrive. Trying again.")
+
+                    return
+                end
+
+                if farm.active and localplayer.Character == character then
+                    entityLib.equipTool(FARM_WEAPON, true)
+                    clearNote("weapon")
+                    debugNotify("Equipped the " .. utils.bold(FARM_WEAPON) .. ".")
+                end
+            end)
+
+            farm.giving = false
+
+            if not ok and os.clock() - farm.lastWarn > 2 then
+                farm.lastWarn = os.clock()
+                warn("[Autofarm] Weapon: " .. tostring(err))
+            end
+        end)
+    end
+
+    -- Keeps a weapon in your hands so Autofarm can be left running unattended. The last weapon you held
+    -- is only equipped again when you hold no tool at all.
+    local function keepWeaponEquipped(now)
+        local character = localplayer.Character
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+
+        if not character or not humanoid then
+            return
+        end
+
+        local held = character:FindFirstChildOfClass("Tool")
+
+        if held then
+            if isWeaponTool(held) then
+                farm.lastWeapon = held.Name
+            end
+
+            farm.unequippedSince = nil
+
+            return
+        end
+
+        farm.unequippedSince = farm.unequippedSince or now
+
+        if farm.giving or now - farm.unequippedSince < REEQUIP_DELAY or now - farm.lastReequip < REEQUIP_COOLDOWN then
+            return
+        end
+
+        -- Weapon Spam equips and unequips on purpose
+        local weaponSpam = toggles.weaponSpam_Toggle
+
+        if weaponSpam and weaponSpam.Value then
+            return
+        end
+
+        local backpack = localplayer:FindFirstChildOfClass("Backpack")
+
+        if not backpack then
+            return
+        end
+
+        local tool: Instance? = farm.lastWeapon and backpack:FindFirstChild(farm.lastWeapon) or nil
+
+        -- The remembered weapon is gone (new life, stolen): the RayGun if you have it, otherwise any weapon
+        if not tool or not isWeaponTool(tool) then
+            tool = backpack:FindFirstChild(FARM_WEAPON)
+
+            if not tool or not isWeaponTool(tool) then
+                tool = nil
+
+                for _, child in ipairs(backpack:GetChildren()) do
+                    if isWeaponTool(child) then
+                        tool = child
+
+                        break
+                    end
+                end
+            end
+        end
+
+        if not tool then
+            return
+        end
+
+        farm.lastReequip = now
+        humanoid:EquipTool(tool :: Tool)
+        debugNotify("Your weapon was deselected. Equipped " .. utils.bold(tool.Name) .. " again.")
+    end
+
     local function releaseTarget()
         farm.target = nil
-        farm.pending = false
+        farm.lockText = nil
         farm.blindSince = nil
+    end
+
+    -- A Killer with notifications that is not living anymore died or is gone, also when you were never locked onto it
+    function alerts.endMissing(killers)
+        local missing = {}
+
+        for model, record in pairs(farm.killerNotes) do
+            if not findKiller(killers, model) then
+                table.insert(missing, model)
+            end
+        end
+
+        for _, model in ipairs(missing) do
+            local humanoid = model:FindFirstChildOfClass("Humanoid")
+
+            alerts.endKiller(model, (humanoid and humanoid.Health <= 0) and "died" or "gone")
+        end
     end
 
     local function step()
@@ -8911,19 +10593,31 @@ do
         local humanoid = getHumanoid()
 
         if not root or not humanoid or humanoid.Health <= 0 then
+            if farm.target then
+                alerts.dismiss(farm.target, "lock")
+            end
+
             releaseTarget()
 
             return
         end
 
+        keepWeaponEquipped(os.clock())
+
         if pausedBySafeSpot(humanoid) then
+            setNote("paused", "Warning", "Paused while Auto Safe Spot keeps you safe. Autofarm continues once your health is back up.")
+
             return
         end
+
+        clearNote("paused")
 
         local now = os.clock()
         local killers = getKillers()
         local origin = root.Position
         local boxedIn = false
+
+        alerts.endMissing(killers)
 
         -- Keep away: any Killer that gets too close pushes you sideways or backwards
         local threat, threatDistance = nearestKiller(killers, origin)
@@ -8935,52 +10629,104 @@ do
                 farm.lastRetreat = now
                 farm.blindSince = nil
                 moveTo(root, plan.destination, threat.position)
-                debugNotify(string.format("%s was %s studs away. Stepped %s by %s studs.", utils.bold(threat.model.Name), utils.bold(string.format("%.1f", threatDistance)), utils.bold(plan.label), utils.bold(string.format("%.1f", plan.distance))))
+                alerts.set(threat.model, "step", "Info", "Autofarm", string.format("%s was %s studs away. Stepped %s by %s studs.", utils.bold(threat.model.Name), utils.bold(string.format("%.1f", threatDistance)), utils.bold(plan.label), utils.bold(string.format("%.1f", plan.distance))))
 
                 return
             end
 
-            -- Nowhere to step to: a fresh spot next to the Killer you are locked onto is the way out
+            -- Nowhere to step to: a fresh spot next to a Killer is the way out
             boxedIn = true
-            debugNotice("No room to step away from " .. threat.model.Name .. ". Teleporting to a new spot.")
+            alerts.showNoRoom(threat.model)
         end
 
-        -- Lock: keep the current Killer, and take the nearest one when it died, is gone or got excluded
+        -- No weapon, nothing to hit a Killer with: don't teleport until the weapon has been picked up and equipped.
+        if not hasWeapon() then
+            if not farm.giving and now - farm.spawnedAt >= SPAWN_GRACE and now - farm.lastGiveAttempt >= GIVE_RETRY_DELAY then
+                giveWeapon()
+            end
+
+            return
+        end
+
+        clearNote("weapon")
+
+        -- Lock: keep the current Killer until it died, is gone or got excluded
         local target = findKiller(killers, farm.target)
 
         if target and isExcluded(target.model) then
             target = nil
         end
 
-        if not target then
-            if farm.target then
-                local previous = farm.target:FindFirstChildOfClass("Humanoid")
+        if not target and farm.target then
+            local previous = farm.target
+            local previousHumanoid = previous:FindFirstChildOfClass("Humanoid")
+            local ending = "gone"
 
-                debugNotify(utils.bold(farm.target.Name) .. (previous and previous.Health <= 0 and " died." or " is gone."))
+            if previousHumanoid and previousHumanoid.Health <= 0 then
+                ending = "died"
+            elseif previous.Parent and isExcluded(previous) then
+                ending = "excluded"
             end
 
-            target = pickTarget(killers, origin, now)
-            farm.target = target and target.model or nil
-            farm.pending = target ~= nil
-            farm.blindSince = nil
+            alerts.endKiller(previous, ending)
+            releaseTarget()
+        end
 
-            if not target then
-                debugNotice("No Killer to lock onto within range.")
+        -- A new lock. The spot to stand on is planned first and the lock is only made when there is one, so a "Locked onto"
+        -- notification always means you were teleported next to that Killer in the same frame.
+        if not target then
+            if now - farm.lastTeleport < options.autofarmCooldown_Slider.Value then
+                return
+            end
+
+            local candidates = lockCandidates(killers, origin, now)
+            local locked, plan = nil, nil
+
+            for index = 1, math.min(#candidates, PLANS_PER_STEP) do
+                local candidate = candidates[index]
+                local candidatePlan = planApproach(root, candidate, killers)
+
+                if candidatePlan then
+                    locked, plan = candidate, candidatePlan
+
+                    break
+                end
+
+                giveUpOn(candidate.model, now)
+                alerts.set(candidate.model, "lock", "Error", "Autofarm", "No safe spot near " .. utils.bold(candidate.model.Name) .. ". Trying another Killer.", alerts.NOTICE_TIME)
+            end
+
+            if not locked then
+                if #candidates == 0 then
+                    setNote("search", "Warning", "No Killer to lock onto within range.")
+                end
 
                 return
             end
 
-            debugNotify(string.format("Locked onto %s, %s studs away.", utils.bold(target.model.Name), utils.bold(string.format("%.1f", (target.position - origin).Magnitude))))
+            clearNote("search")
+            farm.skipStreak[locked.model] = nil
+            farm.target = locked.model
+            farm.blindSince = nil
+            farm.plannedFollow = followDistance()
+            farm.lastTeleport = now
+            moveTo(root, plan.destination, locked.position)
+            alerts.setLock(locked.model, string.format("Locked onto %s, %s studs away. Teleported %s studs from it.", utils.bold(locked.model.Name), utils.bold(string.format("%.1f", locked.distance)), utils.bold(string.format("%.0f", plan.radius))))
+
+            return
         end
 
-        -- Position: next to a new lock, when it got too far away, or when a wall has been between you for a while
-        local needsMove = farm.pending or boxedIn
+        clearNote("search")
+
+        -- Position: next to the Killer again when it got too far away, when a wall has been between you for a while or when you were boxed in
+        local needsMove = boxedIn
 
         if not needsMove then
             if (target.position - origin).Magnitude > options.autofarmRepositionDistance_Slider.Value then
                 needsMove = true
-            elseif not toggles.autofarmWallCheck_Toggle.Value then
-                farm.blindSince = nil
+            elseif farm.plannedFollow ~= followDistance() then
+                -- The Follow Distance was changed since you were teleported here: go to the new distance
+                needsMove = true
             elseif now - farm.lastLineCheck >= LINE_CHECK_INTERVAL then
                 farm.lastLineCheck = now
                 refreshFilter(root.Parent)
@@ -9004,31 +10750,39 @@ do
         local plan = planApproach(root, target, killers)
 
         if plan then
+            local distanceBefore = (target.position - origin).Magnitude
+
             farm.lastTeleport = now
-            farm.pending = false
             farm.blindSince = nil
+            farm.plannedFollow = followDistance()
             moveTo(root, plan.destination, target.position)
-            debugNotify(string.format("Teleported %s studs from %s.", utils.bold(string.format("%.0f", plan.radius)), utils.bold(target.model.Name)))
+            alerts.setLock(target.model, string.format("Locked onto %s. Teleported %s studs from it again (it was %s studs away).", utils.bold(target.model.Name), utils.bold(string.format("%.0f", plan.radius)), utils.bold(string.format("%.1f", distanceBefore))))
 
             return
         end
 
-        -- No reachable spot around it (a sealed room, no floor): leave it alone for a while and take the next one
-        farm.skipped[target.model] = now + SKIP_TIME
+        -- No reachable spot around it (a sealed room, no floor): leave it alone for a moment and take the next one
+        giveUpOn(target.model, now)
         releaseTarget()
-        debugNotice("No safe spot near " .. target.model.Name .. ". Trying another Killer.")
+        alerts.set(target.model, "lock", "Error", "Autofarm", "No safe spot near " .. utils.bold(target.model.Name) .. ". Trying another Killer.", alerts.NOTICE_TIME)
     end
 
     -- [Stage 2] Auto Fire & Bullet Redirection. Runs on its own connection, so stepping away from a Killer never interrupts it.
     local fire = {
         connection = nil :: RBXScriptConnection?,
-        lastClick = -math.huge,
-        guiService = game:GetService("GuiService"),
+        lastPress = -math.huge,
+        lastWarn = -math.huge,
+        weaponTool = nil :: Instance?, -- the Tool the cached weapon objects belong to
+        weaponObjects = nil :: { any }?, -- every weapon object the game keeps for that Tool (one per fire mode)
+        scanning = false,
+        nextScan = 0,
+        scanMisses = 0, -- searches in a row that found nothing
+        heldWeapon = nil :: any, -- automatic weapon whose trigger is being held down
     }
 
     -- The Killer the bullets are redirected to: the one Autofarm is locked onto. Silent Aim reads it through utils.autofarmAimTarget.
     function fire.getAimTarget()
-        if not farm.active or not toggles.autofarmRedirect_Toggle.Value then
+        if not farm.active then
             return nil
         end
 
@@ -9041,86 +10795,162 @@ do
         return nil
     end
 
-    -- A click at the cursor would press the button under it instead of firing
-    function fire.cursorOverButton()
-        local playerGui = localplayer:FindFirstChildOfClass("PlayerGui")
+    -- The game keeps one object per fire mode of every tool. They are found through the garbage collector, and the one
+    -- flagged equipped is the one in your hands.
+    function fire.collect(tool)
+        local found = {}
 
-        if not playerGui then
-            return false
+        local function consider(object)
+            if type(object) == "table"
+                and rawget(object, "instance") == tool
+                and rawget(object, "equipped") ~= nil
+                and getmetatable(object) ~= nil
+            then
+                table.insert(found, object)
+            end
         end
 
-        local position = uis:GetMouseLocation() - fire.guiService:GetGuiInset()
-        local ok, objects = pcall(playerGui.GetGuiObjectsAtPosition, playerGui, position.X, position.Y)
+        if type(filtergc) == "function" then
+            local success, matches = pcall(filtergc, "table", { Keys = { "instance", "equipped", "ammo" } }, false)
 
-        if ok then
-            for _, object in ipairs(objects) do
-                if object:IsA("GuiButton") and object.Interactable then
-                    return true
+            if success and type(matches) == "table" then
+                for _, object in ipairs(matches) do
+                    consider(object)
                 end
             end
         end
 
-        return false
+        if #found == 0 and type(getgc) == "function" then
+            local success, objects = pcall(getgc, true)
+
+            if success and type(objects) == "table" then
+                for index = 1, #objects do
+                    consider(objects[index])
+
+                    if index % 20000 == 0 then
+                        task.wait()
+
+                        if library.Unloaded then
+                            return found
+                        end
+                    end
+                end
+            end
+        end
+
+        return found
     end
 
-    function fire.canFire()
-        if library.Unloaded or library.Toggled or uis:GetFocusedTextBox() then
-            return false
+    function fire.getWeapon(tool)
+        if fire.weaponTool ~= tool then
+            fire.weaponTool = tool
+            fire.weaponObjects = nil
+            fire.nextScan = 0
+            fire.scanMisses = 0
         end
 
-        local character = localplayer.Character
-        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-
-        if not humanoid or humanoid.Health <= 0 or pausedBySafeSpot(humanoid) then
-            return false
+        for _, object in ipairs(fire.weaponObjects or {}) do
+            if rawget(object, "instance") == tool and rawget(object, "equipped") == true then
+                return object
+            end
         end
 
-        if not character:FindFirstChildOfClass("Tool") then
-            return false
+        -- Nothing usable cached: search again, off the frame. A tool that is no weapon never has an object,
+        -- so the search is skipped for it, and it is made less often the longer it keeps finding nothing.
+        if not fire.scanning and os.clock() >= fire.nextScan and isWeaponTool(tool) then
+            fire.scanning = true
+            fire.nextScan = os.clock() + math.min(WEAPON_SCAN_INTERVAL * 2 ^ fire.scanMisses, WEAPON_SCAN_MAX)
+
+            task.spawn(function()
+                local objects = fire.collect(tool)
+
+                if fire.weaponTool == tool and #objects > 0 then
+                    fire.weaponObjects = objects
+                    fire.scanMisses = 0
+                elseif fire.weaponTool == tool then
+                    fire.scanMisses += 1
+                end
+
+                fire.scanning = false
+            end)
         end
 
-        -- Only once the teleport next to the Killer has happened, and only at a living Killer
-        local target = farm.target
-        local targetHumanoid = target and target:FindFirstChildOfClass("Humanoid")
-
-        if farm.pending or not targetHumanoid or targetHumanoid.Health <= 0 then
-            return false
-        end
-
-        return not fire.cursorOverButton()
+        return nil
     end
 
-    function fire.click()
-        if type(mouse1click) == "function" then
-            mouse1click()
+    -- Lets go of the trigger of an automatic weapon
+    function fire.release()
+        local weapon = fire.heldWeapon
+        fire.heldWeapon = nil
 
-            return
+        if weapon then
+            pcall(function()
+                weapon:button1up()
+            end)
         end
+    end
 
-        -- No executor mouse functions: VirtualInputManager clicks where the cursor already is
-        local ok, virtualInput = pcall(game.GetService, game, "VirtualInputManager")
+    -- Presses the trigger via Weapon.button1down with the cursor getter
+    function fire.press(weapon)
+        task.spawn(function()
+            local success, err = pcall(weapon.button1down, weapon, uis.GetMouseLocation)
 
-        if ok and virtualInput then
-            local position = uis:GetMouseLocation()
+            if not success and os.clock() - fire.lastWarn > 2 then
+                fire.lastWarn = os.clock()
+                warn("[Autofarm] Could not fire: " .. tostring(err))
+            end
+        end)
 
-            virtualInput:SendMouseButtonEvent(position.X, position.Y, 0, true, game, 0)
-            virtualInput:SendMouseButtonEvent(position.X, position.Y, 0, false, game, 0)
+        if weapon.is_auto then
+            -- The weapon keeps firing by itself while the trigger is held. It is let go when there is nothing left to shoot at.
+            fire.heldWeapon = weapon
+        else
+            pcall(function()
+                weapon:button1up()
+            end)
         end
     end
 
     function fire.step()
         if not toggles.autofarmAutoFire_Toggle.Value then
+            fire.release()
+
             return
         end
 
+        local character = localplayer.Character
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        local tool = character and character:FindFirstChildOfClass("Tool")
+
+        -- Only at a living Killer, and only with a weapon in your hands
+        local target = farm.target
+        local targetHumanoid = target and target:FindFirstChildOfClass("Humanoid")
+
+        if not humanoid or humanoid.Health <= 0 or not tool or not targetHumanoid or targetHumanoid.Health <= 0 or pausedBySafeSpot(humanoid) then
+            fire.release()
+
+            return
+        end
+
+        local weapon = fire.getWeapon(tool)
+
+        if not weapon then
+            return
+        end
+
+        -- A semi-automatic weapon is pressed once per Fire Interval; an automatic one is pressed again only when it stopped firing
         local now = os.clock()
 
-        if now - fire.lastClick < options.autofarmFireInterval_Slider.Value / 1000 or not fire.canFire() then
+        if not weapon.is_auto and now - fire.lastPress < options.autofarmFireInterval_Slider.Value / 1000 then
             return
         end
 
-        fire.lastClick = now
-        fire.click()
+        if weapon.ready ~= true or weapon.reloading or weapon.shooting then
+            return
+        end
+
+        fire.lastPress = now
+        fire.press(weapon)
     end
 
     local function protectedStep()
@@ -9145,14 +10975,34 @@ do
             fire.connection = nil
         end
 
+        if farm.spawnConnection then
+            farm.spawnConnection:Disconnect()
+            farm.spawnConnection = nil
+        end
+
+        fire.release()
+        fire.weaponTool = nil
+        fire.weaponObjects = nil
+        farm.lastWeapon = nil
+        farm.unequippedSince = nil
         releaseTarget()
+        clearAllNotes()
         table.clear(farm.skipped)
+        table.clear(farm.skipStreak)
     end
 
     local function start()
         farm.active = true
         farm.lastTeleport = -math.huge
         farm.lastRetreat = -math.huge
+        farm.spawnedAt = -math.huge
+        farm.lastGiveAttempt = -math.huge
+
+        -- A respawn gets a short grace period before having no weapon counts
+        farm.spawnConnection = localplayer.CharacterAdded:Connect(function()
+            farm.spawnedAt = os.clock()
+        end)
+
         farm.connection = runService.Heartbeat:Connect(function()
             if library.Unloaded or not farm.active then
                 stop()
@@ -9163,7 +11013,9 @@ do
             protectedStep()
         end)
 
-        fire.lastClick = -math.huge
+        fire.lastPress = -math.huge
+        fire.nextScan = 0
+        fire.scanMisses = 0
         fire.connection = runService.Heartbeat:Connect(function()
             if library.Unloaded or not farm.active then
                 return
@@ -9177,6 +11029,15 @@ do
             end
         end)
     end
+
+    -- Disables the notifications removes the ones on screen; enabling while locked shows the current lock again
+    toggles.autofarmDebugNotifs_Toggle:OnChanged(function(enabled)
+        if not enabled then
+            clearAllNotes()
+        elseif farm.active and farm.target and farm.lockText then
+            alerts.set(farm.target, "lock", "Info", "Autofarm", farm.lockText)
+        end
+    end)
 
     toggles.autofarm_Toggle:OnChanged(function(enabled)
         if enabled and not farm.active then
@@ -9193,7 +11054,7 @@ do
 
     utils.autofarmAimTarget = fire.getAimTarget
     utils.autofarmAimWanted = function()
-        return farm.active and toggles.autofarmRedirect_Toggle.Value == true
+        return farm.active
     end
 
     table.insert(teardownTasks, function()
@@ -9204,35 +11065,22 @@ do
 end
 
 -- [Exploits / Kill Aura] Shoots every Killer in range with the weapon you are holding, one after the other.
+-- In grenade mode the M203's arcing grenade is aimed with a ballistic solution (see solveGrenadeAimPosition).
 do
     local REACH_PER_MULTIPLIER = 1100 -- studs a bullet flies before the game removes it (8 s at 150 studs/s), per 1x of Projectile Speed
     local SWITCH_MARGIN = 15 -- studs a new Killer has to be closer by before it takes over from the one being shot at
     local VISIBILITY_INTERVAL = 0.15 -- seconds a line of sight result is reused
     local WEAPON_SCAN_INTERVAL = 1 -- seconds between two searches for the weapon object of the held tool
 
-    local ASSIST_NAMES = { "Full Auto", "Rapid Fire", "Infinite Ammo", "No Spread", "No Sniper Bolt", "Fast Reload", "No Recoil" }
-    local ASSIST_TOGGLES = {
-        ["Full Auto"] = "fullAutoGunMod_Toggle",
-        ["Rapid Fire"] = "fireRateGunMod_Toggle",
-        ["Infinite Ammo"] = "infiniteAmmoGunMod_Toggle",
-        ["No Spread"] = "noSpreadGunMod_Toggle",
-        ["No Sniper Bolt"] = "noBoltGunMod_Toggle",
-        ["Fast Reload"] = "fastReloadGunMod_Toggle",
-        ["No Recoil"] = "noRecoilGunMod_Toggle",
-    }
-
     ui.exploits.killers:AddToggle("killAura_Toggle", { Text = "Kill Aura", Tooltip = "Shoots every Killer in range with the weapon you are holding, one after the other." })
 
     local killAuraSettings = toggles.killAura_Toggle:AddSettings({ Width = 310 })
     killAuraSettings:AddDropdown("killAuraTargetMode_Dropdown", { Text = "Target Mode", Tooltip = "Nearest: any Killer in range, closest first. Killers behind walls are shot through with Wallbang (without Wallbang only visible ones are taken).\nVisible: only Killers you have a clear line of sight to, closest first.", Values = { "Nearest", "Visible" }, Default = 1 })
     killAuraSettings:AddSlider("killAuraRange_Slider", { Text = "Range", Tooltip = "Killers farther than this are left alone.", Default = 500, Min = 20, Max = 3000, Suffix = " Studs" })
-    killAuraSettings:AddDropdown("killAuraExcludedKillers_Dropdown", { Text = "Excluded Killers", Tooltip = "Killers that are never shot at.", Values = killerNames, Default = { "Giant", "Jane" }, Multi = true, Searchable = true, AllowNull = true })
+    killAuraSettings:AddDropdown("killAuraExcludedKillers_Dropdown", { Text = "Excluded Killers", Tooltip = "Killers that are never shot at.", Values = killerNames, Default = { "Giant", "Jane" }, Multi = true, Searchable = true, AllowNull = true, DragSelect = true })
     killAuraSettings:AddDropdown("killAuraAimPart_Dropdown", { Text = "Aim Part", Tooltip = "Head: always aims at the head.\nAuto: Silent Aim's rule, head when the Killer is close and standing still, otherwise the body.", Values = { "Head", "HumanoidRootPart", "Auto" }, Default = 1 })
     killAuraSettings:AddToggle("killAuraWallbang_Toggle", { Text = "Wallbang", Default = true, Tooltip = "Bullets fired by the aura fly through walls and other obstructions to reach the Killer." })
     killAuraSettings:AddToggle("killAuraNoSpread_Toggle", { Text = "No Spread", Default = true, Tooltip = "Bullets fired by the aura ignore weapon inaccuracy and shotgun pellet spread." })
-    killAuraSettings:AddToggle("killAuraGunModAssist_Toggle", { Text = "Gun Mod Assist", Default = true, Risky = true, Tooltip = "While Kill Aura is on, adds the gun mods picked below on top of your own Gun Options." })
-    killAuraSettings:AddDropdown("killAuraGunMods_Dropdown", { Text = "Assist Mods", Tooltip = "Gun mods that Gun Mod Assist enables.", Values = ASSIST_NAMES, Default = { "Full Auto", "Rapid Fire", "Infinite Ammo", "No Spread", "No Sniper Bolt" }, Multi = true, AllowNull = true })
-    killAuraSettings:AddSlider("killAuraSpeedBoost_Slider", { Text = "Projectile Speed", Tooltip = "While Kill Aura is on, bullets fly this many times faster and farther.", Default = 1, Min = 1, Max = 20, Rounding = 1, Suffix = "x", Risky = true })
     killAuraSettings:AddToggle("killAuraDebugNotifs_Toggle", { Text = "Debug Notifications", Tooltip = "Sends a notification each time Kill Aura kills a Killer." })
 
     local aura = {
@@ -9260,74 +11108,6 @@ do
                 end
             end
         end
-    end
-
-    -- [Kill Aura / Gun Mod Assist] While the aura runs, the Gun Mods module asks
-    -- utils.killAuraGunModAssist() / utils.killAuraGunModRange() which mods to add on top of what is switched on in the menu.
-    local assist = { wanted = nil, boost = 1 }
-
-    local function refreshGunMods()
-        local reconcile = utils.reconcileGunMods
-
-        if type(reconcile) == "function" then
-            local success, err = pcall(reconcile)
-
-            if not success then
-                warn("[Kill Aura] Could not refresh the Gun Mods: " .. tostring(err))
-            end
-        end
-    end
-
-    function assist.compute()
-        assist.wanted = nil
-        assist.boost = 1
-
-        if not aura.active or not toggles.killAuraGunModAssist_Toggle.Value then
-            return
-        end
-
-        local selected = options.killAuraGunMods_Dropdown.Value
-        local wanted = {}
-        local count = 0
-
-        if type(selected) == "table" then
-            for _, name in ipairs(ASSIST_NAMES) do
-                if selected[name] then
-                    wanted[ASSIST_TOGGLES[name]] = true
-                    count += 1
-                end
-            end
-        end
-
-        local boost = tonumber(options.killAuraSpeedBoost_Slider.Value) or 1
-
-        if count == 0 and boost <= 1 then
-            return
-        end
-
-        wanted.enableGunMods_Toggle = true
-        assist.wanted = wanted
-        assist.boost = boost
-    end
-
-    function assist.apply()
-        assist.compute()
-        refreshGunMods()
-    end
-
-    function assist.restore()
-        assist.wanted = nil
-        assist.boost = 1
-        refreshGunMods()
-    end
-
-    -- What the Gun Mods module reads (nil / 1 while Kill Aura is off or Gun Mod Assist has nothing to add)
-    utils.killAuraGunModAssist = function()
-        return assist.wanted
-    end
-
-    utils.killAuraGunModRange = function()
-        return assist.boost
     end
 
     -- [Kill Aura / Weapon] The game keeps one object per fire mode of every tool. They are found
@@ -9407,23 +11187,40 @@ do
         return nil
     end
 
-    -- True while the held weapon fires slow, arcing projectiles: the Crossbow, or the M16A2/M203 in grenade mode
-    local function isProjectileHeld(character, weapon)
-        if weapon and rawget(weapon, "is_grenade") == true then
-            return true
+    -- What the held weapon shoots: "bullet", "launcher", or nil
+    local function getWeaponKind(weapon)
+        local isLauncher = utils.isLauncherWeapon
+
+        if type(isLauncher) == "function" and isLauncher(weapon) then
+            return "launcher"
         end
 
-        local check = utils.isProjectileWeaponHeld -- the Triggerbot's rule
-
-        if type(check) == "function" then
-            local success, result = pcall(check, character)
-
-            return success and result == true
+        if weapon.is_grenade == true then
+            return nil
         end
 
-        local tool = character:FindFirstChildOfClass("Tool")
+        return "bullet"
+    end
 
-        return tool ~= nil and string.find(tool.Name, "Crossbow", 1, true) ~= nil
+    -- Nothing left to fire: the game only plays its empty click every frame
+    local function isOutOfAmmo(weapon)
+        local ammo = weapon.ammo
+        local stored = weapon.stored_ammo
+
+        return type(ammo) == "number" and type(stored) == "number" and ammo <= 0 and stored <= 0
+    end
+
+    -- True when some launch angle makes the grenade reach this Killer
+    local function canLob(weapon, model)
+        local aimPosition = utils.killAuraAimPosition
+
+        if type(aimPosition) ~= "function" then
+            return false
+        end
+
+        local success, position = pcall(aimPosition, model, weapon)
+
+        return success and position ~= nil
     end
 
     -- [Kill Aura / Targets]
@@ -9471,7 +11268,8 @@ do
     end
 
     -- The Killer to shoot at next, or nil. Sorted by distance; the Killer being shot at is kept until another one is clearly closer.
-    local function selectTarget(character, root)
+    -- With the grenade launcher, only Killers the grenade can actually reach are candidates.
+    local function selectTarget(character, root, weapon, kind)
         local folder = workspace:FindFirstChild("Killers")
 
         if not folder then
@@ -9511,6 +11309,10 @@ do
         local now = os.clock()
 
         local function eligible(candidate)
+            if kind == "launcher" and not canLob(weapon, candidate.model) then
+                return false
+            end
+
             return not needVisible or isVisibleFrom(eye, candidate.model, candidate.root, now)
         end
 
@@ -9594,15 +11396,16 @@ do
         end
 
         local weapon = getEquippedWeapon(tool)
+        local kind = weapon and getWeaponKind(weapon) or nil
 
-        if not weapon or isProjectileHeld(character, weapon) then
+        if not weapon or not kind or isOutOfAmmo(weapon) then
             idle()
 
             return
         end
 
         local previous = aura.target
-        local best = selectTarget(character, root)
+        local best = selectTarget(character, root, weapon, kind)
         local newModel = best and best.model or nil
 
         -- When the Killer that was being shot at is gone, count it
@@ -9641,7 +11444,6 @@ do
         aura.target = nil
         releaseHold()
         table.clear(aura.visible)
-        assist.restore() -- aura.active is already false, so the overlay is empty
     end
 
     local function start()
@@ -9666,7 +11468,6 @@ do
         aura.weaponObjects = nil
         aura.nextScan = 0
         readExcluded(options.killAuraExcludedKillers_Dropdown.Value)
-        assist.apply()
 
         -- The bullet redirection comes from Silent Aim's weapon hooks
         if type(utils.requestSilentAimScan) == "function" then
@@ -9696,16 +11497,6 @@ do
             stop()
         end
     end)
-
-    local function reapplyAssist()
-        if aura.active then
-            assist.apply()
-        end
-    end
-
-    toggles.killAuraGunModAssist_Toggle:OnChanged(reapplyAssist)
-    options.killAuraGunMods_Dropdown:OnChanged(reapplyAssist)
-    options.killAuraSpeedBoost_Slider:OnChanged(reapplyAssist)
 
     options.killAuraExcludedKillers_Dropdown:OnChanged(function(value)
         readExcluded(value)
@@ -9747,8 +11538,6 @@ do
         utils.killAuraWallbang = nil
         utils.killAuraNoSpread = nil
         stop()
-        utils.killAuraGunModAssist = nil
-        utils.killAuraGunModRange = nil
     end)
 end
 
@@ -9764,10 +11553,11 @@ ui.visuals.esp:AddToggle("killerESP_Toggle", { Text = "Killer ESP" })
 
 local killerESPSettings = toggles.killerESP_Toggle:AddSettings({ Width = 280 })
 
-killerESPSettings:AddDropdown("excludedKillers_Dropdown", { Text = "Excluded Killers", Values = killerNames, Default = { "Giant", "Jane" }, Multi = true, Searchable = true })
+killerESPSettings:AddDropdown("excludedKillers_Dropdown", { Text = "Excluded Killers", Values = killerNames, Default = { "Giant", "Jane" }, Multi = true, Searchable = true, DragSelect = true })
 killerESPSettings:AddSlider("killerESPDistance_Slider", { Text = "Range", Tooltip = "How far away to show ESP on killers", Default = 150, Min = 100, Max = 1000, Suffix = " Studs" })
 killerESPSettings:AddDropdown("killerESPBoxType_Dropdown", { Text = "Box Type", Tooltip = "2D draws a flat box around the killer, 3D draws a wireframe box.", Values = { "2D", "3D" }, Default = 1 })
 killerESPSettings:AddToggle("killerESPHealthBar_Toggle", { Text = "Health Bar", Tooltip = "Shows a health bar next to the killer.", Default = true })
+killerESPSettings:AddToggle("killerESPShowDistance_Toggle", { Text = "Show Distance", Tooltip = "Shows how far each killer is from you, in studs, under its box. Uses the name tag color and text size." })
 utils.addRainbowSettings(killerESPSettings:AddLabel("ESP Color"):AddColorPicker("killerESPColor_ColorPicker",{ Title = "ESP Color", Default = Color3.fromRGB(255, 0, 0), Transparency = nil }), "killerESPColor_ColorPicker", "rainbowESPColor_Toggle")
 killerESPSettings:AddToggle("toggleKillersNametags_Toggle", { Text = "Enable Name Tags" })
 
@@ -9788,7 +11578,7 @@ end
 ui.visuals.screen:AddToggle("fogReducer_Toggle", { Text = "Fog Reducer", Tooltip = "Pushes the fog back so you can see further. 100% removes the fog completely." })
 
 local fogReducerSettings = toggles.fogReducer_Toggle:AddSettings({ Width = 240 })
-fogReducerSettings:AddSlider("fogReducerAmount_Slider", { Text = "Reduction", Tooltip = "0% leaves the fog normal, higher values make it clearer, 100% removes it completely.", Default = 100, Min = 0, Max = 100, Suffix = "%", Rounding = 0 })
+fogReducerSettings:AddSlider("fogReducerAmount_Slider", { Text = "Reduction", Tooltip = "0% leaves the fog normal, higher values make it clearer, 100% removes it completely.", Default = 100, Min = 0, Max = 100, Suffix = "%" })
 
 ui.visuals.screen:AddToggle("enableFOV_Toggle", { Text = "Enable FOV" })
 
@@ -9809,102 +11599,228 @@ scopeOverlaySettings:AddToggle("keepScopeCrosshair_Toggle", { Text = "Keep Cross
 -- [Visuals / Fog] Fog Reducer
 -- The reduction moves the whole fog band away from the camera: FogStart and FogEnd are both multiplied by
 -- 1 / (1 - reduction).
-local fogConnections = {}
-local fogState: any = nil -- the game's own fog values and the values this feature last wrote
+do
+    local tweenService = game:GetService("TweenService")
 
-local function sameFog(a: number, b: number): boolean
-    if a == b then
-        return true
+    local ENTER_TIME = 1.2 -- toggle enabled
+    local EXIT_TIME = 0.8 -- toggle disabled
+    local ADJUST_TIME = 0.35 -- slider moved
+
+    local fogConnections = {}
+    local fogState: any = nil -- the game's own fog values, the values this feature last set and the reduction currently shown
+    local fogTween: any = { holder = nil, tween = nil, connection = nil }
+
+    local function sameFog(a: number, b: number): boolean
+        if a == b then
+            return true
+        end
+
+        if math.abs(a) == math.huge or math.abs(b) == math.huge then
+            return false
+        end
+
+        return math.abs(a - b) <= math.max(math.abs(a), math.abs(b)) * 1e-5 + 1e-6
     end
 
-    if math.abs(a) == math.huge or math.abs(b) == math.huge then
-        return false
+    local function targetReduction(): number
+        return math.clamp(tonumber(options.fogReducerAmount_Slider.Value) or 100, 0, 100) / 100
     end
 
-    return math.abs(a - b) <= math.max(math.abs(a), math.abs(b)) * 1e-5 + 1e-6
-end
+    -- Sets the fog for the reduction that is currently shown
+    local function applyFog()
+        local fog = fogState
 
-local function applyFog()
-    local fog = fogState
+        if not fog then
+            return
+        end
 
-    if not fog then
-        return
+        local reduction = math.clamp(fog.shown, 0, 1)
+        local fogStart, fogEnd = 0, math.huge
+
+        if reduction < 1 then
+            local scale = 1 / (1 - reduction)
+
+            -- Capped below the 32-bit float limit so a huge game value cannot overflow into infinity
+            fogStart = math.min(fog.startOriginal * scale, 1e38)
+            fogEnd = math.min(fog.endOriginal * scale, 1e38)
+        end
+
+        fog.startApplied = fogStart
+        fog.endApplied = fogEnd
+
+        lighting.FogStart = fogStart
+        lighting.FogEnd = fogEnd
     end
 
-    local reduction = math.clamp(tonumber(options.fogReducerAmount_Slider.Value) or 100, 0, 100) / 100
-    local fogStart, fogEnd = 0, math.huge
+    local function cancelFogTween()
+        local tween = fogTween.tween
+        fogTween.tween = nil
 
-    if reduction < 1 then
-        local scale = 1 / (1 - reduction)
+        if tween then
+            tween:Cancel()
+            tween:Destroy()
+        end
 
-        -- Capped below the 32-bit float limit so a huge game value cannot overflow into infinity
-        fogStart = math.min(fog.startOriginal * scale, 1e38)
-        fogEnd = math.min(fog.endOriginal * scale, 1e38)
-    end
-
-    fog.startApplied = fogStart
-    fog.endApplied = fogEnd
-
-    lighting.FogStart = fogStart
-    lighting.FogEnd = fogEnd
-end
-
-local function stopFogReducer()
-    for _, conn in pairs(fogConnections) do
-        if conn.Connected then
-            conn:Disconnect()
+        if fogTween.connection then
+            fogTween.connection:Disconnect()
+            fogTween.connection = nil
         end
     end
 
-    fogConnections = {}
-
-    local fog = fogState
-    fogState = nil
-
-    if fog then
-        lighting.FogStart = fog.startOriginal
-        lighting.FogEnd = fog.endOriginal
-    end
-end
-
-toggles.fogReducer_Toggle:OnChanged(function(enabled)
-    stopFogReducer()
-
-    if not enabled then
-        return
-    end
-
-    fogState = {
-        startOriginal = lighting.FogStart,
-        endOriginal = lighting.FogEnd,
-        startApplied = lighting.FogStart,
-        endApplied = lighting.FogEnd,
-    }
-
-    applyFog()
-
-    -- When the game changes the fog itself, that value becomes the new original and the reduction is applied on top.
-    -- A value that matches what this module wrote is its own change and is ignored.
-    fogConnections.FogEnd = lighting:GetPropertyChangedSignal("FogEnd"):Connect(function()
+    -- Eases the shown reduction from where it is now to target; retargeting mid-tween continues from the current value.
+    local function tweenFogTo(target: number, duration: number, onDone: (() -> ())?)
         local fog = fogState
 
-        if fog and not sameFog(lighting.FogEnd, fog.endApplied) then
-            fog.endOriginal = lighting.FogEnd
+        if not fog then
+            return
+        end
+
+        cancelFogTween()
+
+        if math.abs(fog.shown - target) < 1e-4 then
+            fog.shown = target
             applyFog()
+
+            if onDone then
+                onDone()
+            end
+
+            return
+        end
+
+        local holder = fogTween.holder
+
+        if not holder then
+            holder = Instance.new("NumberValue")
+            fogTween.holder = holder
+        end
+
+        holder.Value = fog.shown
+
+        fogTween.connection = holder.Changed:Connect(function(value)
+            local current = fogState
+
+            if current then
+                current.shown = value
+                applyFog()
+            end
+        end)
+
+        local tween = tweenService:Create(holder, TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Value = target })
+        fogTween.tween = tween
+
+        tween.Completed:Connect(function(playbackState)
+            -- Ignore tweens that were replaced or cancelled
+            if fogTween.tween ~= tween or playbackState ~= Enum.PlaybackState.Completed then
+                return
+            end
+
+            fogTween.tween = nil
+
+            if fogTween.connection then
+                fogTween.connection:Disconnect()
+                fogTween.connection = nil
+            end
+
+            local current = fogState
+
+            if current then
+                current.shown = target
+                applyFog() -- lands exactly on the target
+            end
+
+            tween:Destroy()
+
+            if onDone then
+                onDone()
+            end
+        end)
+
+        tween:Play()
+    end
+
+    -- Stops tweening, hands the fog back to the game right away and drops every connection
+    local function stopFogReducer()
+        cancelFogTween()
+
+        if fogTween.holder then
+            fogTween.holder:Destroy()
+            fogTween.holder = nil
+        end
+
+        for _, conn in pairs(fogConnections) do
+            if conn.Connected then
+                conn:Disconnect()
+            end
+        end
+
+        fogConnections = {}
+
+        local fog = fogState
+        fogState = nil
+
+        if fog then
+            lighting.FogStart = fog.startOriginal
+            lighting.FogEnd = fog.endOriginal
+        end
+    end
+
+    toggles.fogReducer_Toggle:OnChanged(function(enabled)
+        if not enabled then
+            -- Fade the fog back first. stopFogReducer then restores the game's values.
+            if fogState then
+                tweenFogTo(0, EXIT_TIME, stopFogReducer)
+            end
+
+            return
+        end
+
+        -- Enabled again while it was still fading out: the state and connections are still there, so just fade in again
+        if fogState then
+            tweenFogTo(targetReduction(), ENTER_TIME)
+
+            return
+        end
+
+        fogState = {
+            startOriginal = lighting.FogStart,
+            endOriginal = lighting.FogEnd,
+            startApplied = lighting.FogStart,
+            endApplied = lighting.FogEnd,
+            shown = 0, -- starts at the game's normal fog
+        }
+
+        -- When the game changes the fog itself, that value becomes the new original and the reduction is applied on top.
+        -- A value that matches what this module wrote is its own change and is ignored.
+        fogConnections.FogEnd = lighting:GetPropertyChangedSignal("FogEnd"):Connect(function()
+            local fog = fogState
+
+            if fog and not sameFog(lighting.FogEnd, fog.endApplied) then
+                fog.endOriginal = lighting.FogEnd
+                applyFog()
+            end
+        end)
+
+        fogConnections.FogStart = lighting:GetPropertyChangedSignal("FogStart"):Connect(function()
+            local fog = fogState
+
+            if fog and not sameFog(lighting.FogStart, fog.startApplied) then
+                fog.startOriginal = lighting.FogStart
+                applyFog()
+            end
+        end)
+
+        tweenFogTo(targetReduction(), ENTER_TIME)
+    end)
+
+    options.fogReducerAmount_Slider:OnChanged(function()
+        if fogState and toggles.fogReducer_Toggle.Value then
+            tweenFogTo(targetReduction(), ADJUST_TIME)
         end
     end)
 
-    fogConnections.FogStart = lighting:GetPropertyChangedSignal("FogStart"):Connect(function()
-        local fog = fogState
-
-        if fog and not sameFog(lighting.FogStart, fog.startApplied) then
-            fog.startOriginal = lighting.FogStart
-            applyFog()
-        end
-    end)
-end)
-
-options.fogReducerAmount_Slider:OnChanged(applyFog)
+    table.insert(teardownTasks, stopFogReducer)
+end
 
 local excludedKillers = { Giant = true, Jane = true }
 
@@ -9941,16 +11857,21 @@ do
         { 1, 5 }, { 2, 6 }, { 3, 7 }, { 4, 8 }, -- along X
     }
 
-    -- A killer's box is measured ONCE from its humanoid body parts and then never changes. Extra moving parts are ignored.
+    -- A killer's box is measured ONCE and then never changes, so animations cannot make it stutter.
     local boxCoreParts = { HumanoidRootPart = true, Head = true, UpperTorso = true, LowerTorso = true, Torso = true }
     local boxLegParts = {
         LeftUpperLeg = true, LeftLowerLeg = true, LeftFoot = true,
         RightUpperLeg = true, RightLowerLeg = true, RightFoot = true,
         ["Left Leg"] = true, ["Right Leg"] = true,
     }
+    local boxArmParts = {
+        LeftUpperArm = true, LeftLowerArm = true, LeftHand = true,
+        RightUpperArm = true, RightLowerArm = true, RightHand = true,
+        ["Left Arm"] = true, ["Right Arm"] = true,
+    }
 
-    -- boxCache[killer] = { size = Vector3, offset = Vector3 }. size is the fixed box size, offset is the box center
-    -- relative to the killer's HumanoidRootPart.
+    -- boxCache[killer] = { size = Vector3, offset = Vector3, signature = number, checkedAt = number }.
+    -- The box is measured again only if the killer's body gains or loses parts.
     local boxCache: { [Instance]: any } = setmetatable({}, { __mode = "k" }) :: any
 
     local function destroyDrawing(drawing: any)
@@ -10001,6 +11922,7 @@ do
         setVisible(objs.healthBG, false)
         setVisible(objs.healthFill, false)
         setVisible(objs.label, false)
+        setVisible(objs.distanceLabel, false)
         setVisible(objs.arrowFill, false)
         setVisible(objs.arrowOutline, false)
 
@@ -10018,6 +11940,7 @@ do
             destroyHealthBar(objs)
             destroyArrow(objs)
             destroyDrawing(objs.label)
+            destroyDrawing(objs.distanceLabel)
             espObjects[model] = nil
             boxCache[model] = nil
         end
@@ -10039,6 +11962,28 @@ do
         label.Visible = false
 
         return { label = label }
+    end
+
+    -- The distance text under the box via "Show Distance"
+    local function ensureDistanceLabel(objs: any)
+        if objs.distanceLabel then
+            return
+        end
+
+        local label = Drawing.new("Text")
+        label.Center = true
+        label.Outline = true
+        label.OutlineColor = Color3.new(0, 0, 0)
+        label.Transparency = 1
+        label.ZIndex = 4
+        label.Visible = false
+
+        objs.distanceLabel = label
+    end
+
+    local function destroyDistanceLabel(objs: any)
+        destroyDrawing(objs.distanceLabel)
+        objs.distanceLabel = nil
     end
 
     -- Creates the drawings for the selected box style (and removes the other style's drawings when it changes).
@@ -10106,41 +12051,138 @@ do
         objs.healthFill = fill
     end
 
-    -- Measures the killer's fixed box size from its humanoid body parts, in the HumanoidRootPart's local space.
+    -- True for a part that belongs in the box on top of the humanoid body
+    local function isBoxExtraPart(part: BasePart, model: Model): boolean
+        if part.Transparency >= 1 or string.find(string.lower(part.Name), "tentacle", 1, true) then
+            return false
+        end
+
+        local ancestor = part.Parent
+
+        while ancestor and ancestor ~= model do
+            if ancestor:IsA("Tool") or string.find(string.lower(ancestor.Name), "tentacle", 1, true) then
+                return false
+            end
+
+            -- Anything attached to a hand, arm, foot or leg moves with the animation
+            if ancestor:IsA("BasePart") and (boxArmParts[ancestor.Name] or boxLegParts[ancestor.Name]) then
+                return false
+            end
+
+            ancestor = ancestor.Parent
+        end
+
+        return true
+    end
+
+    -- Measures the killer's fixed box from its whole body, in the HumanoidRootPart's local space.
     local function measureKillerBox(model: Model, root: BasePart): any
         local rootCFrame = root.CFrame
         local minV = Vector3.new(math.huge, math.huge, math.huge)
         local maxV = Vector3.new(-math.huge, -math.huge, -math.huge)
         local found = 0
 
+        -- Increases the box to contain a part (only in height when heightOnly is true).
+        local function grow(part: BasePart, heightOnly: boolean?)
+            -- Enlarged hitboxes (Hitbox Expander) never inflate the ESP box
+            local half = (utils.hitboxOriginalSizes[part] or part.Size) / 2
+
+            for _, corner in ipairs(boxCorners) do
+                local p = rootCFrame:PointToObjectSpace(part.CFrame:PointToWorldSpace(corner * half))
+
+                if heightOnly then
+                    minV = Vector3.new(minV.X, math.min(minV.Y, p.Y), minV.Z)
+                    maxV = Vector3.new(maxV.X, math.max(maxV.Y, p.Y), maxV.Z)
+                else
+                    minV = Vector3.new(math.min(minV.X, p.X), math.min(minV.Y, p.Y), math.min(minV.Z, p.Z))
+                    maxV = Vector3.new(math.max(maxV.X, p.X), math.max(maxV.Y, p.Y), math.max(maxV.Z, p.Z))
+                end
+            end
+        end
+
+        local torso: BasePart? = nil
+        local armThickness = 0
+        local armMinX, armMaxX = math.huge, -math.huge
+
+        -- 1) The humanoid body. Legs only set the height, because their swing would change the width and depth.
         for _, part in ipairs(model:GetChildren()) do
-            local isCore = boxCoreParts[part.Name] == true
+            if part:IsA("BasePart") then
+                if boxCoreParts[part.Name] then
+                    grow(part)
+                    found += 1
 
-            if part:IsA("BasePart") and (isCore or boxLegParts[part.Name]) then
-                -- Enlarged hitboxes (Hitbox Expander) never inflate the ESP box
-                local half = (utils.hitboxOriginalSizes[part] or part.Size) / 2
-                found += 1
+                    if part.Name == "UpperTorso" or (part.Name == "Torso" and not torso) then
+                        torso = part
+                    end
+                elseif boxLegParts[part.Name] then
+                    grow(part, true)
+                    found += 1
+                elseif boxArmParts[part.Name] then
+                    local size = utils.hitboxOriginalSizes[part] or part.Size
+                    armThickness = math.max(armThickness, math.max(size.X, size.Z))
 
-                for _, corner in ipairs(boxCorners) do
-                    local p = rootCFrame:PointToObjectSpace(part.CFrame:PointToWorldSpace(corner * half))
+                    -- Where the arms currently are, only used to catch arms held out to the side all the time
+                    local half = size / 2
 
-                    if isCore then
-                        minV = Vector3.new(math.min(minV.X, p.X), math.min(minV.Y, p.Y), math.min(minV.Z, p.Z))
-                        maxV = Vector3.new(math.max(maxV.X, p.X), math.max(maxV.Y, p.Y), math.max(maxV.Z, p.Z))
-                    else
-                        minV = Vector3.new(minV.X, math.min(minV.Y, p.Y), minV.Z)
-                        maxV = Vector3.new(maxV.X, math.max(maxV.Y, p.Y), maxV.Z)
+                    for _, corner in ipairs(boxCorners) do
+                        local x = rootCFrame:PointToObjectSpace(part.CFrame:PointToWorldSpace(corner * half)).X
+                        armMinX = math.min(armMinX, x)
+                        armMaxX = math.max(armMaxX, x)
+                    end
+                end
+            end
+        end
+
+        -- 2) The arms, at rest: one arm thickness out from each side of the torso. Swinging never changes the width.
+        if torso and armThickness > 0 then
+            local half = (utils.hitboxOriginalSizes[torso] or torso.Size) / 2
+            local torsoMinX, torsoMaxX = math.huge, -math.huge
+
+            for _, corner in ipairs(boxCorners) do
+                local x = rootCFrame:PointToObjectSpace(torso.CFrame:PointToWorldSpace(corner * half)).X
+                torsoMinX = math.min(torsoMinX, x)
+                torsoMaxX = math.max(torsoMaxX, x)
+            end
+
+            local restMinX, restMaxX = torsoMinX - armThickness, torsoMaxX + armThickness
+            local reach = armThickness / 2
+
+            if armMinX < math.huge then
+                restMinX = math.min(restMinX, math.max(armMinX, restMinX - reach))
+                restMaxX = math.max(restMaxX, math.min(armMaxX, restMaxX + reach))
+            end
+
+            minV = Vector3.new(math.min(minV.X, restMinX), minV.Y, minV.Z)
+            maxV = Vector3.new(math.max(maxV.X, restMaxX), maxV.Y, maxV.Z)
+        end
+
+        local bodyHeight = maxV.Y - minV.Y
+        local valid = found > 1 and bodyHeight > 0 and bodyHeight < math.huge
+            and maxV.X > minV.X and maxV.Z > minV.Z
+
+        -- 3) Visible extras that sit near the body. A part far away from the body is skipped so it cannot stretch the box.
+        if valid then
+            local margin = bodyHeight * 0.5
+            local nearMin, nearMax = minV - Vector3.new(margin, margin, margin), maxV + Vector3.new(margin, margin, margin)
+
+            for _, descendant in ipairs(model:GetDescendants()) do
+                if descendant:IsA("BasePart") and not (descendant.Parent == model
+                    and (boxCoreParts[descendant.Name] or boxLegParts[descendant.Name] or boxArmParts[descendant.Name]))
+                    and isBoxExtraPart(descendant, model) then
+                    local center = rootCFrame:PointToObjectSpace(descendant.Position)
+
+                    if center.X >= nearMin.X and center.X <= nearMax.X
+                        and center.Y >= nearMin.Y and center.Y <= nearMax.Y
+                        and center.Z >= nearMin.Z and center.Z <= nearMax.Z then
+                        grow(descendant)
                     end
                 end
             end
         end
 
         local size = maxV - minV
-        local valid = found > 1
-            and size.X > 0 and size.Y > 0 and size.Z > 0
-            and size.X < math.huge and size.Y < math.huge and size.Z < math.huge
 
-        if valid then
+        if valid and size.X < math.huge and size.Y < math.huge and size.Z < math.huge then
             return {
                 size = Vector3.new(math.max(size.X, 1), math.max(size.Y, 1), math.max(size.Z, 1)),
                 offset = (minV + maxV) / 2,
@@ -10152,11 +12194,36 @@ do
         return { size = boundsSize, offset = rootCFrame:PointToObjectSpace(boundsCFrame.Position) }
     end
 
+    -- Counts the parts that makes up a killer's body. It only changes when the body gains or loses a piece.
+    local function boxSignature(model: Model): number
+        local count = 0
+
+        for _, child in ipairs(model:GetChildren()) do
+            if child:IsA("Accessory") or child:IsA("BasePart") or child:IsA("Model") then
+                count += 1
+            end
+        end
+
+        return count
+    end
+
     local function getKillerBox(model: Model, root: BasePart): any
         local box = boxCache[model]
+        local now = os.clock()
+
+        -- Once a second, check whether the body gained or lost a piece (such as an accessory that loaded in late)
+        if box and now - box.checkedAt >= 1 then
+            box.checkedAt = now
+
+            if box.signature ~= boxSignature(model) then
+                box = nil
+            end
+        end
 
         if not box then
             box = measureKillerBox(model, root)
+            box.signature = boxSignature(model)
+            box.checkedAt = now
             boxCache[model] = box
         end
 
@@ -10308,6 +12375,7 @@ do
         local tagColor = nameTagColorPicker.Value
         local showTags = toggles.toggleKillersNametags_Toggle.Value
         local showHealth = toggles.killerESPHealthBar_Toggle.Value
+        local showDistance = toggles.killerESPShowDistance_Toggle.Value
         local boxMode = options.killerESPBoxType_Dropdown.Value == "3D" and "3D" or "2D"
         local maxDistance = killerESPRangeSlider.Value
         local showArrows = toggles.killerArrows_Toggle.Value
@@ -10332,7 +12400,9 @@ do
 
             local objs = espObjects[killer]
 
-            if entityLib.getEntityDistance(hrp, root) > maxDistance then
+            local distance = entityLib.getEntityDistance(hrp, root)
+
+            if distance > maxDistance then
                 if objs then hideESPObjects(objs) end
                 continue
             end
@@ -10413,6 +12483,19 @@ do
             objs.label.Color = tagColor
             objs.label.Position = Vector2.new(minX + math.floor(width / 2), minY - defaultTextSize - 4)
             objs.label.Visible = showTags
+
+            -- Distance in studs, centered under the box
+            if showDistance then
+                ensureDistanceLabel(objs)
+
+                objs.distanceLabel.Text = string.format("%d studs", math.floor(distance + 0.5))
+                objs.distanceLabel.Size = defaultTextSize
+                objs.distanceLabel.Color = tagColor
+                objs.distanceLabel.Position = Vector2.new(minX + math.floor(width / 2), minY + height + 4)
+                objs.distanceLabel.Visible = true
+            elseif objs.distanceLabel then
+                destroyDistanceLabel(objs)
+            end
         end
 
         for model in pairs(espObjects) do
@@ -11340,7 +13423,7 @@ do
     local nameLabel = portraitGroup:AddLabel("Nearest Killer: none")
     local healthLabel = portraitGroup:AddLabel("Health: -")
     portraitSettings:AddToggle("killerPortraitWallCheck_Toggle", { Text = "Wall Check", Tooltip = "Only shows the nearest Killer that is visible to you.", Default = true })
-    portraitSettings:AddDropdown("killerPortraitExcluded_Dropdown", { Text = "Excluded Killers", Tooltip = "Killers that are never shown in the portrait.", Values = killerNames, Default = { "Giant", "Jane" }, Multi = true, Searchable = true })
+    portraitSettings:AddDropdown("killerPortraitExcluded_Dropdown", { Text = "Excluded Killers", Tooltip = "Killers that are never shown in the portrait.", Values = killerNames, Default = { "Giant", "Jane" }, Multi = true, Searchable = true, DragSelect = true })
     portraitSettings:AddSlider("killerPortraitHeight_Slider", { Text = "Viewport Height", Default = 180, Min = 100, Max = 300, Suffix = " px" })
 
     -- The preview only shows while the feature is on (the toggle itself and its options stay visible).
@@ -11636,7 +13719,7 @@ do
         utils.addRainbowSettings(trajectorySettings:AddLabel("Landing Color"):AddColorPicker("trajectoryLandingColor_ColorPicker", { Title = "Landing Color", Default = Color3.fromRGB(255, 170, 0) }), "trajectoryLandingColor_ColorPicker", "rainbowTrajectoryLandingColor_Toggle")
         trajectorySettings:AddSlider("trajectoryThickness_Slider", { Text = "Line Thickness", Default = 2, Min = 1, Max = 5 })
         trajectorySettings:AddSlider("trajectoryMarkerSize_Slider", { Text = "Landing Marker Size", Tooltip = "Radius of the ring drawn where the grenade lands. Only a visual size, not the explosion radius.", Default = 3, Min = 1, Max = 10, Suffix = " Studs" })
-        trajectorySettings:AddToggle("trajectoryShowInfo_Toggle", { Text = "Show Distance / Time", Tooltip = "Shows the flight distance and flight time next to the landing spot.", Default = true })
+        trajectorySettings:AddToggle("trajectoryShowInfo_Toggle", { Text = "Show Distance & Time", Tooltip = "Shows the flight distance and flight time next to the landing spot, or next to where the grenade runs out of flight time (\"expires\") when it hits nothing.", Default = true })
         trajectorySettings:AddToggle("trajectoryKillerHighlight_Toggle", { Text = "Highlight Killer On Hit", Tooltip = "When the grenade is predicted to hit a killer, that killer and the path turn the hit color.", Default = true })
 
         local trajectoryKillerSettings = toggles.trajectoryKillerHighlight_Toggle:AddSettings({ Width = 200 })
@@ -11644,7 +13727,8 @@ do
 
 
         local LAUNCHER_TOOL_NAME = "M16A2/M203"
-        local MUZZLE_SPEED = 150 -- Weapon.fire: Part.AssemblyLinearVelocity = Unit * 150
+        local MUZZLE_SPEED = 150 -- Weapon.fire: Part.AssemblyLinearVelocity = Unit * 150 (the Projectile Speed Multiplier gun mod multiplies it)
+        local PROJECTILE_LIFETIME = 8 -- Weapon.fire: Debris:AddItem(Part, 8), so a grenade that hits nothing disappears after 8 s
         local LAUNCHER_UP_FORCE = 10 -- M16A2/M203 set_missile: BodyForce.Force = Vector3.new(0, 10, 0)
         local MISSILE_RADIUS = 0.5 -- set_missile resizes the grenade to 1 x 1 x 1
         local AIM_RAY_LENGTH = 200 -- Weapon.screen_to_target
@@ -11654,8 +13738,7 @@ do
 
         -- Simulation and drawing settings
         local STEP_TIME = 0.05
-        local MAX_STEPS = 100
-        local MAX_RANGE = 800
+        local MAX_STEPS = math.ceil(PROJECTILE_LIFETIME / STEP_TIME) -- the whole flight time; a faster grenade can really fly that long
         local NEAR_PLANE = 0.1
         local RING_SEGMENTS = 20
         local RENDER_NAME = "CelestialGrenadeTrajectory"
@@ -11888,6 +13971,24 @@ do
 
         utils.getActiveGrenadeLauncher = getActiveLauncher -- Returns the tool while the M203 is active.
 
+        -- [Grenade Trajectory / Projectile Speed Multiplier] The gun mod multiplies the launch speed of every projectile right after the
+        -- game sets it (gunModProjectile.boost). 
+        local function getLaunchMultiplier()
+            local getMultiplier = utils.getProjectileSpeedMultiplier
+
+            if type(getMultiplier) ~= "function" or type(firesignal) ~= "function" then
+                return 1
+            end
+
+            local success, value = pcall(getMultiplier)
+
+            if success and type(value) == "number" and value > 1 then
+                return value
+            end
+
+            return 1
+        end
+
         -- Weapon.fire: the grenade leaves from the Aim part while scoped (if the tool has one), otherwise from Flash.
         local function getMuzzlePart(tool, scoped)
             local flash = tool:FindFirstChild("Flash")
@@ -11928,9 +14029,10 @@ do
         end
 
         -- [Grenade Trajectory / Simulation] Steps the grenade along its parabola and finds where it explodes.
-        -- Returns { points = { Vector3... }, impact = { position, normal, kind, humanoid, time } | nil }.
+        -- Returns { points = { Vector3... }, impact = { position, normal, kind, humanoid, time } | nil, expired = boolean, endPosition, endTime }.
+        -- `expired` is true when the grenade hits nothing and the game removes it after PROJECTILE_LIFETIME.
         -- Parts that do not stop the grenade are skipped for the rest of the simulation (that never changes mid-flight).
-        local function simulateMissile(origin, velocity, accelY, charactersFolder, killers)
+        local function simulateMissile(origin, velocity, accelY, multiplier, charactersFolder, killers)
             local ignored = {}
 
             if charactersFolder then
@@ -11942,10 +14044,14 @@ do
             local points = { origin }
             local position = origin
             local floorY = workspace.FallenPartsDestroyHeight
-            local radius = MISSILE_RADIUS
+            local radius = multiplier > 1 and 0 or MISSILE_RADIUS
+            local useSphere = hasSpherecast and radius > 0
+            local lastTime = 0
+            local expired = true
 
             for step = 1, MAX_STEPS do
                 local time = step * STEP_TIME
+                lastTime = time
                 local nextPosition = origin + velocity * time - Vector3.new(0, 0.5 * accelY * time * time, 0)
                 local delta = nextPosition - position
                 local distance = delta.Magnitude
@@ -11954,7 +14060,7 @@ do
                     for _ = 1, 16 do
                         local result
 
-                        if hasSpherecast then
+                        if useSphere then
                             result = workspace:Spherecast(position, radius, delta, missileParams)
                         else
                             result = workspace:Raycast(position, delta, missileParams)
@@ -11990,12 +14096,15 @@ do
                 points[#points + 1] = nextPosition
                 position = nextPosition
 
-                if nextPosition.Y < floorY or (nextPosition - origin).Magnitude > MAX_RANGE then
+                -- Below this height the game destroys the part, which ends the flight before its time is up
+                if nextPosition.Y < floorY then
+                    expired = false
+
                     break
                 end
             end
 
-            return { points = points }
+            return { points = points, expired = expired, endPosition = position, endTime = lastTime }
         end
 
         -- [Grenade Trajectory / Drawing] Line pools, near-plane clipping and the info label
@@ -12168,9 +14277,10 @@ do
                 return
             end
 
-            local velocity = aimVector.Unit * MUZZLE_SPEED
+            local multiplier = getLaunchMultiplier()
+            local velocity = aimVector.Unit * MUZZLE_SPEED * multiplier
             local accelY = workspace.Gravity - LAUNCHER_UP_FORCE / getMissileMass()
-            local path = simulateMissile(origin, velocity, accelY, charactersFolder, killers)
+            local path = simulateMissile(origin, velocity, accelY, multiplier, charactersFolder, killers)
             local impact = path.impact
 
             local killerHit = impact ~= nil and impact.kind == "killer" and toggles.trajectoryKillerHighlight_Toggle.Value
@@ -12237,19 +14347,27 @@ do
 
             hidePool(ringLines, ringCount + 1)
 
-            -- Distance / time label above the landing spot
-            if impact and toggles.trajectoryShowInfo_Toggle.Value then
-                local screen = cam:WorldToViewportPoint(impact.position)
+            -- Distance / time label above the landing spot, or above the point where the grenade runs out of flight time
+            local infoPosition, infoText
+
+            if impact then
+                infoPosition = impact.position
+                infoText = string.format("%d studs | %.1fs", math.floor((impact.position - origin).Magnitude + 0.5), impact.time)
+
+                if killerHit then
+                    infoText ..= " | " .. impact.humanoid.Parent.Name
+                end
+            elseif path.expired then
+                infoPosition = path.endPosition
+                infoText = string.format("%d studs | %.1fs | expires", math.floor((path.endPosition - origin).Magnitude + 0.5), path.endTime)
+            end
+
+            if infoPosition and toggles.trajectoryShowInfo_Toggle.Value then
+                local screen = cam:WorldToViewportPoint(infoPosition)
 
                 if screen.Z > 0 then
-                    local text = string.format("%d studs | %.1fs", math.floor((impact.position - origin).Magnitude + 0.5), impact.time)
-
-                    if killerHit then
-                        text ..= " | " .. impact.humanoid.Parent.Name
-                    end
-
                     local label = getInfoLabel()
-                    label.Text = text
+                    label.Text = infoText
                     label.Position = Vector2.new(screen.X, screen.Y - 30)
                     label.Visible = true
                 else
@@ -12338,8 +14456,8 @@ do
     buildGrenadeTrajectory()
 end
 
--- [Visuals / Screen & Effects] Halloween Killers and Camping Lantern
--- The transform module is loaded the first time Halloween Killers is enabled, then kept in transformModule so it is never fetched twice in a session
+-- [Visuals / Screen & Effects] Halloween Killers, Halloween Map, and Camping Lantern
+-- The transform module is loaded the first time Halloween Killers or Halloween Map is enabled, then kept in transformModule so it is never fetched twice in a session
 do
     local TRANSFORM_URL = "https://raw.githubusercontent.com/669053713850403197963270290945742252531/Celestial/refs/heads/main/Scripts/SAKTKIA51%20TRANSFORM.luau"
     local LANTERN_NAME = "CampingLantern"
@@ -12350,6 +14468,8 @@ do
 
     local lanternSettings = toggles.halloweenKillers_Toggle:AddSettings({ Width = 220 })
     lanternSettings:AddToggle("campingLantern_Toggle", { Text = "Camping Lantern", Tooltip = "Gives you the Camping Lantern from the 2026 Halloween event, a tool that doubles as a light source." })
+
+    ui.visuals.screen:AddToggle("halloweenMap_Toggle", { Text = "Halloween Map", Tooltip = "Changes the map to its 2026 Halloween appearance." })
 
     -- Halloween Killers
     local transformModule: any = nil
@@ -12522,6 +14642,87 @@ do
         end
     end
 
+    -- Halloween Map
+    local mapConnection: RBXScriptConnection? = nil
+    local mapApplied = false
+
+    local mapGeneration = 0 -- Bumped on every on/off, so work that was waiting (module download, map loading) can tell if its outdated
+
+    local function runMapTransform(functionName: string)
+        local module = transformModule
+
+        if not module then
+            return
+        end
+
+        local success, err = pcall(module[functionName])
+
+        if not success then
+            warn("[Halloween Map] " .. functionName .. " failed:", err)
+        end
+    end
+
+    local function startMap()
+        mapGeneration += 1
+        local generation = mapGeneration
+
+        task.spawn(function()
+            local module = getTransformModule()
+
+            -- Disabled while the module was downloading
+            if generation ~= mapGeneration then
+                return
+            end
+
+            if not module or type(module.HalloweenMapTransform) ~= "function" or type(module.NormalMapTransform) ~= "function" then
+                notify("Error", "Halloween Map", "Could not load the Halloween map transform.", 15)
+                toggles.halloweenMap_Toggle:SetValue(false)
+                return
+            end
+
+            -- If the game replaces the map (a new round), apply the Halloween look to the new one as well
+            if mapConnection then
+                mapConnection:Disconnect()
+            end
+
+            mapConnection = workspace.ChildAdded:Connect(function(child)
+                if child.Name ~= "AREA51" then
+                    return
+                end
+
+                task.spawn(function()
+                    -- Let the new map finish loading, otherwise its folders are not there to transform yet
+                    child:WaitForChild("Outside", 10)
+                    task.wait()
+
+                    if generation ~= mapGeneration or not child.Parent then
+                        return
+                    end
+
+                    runMapTransform("HalloweenMapTransform")
+                end)
+            end)
+
+            mapApplied = true
+            runMapTransform("HalloweenMapTransform")
+        end)
+    end
+
+    local function stopMap()
+        mapGeneration += 1
+
+        -- Stop watching for a new map, so it keeps its normal appearance
+        if mapConnection then
+            mapConnection:Disconnect()
+            mapConnection = nil
+        end
+
+        if mapApplied then
+            mapApplied = false
+            runMapTransform("NormalMapTransform")
+        end
+    end
+
     -- Camping Lantern
     local lanternTemplate: Tool? = nil
     local lanternConnection: RBXScriptConnection? = nil
@@ -12673,10 +14874,19 @@ do
         refreshLantern()
     end)
 
+    toggles.halloweenMap_Toggle:OnChanged(function(enabled)
+        if enabled then
+            startMap()
+        else
+            stopMap()
+        end
+    end)
+
     table.insert(teardownTasks, function()
         killersOn = false
         lanternOn = false
         stopKillers()
+        stopMap()
         refreshLantern()
 
         local template = lanternTemplate
@@ -12696,7 +14906,7 @@ end
 -- [World / Environment] Hazards, radioactive area, kill parts, and door noclip
 
 ui.world.hazards:AddToggle("disableCactuses_Toggle", { Text = "Disable Cactuses" })
-ui.world.hazards:AddToggle("disableBarbedWire_Toggle", { Text = "Disable Barbed Wire", Tooltip = false })
+ui.world.hazards:AddToggle("disableBarbedWire_Toggle", { Text = "Disable Barbed Wire" })
 ui.world.hazards:AddToggle("removeBearTraps_Toggle", { Text = "Remove Bear Traps" })
 ui.world.hazards:AddToggle("disableRadioactiveZone_Toggle", { Text = "Disable Radioactive Zone" })
 ui.world.hazards:AddToggle("disableKillParts_Toggle", { Text = "Disable Kill Parts", Tooltip = "Disables parts that can damage or kill you such as fans/spinners, polluted water, etc." })
@@ -13116,7 +15326,38 @@ end)
 
 local alienCode = area51.CodeModel.Code.Value
 ui.world.alien:AddLabel("<b>Code:</b> " .. alienCode, true)
-ui.world.alien:AddDropdown("codeRevealMethod_Dropdown", { Text = "Code Reveal Method", Values = { "Announce", "Silent" }, Default = 2 })
+
+-- Disable Announce mode if your chat-limited.
+local alienChatPermitted = true
+
+ui.world.alien:AddDropdown("codeRevealMethod_Dropdown", { Text = "Code Reveal Method", Values = { "Announce", "Silent" }, Default = 2,
+    Tooltip = "Announce sends the code in chat. It is unavailable when your account is not permitted to chat.",
+    Callback = function(val)
+        if val == "Announce" and not alienChatPermitted then
+            options.codeRevealMethod_Dropdown:SetValue("Silent")
+        end
+    end,
+})
+
+task.spawn(function()
+    -- CanUserChatAsync can yield, so the check stays off the main load path
+    local success, permitted = pcall(utils.isChatPermitted)
+
+    if not success or permitted ~= false then
+        return
+    end
+
+    alienChatPermitted = false
+
+    local dropdown = options.codeRevealMethod_Dropdown
+    dropdown:SetDisabledValues({ "Announce" })
+
+    if dropdown.Value == "Announce" then
+        dropdown:SetValue("Silent")
+        notify("Info", "Announce unavailable", "Your account can't chat, so the code reveal method was switched to " .. utils.bold("Silent") .. ".", 8)
+    end
+end)
+
 ui.world.alien:AddButton({ Text = "Reveal Code", Icon = "key-round",
     Func = function()
         local method = options.codeRevealMethod_Dropdown.Value
@@ -13156,12 +15397,57 @@ local restrictedWeapons = {Crossbow = true, MG42 = true, FreezeGun = true }
 -- [Weapons / Inventory] Build the selectable weapon catalog
 local weaponNames = {}
 local giveWeaponBtn, papWeaponBtn, papHeldBtn
+local papTextToken = 0
+
+-- [Weapons / Inventory] Text for the Pack a Punch sub-button.
+-- Built like Obtain Weapon's text and the longest, fitting variant is picked.
+local PAP_TEXT_SIZE = 14
+local PAP_DEFAULT_WIDTH = 109 -- the button's width when it cannot be read
+local PAP_CONTENT_OVERHEAD = 26 -- icon (14) + gap (6) + a small margin so the text never touches the edges
+
+local function getPAPButtonText(selectedNames)
+    local count = #selectedNames
+    local first = selectedNames[1]
+    local candidates = {}
+
+    if count <= 2 then
+        table.insert(candidates, "PAP " .. table.concat(selectedNames, ", "))
+    end
+
+    if count > 1 then
+        table.insert(candidates, "PAP " .. first .. ", +" .. (count - 1) .. " more")
+        table.insert(candidates, "PAP " .. first .. " +" .. (count - 1))
+        table.insert(candidates, "PAP \195\151" .. count)
+    else
+        table.insert(candidates, "PAP Weapon")
+    end
+
+    local base = papWeaponBtn and papWeaponBtn.Base
+    local width = (base and base.AbsoluteSize.X > 0) and base.AbsoluteSize.X or PAP_DEFAULT_WIDTH
+    local limit = width - PAP_CONTENT_OVERHEAD
+
+    for _, text in ipairs(candidates) do
+        local success, textWidth = pcall(function()
+            return (library:GetTextBounds(text, papWeaponBtn.Label.FontFace, PAP_TEXT_SIZE))
+        end)
+
+        if not success or type(textWidth) ~= "number" then
+            textWidth = #text * PAP_TEXT_SIZE * 0.55
+        end
+
+        if textWidth <= limit then
+            return text
+        end
+    end
+
+    return candidates[#candidates]
+end
 
 for _, weapon in ipairs(game:GetService("Workspace").Weapons:GetChildren()) do
     table.insert(weaponNames, weapon.Name)
 end
 
-ui.weapons.inventory:AddDropdown("weaponsList_Dropdown", { Text = "Obtain Weapon(s)", Values = weaponNames, Multi = true, Searchable = true,
+ui.weapons.inventory:AddDropdown("weaponsList_Dropdown", { Text = "Obtain Weapon(s)", Values = weaponNames, Multi = true, Searchable = true, DragSelect = true,
     Callback = function(val)
         local selectedNames = {}
         for name, isSelected in pairs(val) do
@@ -13171,8 +15457,9 @@ ui.weapons.inventory:AddDropdown("weaponsList_Dropdown", { Text = "Obtain Weapon
         end
 
         if #selectedNames == 0 then
+            papTextToken += 1
             giveWeaponBtn:SetText("Obtain Weapon")
-            papWeaponBtn:SetText("Pack a Punch Weapon")
+            papWeaponBtn:SetText("PAP Weapon")
             return
         end
 
@@ -13181,11 +15468,21 @@ ui.weapons.inventory:AddDropdown("weaponsList_Dropdown", { Text = "Obtain Weapon
             local shown = table.concat({ unpack(selectedNames, 1, displayLimit) }, ", ")
             local extra = #selectedNames - displayLimit
             giveWeaponBtn:SetText("Obtain " .. shown .. ", +" .. extra .. " more")
-            papWeaponBtn:SetText("Pack a Punch  " .. shown .. ", +" .. extra .. " more")
         else
             giveWeaponBtn:SetText("Obtain " .. table.concat(selectedNames, ", "))
-            papWeaponBtn:SetText("Pack a Punch " .. table.concat(selectedNames, ", "))
         end
+
+        -- The PAP button is a half width sub-button, so it gets the same style of text but shortened to fit
+        local token = (papTextToken or 0) + 1
+        papTextToken = token
+        task.spawn(function()
+            local text = getPAPButtonText(selectedNames)
+
+            -- A newer selection came in while the text was being measured
+            if papTextToken == token then
+                papWeaponBtn:SetText(text)
+            end
+        end)
     end,
 })
 
@@ -13599,8 +15896,7 @@ ui.weapons.inventory:AddButton({ Text = "Clear Selection", Icon = "trash",
         options.weaponsList_Dropdown:SetValue({})
     end,
 })
-
-ui.weapons.inventory:AddButton({ Text = "Clear Queue", Icon = "trash", Tooltip = "Stops and clears the Pack a Punch queue.",
+:AddButton({ Text = "Clear Queue", Icon = "trash", Tooltip = "Stops and clears the Pack a Punch queue.",
     Func = function()
         cancelPAPQueue = true
         utils.clearPAPQueueNote()
@@ -13662,6 +15958,69 @@ do
     local morphAppearanceChar = nil
     local morphAppearanceConnections = {}
 
+    local morph = {
+        normalChar = nil, -- the character whose look Normal Appearance has changed
+        glowRequest = 0, -- the latest glow update takes priority when several overlap
+        glowDisabled = (setmetatable({}, { __mode = "k" }) :: any) :: { [Instance]: boolean }, -- lights this script switched off
+    }
+
+    function morph.normalWanted()
+        return toggles.zombieMorph_Toggle.Value == true and toggles.normalAppearance_Toggle.Value == true
+    end
+
+    function morph.glowOffWanted()
+        return toggles.zombieMorph_Toggle.Value == true and toggles.disableSelfGlow_Toggle.Value == true
+    end
+
+    -- The server builds the PointLight after the morph is touched, so it is polled for up to
+    -- timeout seconds (0 looks only once).
+    function morph.findGlow(char: any, timeout: number)
+        local deadline = os.clock() + timeout
+
+        repeat
+            local chest = char:FindFirstChild("Chest")
+            local torso = chest and chest:FindFirstChild("Torso")
+            local glow = torso and torso:FindFirstChildOfClass("PointLight")
+
+            if glow then
+                return glow
+            end
+
+            if timeout <= 0 or not char.Parent then
+                return nil
+            end
+
+            task.wait(0.1)
+        until os.clock() >= deadline
+
+        return nil
+    end
+
+    function morph.applyGlow(char: any)
+        morph.glowRequest += 1
+        local request = morph.glowRequest
+
+        task.spawn(function()
+            if not char then
+                return
+            end
+
+            local glow = morph.findGlow(char, morph.glowOffWanted() and 10 or 0)
+
+            if not glow or request ~= morph.glowRequest then
+                return
+            end
+
+            if morph.glowOffWanted() then
+                glow.Enabled = false
+                morph.glowDisabled[glow] = true
+            elseif morph.glowDisabled[glow] then
+                glow.Enabled = true
+                morph.glowDisabled[glow] = nil
+            end
+        end)
+    end
+
     -- Returns the Transparency this instance should have, or nil if it isn't part of the swap
     local function getMorphTransparency(char, inst, showZombieSkin)
         if inst.Parent == char and inst:IsA("BasePart") and normalBodyLookup[inst.Name] then
@@ -13697,7 +16056,7 @@ do
         end
 
         local function enforce()
-            if toggles.normalAppearance_Toggle.Value then
+            if morph.normalWanted() then
                 local transparency = getMorphTransparency(char, inst, false)
                 if transparency then
                     inst.Transparency = transparency
@@ -13709,22 +16068,35 @@ do
         table.insert(morphAppearanceConnections, inst:GetPropertyChangedSignal("Transparency"):Connect(enforce))
     end
 
+    -- Applies Normal Appearance, or puts the zombie look back when its disabled.
     local function refreshMorphAppearance(char: any)
         task.spawn(function()
-            -- The server builds the morph after the button is touched, so wait for it to show up.
-            -- Without a morph there is nothing to swap, so the normal body is left untouched.
             if not char then
                 return
             end
 
-            local chest = char:WaitForChild("Chest", 10)
+            local wantNormal = morph.normalWanted()
+
+            if not wantNormal and morph.normalChar ~= char then
+                return
+            end
+
+            -- Wait for the morph to show up
+            local chest = wantNormal and char:WaitForChild("Chest", 10) or char:FindFirstChild("Chest")
 
             if typeof(chest) ~= "Instance" or chest.Name ~= "Chest" or chest.Parent ~= char then
                 return
             end
 
+            -- The settings may have changed during the wait
+            wantNormal = morph.normalWanted()
+
+            if not wantNormal and morph.normalChar ~= char then
+                return
+            end
+
             -- Watch the character once, so anything added or changed later (like the eyes decal) is handled too
-            if morphAppearanceChar ~= char then
+            if wantNormal and morphAppearanceChar ~= char then
                 for _, connection in ipairs(morphAppearanceConnections) do
                     connection:Disconnect()
                 end
@@ -13745,7 +16117,8 @@ do
                 return
             end
 
-            applyMorphAppearance(char, not toggles.normalAppearance_Toggle.Value)
+            applyMorphAppearance(char, not wantNormal)
+            morph.normalChar = wantNormal and char or nil
         end)
     end
 
@@ -13753,128 +16126,102 @@ do
         refreshMorphAppearance(localplayer.Character)
     end)
 
+    -- The morph, armor and helmet can't be taken off.
+    local wornToggleWasOn = {}
+
+    local function notifyIfStillWorn(toggleName: string, itemName: string, childName: string, enabled: boolean)
+        local wasOn = wornToggleWasOn[toggleName]
+        wornToggleWasOn[toggleName] = enabled
+
+        if enabled or not wasOn then
+            return
+        end
+
+        local char = localplayer.Character
+        if char and char:FindFirstChild(childName) then
+            notify("Info", "Cannot remove", utils.bold(itemName) .. " can only be removed if you rejoin or reset.", 8)
+        end
+    end
+
     toggles.zombieMorph_Toggle:OnChanged(function(enabled)
+        notifyIfStillWorn("zombieMorph", "Zombie Morph", "Chest", enabled)
+
         if enabled then
             -- Morph
 
             local hrp = getHRP()
             if hrp then
-                utils.fireTouchEvent(hrp, area51.Outside.Hangar.Right["Zombie Morph"].TheButton)
-                refreshMorphAppearance(localplayer.Character)
+                -- Already wearing the morph, so it is not touched again
+                if not (localplayer.Character and localplayer.Character:FindFirstChild("Chest")) then
+                    utils.fireTouchEvent(hrp, area51.Outside.Hangar.Right["Zombie Morph"].TheButton)
+                end
 
-                -- The morph can't be taken off, so lock the toggle until the next respawn
-                toggles.zombieMorph_Toggle:SetDisabled(true)
+                -- Its configuration starts applying now
+                refreshMorphAppearance(localplayer.Character)
+                morph.applyGlow(localplayer.Character)
             else
                 notify("Error", "Unavailable root", "Could not find HumanoidRootPart.", 10)
                 toggles.zombieMorph_Toggle:SetValue(false)
             end
+        else
+            -- The morph stays on, but its configuration stops applying: the look and the glow go back to normal
+            refreshMorphAppearance(localplayer.Character)
+            morph.applyGlow(localplayer.Character)
         end
     end)
 
-    toggles.disableSelfGlow_Toggle:OnChanged(function(enabled)
-        -- OnChanged fires once at load, and Chest only exists while the zombie morph is worn,
-        -- so every step of the lookup has to handle a missing instance.
-        local char = localplayer.Character
-        local chest = char and char:FindFirstChild("Chest")
-        local torso = chest and chest:FindFirstChild("Torso")
-        local glow = torso and torso:FindFirstChildOfClass("PointLight")
-
-        if glow then
-            glow.Enabled = not enabled
-        end
+    toggles.disableSelfGlow_Toggle:OnChanged(function()
+        morph.applyGlow(localplayer.Character)
     end)
 
     toggles.obtainArmor_Toggle:OnChanged(function(enabled)
-        if enabled then
+        notifyIfStillWorn("obtainArmor", "Armor", "VestArmor", enabled)
+
+        -- Already wearing the armor, so it is not touched again
+        if enabled and not (localplayer.Character and localplayer.Character:FindFirstChild("VestArmor")) then
             local hrp = getHRP()
             utils.fireTouchEvent(hrp, area51.Amory2Room.Armory.Giver)
-
-            -- The armor can't be taken off, so lock the toggle until the next respawn
-            toggles.obtainArmor_Toggle:SetDisabled(true)
         end
     end)
 
     toggles.obtainHelmet_Toggle:OnChanged(function(enabled)
-        if enabled then
+        notifyIfStillWorn("obtainHelmet", "Helmet", "Helmet", enabled)
 
+        -- Already wearing the helmet, so it is not touched again
+        if enabled and not (localplayer.Character and localplayer.Character:FindFirstChild("Helmet")) then
             local hrp = getHRP()
             utils.fireTouchEvent(hrp, area51.ComputersRoom.Helmet)
-
-            -- The helmet can't be taken off, so lock the toggle until the next respawn
-            toggles.obtainHelmet_Toggle:SetDisabled(true)
         end
     end)
 
-    -- The morph, armor and helmet are gone once you die, so the toggles unlock for the respawn screen.
-    local function unlockWornToggles()
-        toggles.zombieMorph_Toggle:SetDisabled(false)
-        toggles.obtainArmor_Toggle:SetDisabled(false)
-
-        -- The helmet toggle is only usable in Extreme mode, so don't unlock it in other modes
-        if getMode() == "Extreme" then
-            toggles.obtainHelmet_Toggle:SetDisabled(false)
-        end
-    end
-
-    local function watchDeath(char: any)
-        task.spawn(function()
-            local humanoid = char:WaitForChild("Humanoid", 10)
-            if humanoid then
-                humanoid.Died:Connect(unlockWornToggles)
-            end
-        end)
-    end
-
-    if localplayer.Character then
-        watchDeath(localplayer.Character)
-    end
-
     localplayer.CharacterAdded:Connect(function(char)
-        watchDeath(char)
-        unlockWornToggles()
-
         task.wait(0.5)
         local hrp = getHRP()
 
         if toggles.zombieMorph_Toggle.Value then
-            local disableSelfGlowEnabled = toggles.disableSelfGlow_Toggle.Value
-
-            utils.fireTouchEvent(hrp, area51.Outside.Hangar.Right["Zombie Morph"].TheButton)
-            refreshMorphAppearance(char)
-            toggles.zombieMorph_Toggle:SetDisabled(true)
-
-            if disableSelfGlowEnabled then
-                local chest
-                repeat
-                    task.wait()
-                    chest = localplayer.Character:FindFirstChild("Chest")
-                until chest
-
-                local torso
-                repeat
-                    task.wait()
-                    torso = chest:FindFirstChild("Torso")
-                until torso
-
-                local glow
-                repeat
-                    task.wait()
-                    glow = torso:FindFirstChildOfClass("PointLight")
-                until glow
-
-                glow.Enabled = false
+            if hrp and not char:FindFirstChild("Chest") then
+                utils.fireTouchEvent(hrp, area51.Outside.Hangar.Right["Zombie Morph"].TheButton)
             end
+
+            refreshMorphAppearance(char)
+            morph.applyGlow(char)
         end
 
-        if toggles.obtainArmor_Toggle.Value then
+        if toggles.obtainArmor_Toggle.Value and not char:FindFirstChild("VestArmor") then
             utils.fireTouchEvent(hrp, area51.Amory2Room.Armory.Giver)
-            toggles.obtainArmor_Toggle:SetDisabled(true)
         end
 
-        if toggles.obtainHelmet_Toggle.Value then
+        if toggles.obtainHelmet_Toggle.Value and not char:FindFirstChild("Helmet") then
             utils.fireTouchEvent(hrp, area51.ComputersRoom.Helmet)
-            toggles.obtainHelmet_Toggle:SetDisabled(true)
         end
+    end)
+
+    table.insert(teardownTasks, function()
+        for _, connection in ipairs(morphAppearanceConnections) do
+            connection:Disconnect()
+        end
+
+        table.clear(morphAppearanceConnections)
     end)
 end
 
@@ -14019,19 +16366,39 @@ end
 ui.weapons.gunOptions:AddToggle("enableGunMods_Toggle", { Text = "Enable Gun Mods", Tooltip = "Usage of any gun mods has a high chance of resulting in a permanent game ban.", Risky = true })
 
 local gunModsSettings = toggles.enableGunMods_Toggle:AddSettings({ Width = 280 })
-gunModsSettings:AddToggle("infiniteAmmoGunMod_Toggle", { Text = "Infinite Ammo", Risky = true })
-gunModsSettings:AddToggle("fullAutoGunMod_Toggle", { Text = "Fully Automatic", Risky = true })
-gunModsSettings:AddToggle("fireRateGunMod_Toggle", { Text = "Rapid Fire", Risky = true })
+gunModsSettings:AddToggle("infiniteAmmoGunMod_Toggle", { Text = "Infinite Ammo", Tooltip = "Gives your weapons unlimited ammo, both loaded and in reserve.", Risky = true })
+gunModsSettings:AddToggle("fullAutoGunMod_Toggle", { Text = "Fully Automatic", Tooltip = "Makes every weapon automatic, so it keeps firing while you hold the trigger.", Risky = true })
+gunModsSettings:AddToggle("fireRateGunMod_Toggle", { Text = "Rapid Fire", Tooltip = "Cuts the shoot cooldown between shots and makes the weapon automatic.", Risky = true })
 gunModsSettings:AddToggle("noOverheatGunMod_Toggle", { Text = "Flamethrower: No Overheat", Tooltip = "Stops the Flamethrower from building heat, so it can be held down for as long as you like with no overheat lockout and no re-press delay. Pair with Infinite Ammo for unlimited gas.", Risky = true })
 gunModsSettings:AddToggle("noBoltGunMod_Toggle", { Text = "Disable Sniper Bolt", Tooltip = "Skips the bolt-action animation after each shot so Snipers can fire rapidly. Pair with Rapid Fire.", Risky = true })
 gunModsSettings:AddToggle("noRecoilGunMod_Toggle", { Text = "No Recoil", Tooltip = "Removes the camera kick when firing.", Risky = true })
-gunModsSettings:AddToggle("noSpreadGunMod_Toggle", { Text = "No Spread", Tooltip = "Removes bullet inaccuracy/spreading out.", Risky = true })
-gunModsSettings:AddToggle("fastReloadGunMod_Toggle", { Text = "Fast Reload", Tooltip = "Shortens reload (and bolt) animations to a fraction of their normal time.", Risky = true })
-gunModsSettings:AddSlider("bulletCountGunMod_Slider", { Text = "Bullet Count", Default = 1, Min = 1, Max = 100, Suffix = " Bullet", Risky = true,
-    Callback = function(val)
-        options.bulletCountGunMod_Slider:SetSuffix(getSuffix(options.bulletCountGunMod_Slider, "Bullet"))
-    end
+gunModsSettings:AddToggle("noSpreadGunMod_Toggle", { Text = "No Spread", Tooltip = "Removes bullet inaccuracy/spreading out, including the extra spread from moving.", Risky = true })
+gunModsSettings:AddToggle("wallPiercingGunMod_Toggle", { Text = "Wall Piercing", Tooltip = "Disables bullets being stopped by walls and other solid objects, so they fly through objects and still hit Killers behind it.", Risky = true })
+gunModsSettings:AddToggle("fastReloadGunMod_Toggle", { Text = "Fast Reload", Tooltip = "Shortens reload (and bolt) animations.", Risky = true })
+gunModsSettings:AddToggle("homingBulletsGunMod_Toggle", { Text = "Homing Bullets", Risky = true,
+    Tooltip = "Makes each bullet you fire turn toward the nearest Killer. Bullets only steer toward Killers you have a clear line to, unless Wall Piercing is on."
 })
+
+do
+    local fireRateSettings = toggles.fireRateGunMod_Toggle:AddSettings({ Width = 250 })
+
+    fireRateSettings:AddSlider("fireDelayGunMod_Slider", { Text = "Fire Delay", Default = 0, Min = 0, Max = 1, Rounding = 2, Suffix = " s", Risky = true,
+        Tooltip = "Time between two shots, in seconds.\n0 removes the shoot cooldown completely; higher values slow the fire rate down (0.1 is about 10 shots per second)."
+    })
+
+    local fastReloadSettings = toggles.fastReloadGunMod_Toggle:AddSettings({ Width = 250 })
+
+    fastReloadSettings:AddSlider("fastReloadSpeedGunMod_Slider", { Text = "Reload Speed", Default = 10, Min = 1, Max = 50, Rounding = 1, Suffix = "x", Risky = true,
+        Tooltip = "How many times faster reload (and bolt) animations play.\nHigher is faster; 1x is the normal speed."
+    })
+
+    local homingSettings = toggles.homingBulletsGunMod_Toggle:AddSettings({ Width = 250 })
+
+    homingSettings:AddSlider("homingTurnRateGunMod_Slider", { Text = "Turn Rate", Default = 360, Min = 30, Max = 1440, Suffix = "°/s", Risky = true,
+        Tooltip = "How fast a bullet can change direction, in degrees per second.\nHigher turns sharper and hits more reliably; lower makes wider, slower curves."
+    })
+end
+
 gunModsSettings:AddSlider("projectileSpeedGunMod_Slider", { Text = "Projectile Speed Multiplier", Default = 1, Min = 1, Max = 20, Rounding = 1, Suffix = "x", Risky = true,
     Tooltip = "Multiplies how fast bullets fly. Bullets are removed after a fixed time, so they also travel that many times farther."
 })
@@ -14055,18 +16422,26 @@ toggles.autoReloadWeapons_Toggle:OnChanged(function(enabled)
 end)
 
 -- [Weapons / Gun Mods] Non-destructive weapon modifiers
-local GUN_MOD_FIELDS = { "ammo", "stored_ammo", "is_auto", "shoot_wait", "bullet_count", "inaccuracy", "bolt_fire", "move_camera", "reload_wait" }
+local GUN_MOD_FIELDS = { "ammo", "stored_ammo", "is_auto", "shoot_wait", "inaccuracy", "compute_inaccuracy", "bolt_fire", "move_camera", "reload_wait", "hit_transparency_threshold" }
 
 -- Replacement methods: They are created once so their identity is stable for the "is this still ours?" comparison.
-local GUN_MOD_FAST_RELOAD_SCALE = 0.1 -- reload/bolt animation waits are multiplied by this (lower = faster)
+local GUN_MOD_FAST_RELOAD_DEFAULT_SPEED = 10
 
 local function gunModNoRecoilMoveCamera()
     -- Intentionally empty: skipping the camera rotation is the whole mod.
 end
 
+-- Zero Weapon.compute_inaccuracy's inaccuracy field.
+function utils.gunModNoSpreadComputeInaccuracy()
+    return 0
+end
+
 local function gunModFastReloadWait(duration)
     if type(duration) == "number" then
-        return task.wait(duration * GUN_MOD_FAST_RELOAD_SCALE)
+        local slider = options.fastReloadSpeedGunMod_Slider
+        local speed = slider and tonumber(slider.Value) or GUN_MOD_FAST_RELOAD_DEFAULT_SPEED
+
+        return task.wait(duration / math.max(speed, 1))
     end
 
     return task.wait(duration)
@@ -14084,33 +16459,83 @@ local function isFiniteNumber(value: any): boolean
     return type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge
 end
 
+-- The getgc and filtergc scan is limited to once per cooldown, and the weapons live in a weak table so the game can still free them.
+local GUN_MOD_SCAN_COOLDOWN = 0.75
+local GUN_MOD_FALLBACK_COOLDOWN = 5 -- the slow getgc(true) path may run at most this often
+local gunModTargets = setmetatable({}, { __mode = "k" }) -- weapon -> true
+local gunModScan = { dirty = true, last = -math.huge, lastFallback = -math.huge }
+local scheduleGunModReconcile: (number?) -> () -- assigned after reconcileGunMods
+
+local function isGunModTarget(object: any): boolean
+    return type(object) == "table"
+        and rawget(object, "ammo") ~= nil
+        and typeof(rawget(object, "instance")) == "Instance"
+        and getmetatable(object) ~= nil
+end
+
+local function scanGunModTargets()
+    gunModScan.dirty = false
+    gunModScan.last = os.clock()
+
+    if type(filtergc) == "function" then
+        local success, matches = pcall(filtergc, "table", { Keys = { "instance", "ammo" } }, false)
+
+        if success and type(matches) == "table" then
+            for _, object in ipairs(matches) do
+                if isGunModTarget(object) then
+                    gunModTargets[object] = true
+                end
+            end
+
+            if next(gunModTargets) ~= nil then
+                return
+            end
+        end
+    end
+
+    if type(getgc) == "function" and gunModScan.last - gunModScan.lastFallback >= GUN_MOD_FALLBACK_COOLDOWN then
+        gunModScan.lastFallback = gunModScan.last
+
+        local success, objects = pcall(getgc, true)
+
+        if success and type(objects) == "table" then
+            for index = 1, #objects do
+                local object = objects[index]
+
+                if isGunModTarget(object) then
+                    gunModTargets[object] = true
+                end
+            end
+        end
+    end
+end
+
 local function findGunModTargets(): { any }
+    if gunModScan.dirty then
+        local remaining = GUN_MOD_SCAN_COOLDOWN - (os.clock() - gunModScan.last)
+
+        if remaining <= 0 then
+            scanGunModTargets()
+        else
+            -- Too soon for another scan: use what is cached and look again once the cooldown is over
+            scheduleGunModReconcile(remaining + 0.05)
+        end
+    end
+
     local targets = {}
 
-    for _, object in next, getgc(true) do
-        if type(object) == "table"
-            and rawget(object, "ammo") ~= nil
-            and typeof(rawget(object, "instance")) == "Instance"
-            and getmetatable(object) ~= nil then
-            table.insert(targets, object)
-        end
+    for weapon in pairs(gunModTargets) do
+        targets[#targets + 1] = weapon
     end
 
     return targets
 end
 
--- A gun mod is on when its menu toggle is on, or when Kill Aura's Gun Mod Assist is adding it for as long as the aura runs.
--- Kill Aura never changes the toggles themselves, so there is no state to put back afterwards.
+-- A gun mod is on when its toggle is on (Enable Gun Mods and the mod's own toggle are checked separately by the callers).
 function utils.isGunModOn(id: string): boolean
     local control = toggles[id]
 
-    if control and control.Value == true then
-        return true
-    end
-
-    local assisted = type(utils.killAuraGunModAssist) == "function" and utils.killAuraGunModAssist() or nil
-
-    return type(assisted) == "table" and assisted[id] == true
+    return control ~= nil and control.Value == true
 end
 
 -- What every managed field should currently be overridden to. A field that is absent here must be original.
@@ -14128,11 +16553,12 @@ local function getDesiredGunMods(): { [string]: any }
 
     if utils.isGunModOn("fullAutoGunMod_Toggle") then
         desired.is_auto = true
-        desired.inaccuracy = 0.00001
     end
 
     if utils.isGunModOn("fireRateGunMod_Toggle") then
-        desired.shoot_wait = 1e-14
+        local fireDelay = options.fireDelayGunMod_Slider and tonumber(options.fireDelayGunMod_Slider.Value) or 0
+
+        desired.shoot_wait = math.max(fireDelay, 1e-14)
         desired.is_auto = true
     end
 
@@ -14146,16 +16572,15 @@ local function getDesiredGunMods(): { [string]: any }
 
     if utils.isGunModOn("noSpreadGunMod_Toggle") then
         desired.inaccuracy = 0.00001
+        desired.compute_inaccuracy = utils.gunModNoSpreadComputeInaccuracy
     end
 
     if utils.isGunModOn("fastReloadGunMod_Toggle") then
         desired.reload_wait = gunModFastReloadWait
     end
 
-    -- 1 is the slider's neutral position, so it leaves weapons untouched.
-    local bulletCount = options.bulletCountGunMod_Slider.Value
-    if type(bulletCount) == "number" and bulletCount > 1 then
-        desired.bullet_count = bulletCount
+    if utils.isGunModOn("wallPiercingGunMod_Toggle") then
+        desired.hit_transparency_threshold = 0
     end
 
     return desired
@@ -14274,9 +16699,18 @@ local gunModProjectile = {
     hooks = setmetatable({}, { __mode = "k" }), -- weapon -> { RawSetMissile, HookedSetMissile, Active }
     tracked = {},                               -- bullet -> where it was on the previous frame
     connection = nil :: RBXScriptConnection?,
+    homing = nil :: any, -- assigned by the Homing Bullets block below
     params = RaycastParams.new(),
     warned = false,
+    count = 0, -- how many bullets are in tracked
+    queue = {}, -- reused every frame
+    ignored = {}, -- reused every bullet
+    cursor = 0, -- where the previous scan stopped
 }
+
+-- Only this many bullets are boosted and scanned at once, and stops after its time budget instead of freezing the frame.
+local GUN_MOD_MAX_TRACKED = 96
+local GUN_MOD_SWEEP_BUDGET = 0.004
 
 gunModProjectile.params.FilterType = Enum.RaycastFilterType.Exclude
 
@@ -14293,13 +16727,6 @@ function gunModProjectile.multiplier()
         best = value
     end
 
-    -- Kill Aura's Projectile Speed only raises the multiplier while the aura runs, it never lowers the slider's own value
-    local boost = type(utils.killAuraGunModRange) == "function" and utils.killAuraGunModRange() or 1
-
-    if type(boost) == "number" and boost > best then
-        best = boost
-    end
-
     return best
 end
 
@@ -14313,69 +16740,119 @@ function gunModProjectile.stopSweeping()
     end
 end
 
+function gunModProjectile.release(bullet)
+    if gunModProjectile.tracked[bullet] ~= nil then
+        gunModProjectile.tracked[bullet] = nil
+        gunModProjectile.count = math.max(0, gunModProjectile.count - 1)
+    end
+end
+
 function gunModProjectile.sweep()
     local tracked = gunModProjectile.tracked
     local params = gunModProjectile.params
+    local queue = gunModProjectile.queue
+    local ignored = gunModProjectile.ignored
     local character = localplayer.Character
 
-    for bullet, previous in pairs(tracked) do
-        if not bullet.Parent then
-            tracked[bullet] = nil
-        else
-            local current = bullet.Position
-            local ignored = { bullet }
-            local from = previous
+    table.clear(queue)
 
-            if character then
-                table.insert(ignored, character)
-            end
+    for bullet in pairs(tracked) do
+        queue[#queue + 1] = bullet
+    end
 
-            for _ = 1, 8 do
-                local path = current - from
+    local total = #queue
+    local processed = 0
+    local startAt = gunModProjectile.cursor
+    local deadline = os.clock() + GUN_MOD_SWEEP_BUDGET
 
-                if path.Magnitude < 0.05 then
-                    break
+    for step = 1, total do
+        -- Out of time: the bullets left keep their previous position, so the next scan covers the longer path
+        if step > 1 and os.clock() > deadline then
+            break
+        end
+
+        processed = step
+
+        local bullet = queue[(startAt + step - 1) % total + 1]
+        local previous = tracked[bullet]
+
+        if previous ~= nil then
+            if not bullet.Parent then
+                gunModProjectile.release(bullet)
+            else
+                local current = bullet.Position
+                local from = previous
+                local stale = true
+
+                table.clear(ignored)
+                ignored[1] = bullet
+
+                if character then
+                    ignored[2] = character
                 end
 
-                params.FilterDescendantsInstances = ignored
+                for _ = 1, 8 do
+                    local path = current - from
 
-                local result = workspace:Raycast(from, path, params)
-
-                if not result then
-                    break
-                end
-
-                local instance = result.Instance
-
-                table.insert(ignored, instance)
-
-                if instance.Name ~= "Bullet" and instance.CanTouch then
-                    -- Touched is reported from where the bullet hit, then the bullet carries on from where it was
-                    local resting = bullet.CFrame
-
-                    bullet.CFrame = resting.Rotation + result.Position
-                    pcall(firesignal, bullet.Touched, instance)
-
-                    if not bullet.Parent then
+                    if path.Magnitude < 0.05 then
                         break
                     end
 
-                    bullet.CFrame = resting
+                    if stale then
+                        params.FilterDescendantsInstances = ignored
+                        stale = false
+                    end
+
+                    local result = workspace:Raycast(from, path, params)
+
+                    if not result then
+                        break
+                    end
+
+                    local instance = result.Instance
+
+                    table.insert(ignored, instance)
+                    stale = true
+
+                    if instance.Name ~= "Bullet" and instance.CanTouch then
+                        -- Touched is reported from where the bullet hit, then the bullet carries on from where it was
+                        local resting = bullet.CFrame
+
+                        bullet.CFrame = resting.Rotation + result.Position
+                        pcall(firesignal, bullet.Touched, instance)
+
+                        if not bullet.Parent then
+                            break
+                        end
+
+                        bullet.CFrame = resting
+                    end
+
+                    from = result.Position
                 end
 
-                from = result.Position
+                if bullet.Parent then
+                    tracked[bullet] = current
+                else
+                    gunModProjectile.release(bullet)
+                end
             end
-
-            tracked[bullet] = bullet.Parent and current or nil
         end
     end
 
+    gunModProjectile.cursor = total > 0 and (startAt + processed) % total or 0
+
     if next(tracked) == nil then
+        gunModProjectile.count = 0
         gunModProjectile.stopSweeping()
     end
 end
 
 function gunModProjectile.track(bullet)
+    if gunModProjectile.tracked[bullet] == nil then
+        gunModProjectile.count += 1
+    end
+
     gunModProjectile.tracked[bullet] = bullet.Position
 
     if not gunModProjectile.connection then
@@ -14407,6 +16884,11 @@ function gunModProjectile.boost(bullet, multiplier)
     -- The game sets the launch velocity right after set_missile returns, so the boost is applied once that has happened
     task.defer(function()
         if gunModsUnloaded or not bullet.Parent or gunModProjectile.tracked[bullet] then
+            return
+        end
+
+        -- Too many bullets in the air: this one stays at normal speed so the scan doesn't hurt performance
+        if gunModProjectile.count >= GUN_MOD_MAX_TRACKED then
             return
         end
 
@@ -14457,6 +16939,11 @@ function gunModProjectile.apply(weapon)
             if multiplier > 1 then
                 gunModProjectile.boost(missile, multiplier)
             end
+
+            -- Queued after the boost, so a homing bullet is steered at its boosted speed
+            if gunModProjectile.homing.enabled() then
+                gunModProjectile.homing.track(missile)
+            end
         end
     end
 
@@ -14490,12 +16977,297 @@ end
 function gunModProjectile.shutdown()
     gunModProjectile.stopSweeping()
     table.clear(gunModProjectile.tracked)
+    table.clear(gunModProjectile.queue)
+    table.clear(gunModProjectile.ignored)
+    gunModProjectile.count = 0
+    gunModProjectile.cursor = 0
+    gunModProjectile.homing.shutdown()
+end
+
+-- [Weapons / Gun Mods] Homing Bullets
+-- Every frame, each tracked bullet turns toward the nearest Killer by at most Homing Turn Rate degrees per second and keeps
+-- its speed.
+do
+    local homing = {
+        tracked = {},    -- bullet -> true
+        count = 0,       -- how many bullets are in tracked
+        connection = nil :: RBXScriptConnection?,
+        targets = {},    -- reused every frame: where every Killer worth steering toward is
+        warned = false,
+        maxTracked = 96, -- bullets beyond this fly straight, so a fast fire rate cannot cost frames
+        rayParams = RaycastParams.new(), -- Wall Check
+        filter = {},     -- reused every frame: what Wall Check's rays ignore
+        skipped = {},    -- reused for every bullet: Killers already found to be behind a wall
+        wallTransparency = 0.99, -- Weapon.missile_hit stops a bullet on a CanCollide part more opaque than this
+        maxWallChecks = 3, -- Killers one bullet can test per frame; when all are behind walls it just flies straight
+        maxWallPasses = 5, -- parts one line of sight can pass through (non-solid or see-through ones) before it counts as blocked
+        immune = { Giant = true, Jane = true }, -- Weapon.missile_check ignores normal shots on these, so curving toward them wastes the bullet
+    }
+
+    gunModProjectile.homing = homing
+    homing.rayParams.FilterType = Enum.RaycastFilterType.Exclude
+    homing.rayParams.IgnoreWater = true
+
+    -- On while Gun Mods and Homing Bullets are both on.
+    function homing.enabled(): boolean
+        return not gunModsUnloaded
+            and utils.isGunModOn("enableGunMods_Toggle")
+            and utils.isGunModOn("homingBulletsGunMod_Toggle")
+    end
+
+    function homing.release(bullet)
+        if homing.tracked[bullet] ~= nil then
+            homing.tracked[bullet] = nil
+            homing.count = math.max(0, homing.count - 1)
+        end
+    end
+
+    function homing.stop()
+        if homing.connection then
+            homing.connection:Disconnect()
+            homing.connection = nil
+        end
+    end
+
+    -- Fills targets with the position of every living, hittable Killer and returns it.
+    function homing.collectTargets()
+        local targets = homing.targets
+        local folder = workspace:FindFirstChild("Killers")
+
+        table.clear(targets)
+
+        if not folder then
+            return targets
+        end
+
+        for _, killer in ipairs(folder:GetChildren()) do
+            if killer:IsA("Model") and not homing.immune[killer.Name] then
+                local humanoid = killer:FindFirstChildOfClass("Humanoid")
+                local root = killer:FindFirstChild("HumanoidRootPart")
+
+                if humanoid and humanoid.Health > 0 and root and root:IsA("BasePart") then
+                    targets[#targets + 1] = root.Position
+                end
+            end
+        end
+
+        return targets
+    end
+
+    -- Walls don't stop bullets them, so a Killer behind cover is a valid target.
+    function homing.wallCheckWanted(): boolean
+        return not utils.isGunModOn("wallPiercingGunMod_Toggle")
+    end
+
+    -- Once per frame, before any line of sight is tested.
+    function homing.prepareRay()
+        local filter = homing.filter
+        local killers = workspace:FindFirstChild("Killers")
+        local character = localplayer.Character
+
+        table.clear(filter)
+
+        -- Killers are the targets, not walls
+        if killers then
+            filter[#filter + 1] = killers
+        end
+
+        if character then
+            filter[#filter + 1] = character
+
+            -- Weapon.missile_hit lets bullets pass through everything in the folder the character lives in
+            local holder = character.Parent
+
+            if holder and holder ~= workspace then
+                filter[#filter + 1] = holder
+            end
+        end
+
+        homing.rayParams.FilterDescendantsInstances = filter
+    end
+
+    -- A bullet is only stopped by a CanCollide part that is more opaque than the weapon's threshold, so other parts the line crosses do not count.
+    function homing.hasLineOfSight(from: Vector3, to: Vector3): boolean
+        local offset = to - from
+        local distance = offset.Magnitude
+
+        if distance < 0.5 then
+            return true
+        end
+
+        local unit = offset / distance
+        local origin = from
+
+        for _ = 1, homing.maxWallPasses do
+            local result = workspace:Raycast(origin, to - origin, homing.rayParams)
+
+            if not result then
+                return true
+            end
+
+            local part = result.Instance
+
+            if part:IsA("Terrain") or (part.CanCollide and part.Transparency < homing.wallTransparency) then
+                return false
+            end
+
+            -- Not a wall: continue from just behind it
+            origin = result.Position + unit * 0.05
+
+            if (to - origin):Dot(unit) <= 0 then
+                return true
+            end
+        end
+
+        return false
+    end
+
+    -- With Wall Check on (Wall Piercing off), a Killer behind a wall is skipped for the next nearest one.
+    function homing.pickTarget(position: Vector3, targets, wallCheck: boolean)
+        local skipped = homing.skipped
+        local checks = 0
+
+        table.clear(skipped)
+
+        while true do
+            local nearest, nearestSquared = nil, math.huge
+
+            for index = 1, #targets do
+                if not skipped[index] then
+                    local offset = targets[index] - position
+                    local squared = offset:Dot(offset)
+
+                    if squared < nearestSquared then
+                        nearest, nearestSquared = index, squared
+                    end
+                end
+            end
+
+            if not nearest then
+                return nil
+            end
+
+            if not wallCheck or homing.hasLineOfSight(position, targets[nearest]) then
+                return targets[nearest] - position, nearestSquared
+            end
+
+            skipped[nearest] = true
+            checks += 1
+
+            if checks >= homing.maxWallChecks then
+                return nil
+            end
+        end
+    end
+
+    function homing.step(deltaTime: number)
+        local tracked = homing.tracked
+
+        if next(tracked) == nil then
+            homing.count = 0
+            homing.stop()
+            return
+        end
+
+        local turnRate = options.homingTurnRateGunMod_Slider.Value
+        local steering = homing.enabled() and type(turnRate) == "number" and turnRate > 0
+        local targets = steering and homing.collectTargets() or nil
+        local maxTurn = steering and math.rad(turnRate) * deltaTime or 0
+        local wallCheck = steering and homing.wallCheckWanted()
+
+        if wallCheck then
+            homing.prepareRay()
+        end
+
+        for bullet in pairs(tracked) do
+            if not bullet.Parent then
+                homing.release(bullet)
+            elseif targets and #targets > 0 then
+                local toNearest, nearestSquared = homing.pickTarget(bullet.Position, targets, wallCheck)
+                local velocity = bullet.AssemblyLinearVelocity
+                local speed = velocity.Magnitude
+
+                -- A bullet that is practically inside the Killer is left alone: its direction would flip every frame
+                if toNearest and speed > 1 and nearestSquared > 0.0001 then
+                    local current = velocity / speed
+                    local desired = toNearest.Unit
+                    local angle = math.acos(math.clamp(current:Dot(desired), -1, 1))
+                    local direction
+
+                    if angle <= maxTurn then
+                        direction = desired -- close enough to point straight at it this frame
+                    else
+                        local axis = current:Cross(desired)
+
+                        if axis.Magnitude < 1e-4 then
+                            -- Pointing straight at or straight away from the Killer: any perpendicular axis turns it
+                            axis = current:Cross(Vector3.yAxis)
+
+                            if axis.Magnitude < 1e-4 then
+                                axis = current:Cross(Vector3.xAxis)
+                            end
+                        end
+
+                        direction = CFrame.fromAxisAngle(axis.Unit, maxTurn):VectorToWorldSpace(current)
+                    end
+
+                    bullet.AssemblyLinearVelocity = direction * speed
+                end
+            end
+        end
+
+        if next(tracked) == nil then
+            homing.count = 0
+            homing.stop()
+        end
+    end
+
+    function homing.track(bullet)
+        if typeof(bullet) ~= "Instance" or not bullet:IsA("BasePart") then
+            return
+        end
+
+        -- The game sets the launch velocity right after set_missile returns, so steering starts once that has happened
+        task.defer(function()
+            if gunModsUnloaded or not bullet.Parent or homing.tracked[bullet] ~= nil or not homing.enabled() then
+                return
+            end
+
+            if homing.count >= homing.maxTracked then
+                return
+            end
+
+            homing.tracked[bullet] = true
+            homing.count += 1
+
+            if not homing.connection then
+                homing.connection = runService.Heartbeat:Connect(function(deltaTime)
+                    local success, stepError = pcall(homing.step, deltaTime)
+
+                    if not success and not homing.warned then
+                        homing.warned = true
+                        warn("[Gun Mods] Homing Bullets step failed: " .. tostring(stepError))
+                    end
+                end)
+            end
+        end)
+    end
+
+    function homing.shutdown()
+        homing.stop()
+        table.clear(homing.tracked)
+        table.clear(homing.targets)
+        table.clear(homing.filter)
+        table.clear(homing.skipped)
+        homing.count = 0
+    end
 end
 
 local function reconcileGunMods()
     local desired = getDesiredGunMods()
     local noOverheat = isNoOverheatDesired()
-    local projectile = gunModProjectile.multiplier() > 1
+    -- One set_missile hook per weapon serves both the Projectile Speed Multiplier and Homing Bullets
+    local projectile = gunModProjectile.multiplier() > 1 or gunModProjectile.homing.enabled()
 
     if next(desired) == nil and not noOverheat and not projectile and not gunModsEngaged then
         return
@@ -14566,19 +17338,54 @@ local function reconcileGunMods()
     gunModsEngaged = next(desired) ~= nil or noOverheat or projectile
 end
 
-utils.reconcileGunMods = reconcileGunMods -- Kill Aura's Gun Mod Assist asks for a refresh through this
+local function reconcileGunModsNow()
+    gunModScan.dirty = true
+    reconcileGunMods()
+end
 
-toggles.enableGunMods_Toggle:OnChanged(reconcileGunMods)
-toggles.infiniteAmmoGunMod_Toggle:OnChanged(reconcileGunMods)
-toggles.fullAutoGunMod_Toggle:OnChanged(reconcileGunMods)
-toggles.fireRateGunMod_Toggle:OnChanged(reconcileGunMods)
-toggles.noOverheatGunMod_Toggle:OnChanged(reconcileGunMods)
-toggles.noBoltGunMod_Toggle:OnChanged(reconcileGunMods)
-toggles.noRecoilGunMod_Toggle:OnChanged(reconcileGunMods)
-toggles.noSpreadGunMod_Toggle:OnChanged(reconcileGunMods)
-toggles.fastReloadGunMod_Toggle:OnChanged(reconcileGunMods)
-options.bulletCountGunMod_Slider:OnChanged(reconcileGunMods)
-options.projectileSpeedGunMod_Slider:OnChanged(reconcileGunMods)
+-- Sliders are collapsed into one reconcile shortly after the last step.
+local gunModReconcileQueued = false
+
+scheduleGunModReconcile = function(delaySeconds: number?)
+    if gunModsUnloaded or gunModReconcileQueued then
+        return
+    end
+
+    gunModReconcileQueued = true
+
+    task.delay(delaySeconds or 0.15, function()
+        gunModReconcileQueued = false
+
+        if gunModsUnloaded then
+            return
+        end
+
+        local success, reconcileError = pcall(reconcileGunMods)
+
+        if not success then
+            warn("[Gun Mods] Reconcile failed: " .. tostring(reconcileError))
+        end
+    end)
+end
+
+local function requestGunModReconcile()
+    gunModScan.dirty = true
+    scheduleGunModReconcile(0.15)
+end
+
+toggles.enableGunMods_Toggle:OnChanged(reconcileGunModsNow)
+toggles.infiniteAmmoGunMod_Toggle:OnChanged(reconcileGunModsNow)
+toggles.fullAutoGunMod_Toggle:OnChanged(reconcileGunModsNow)
+toggles.fireRateGunMod_Toggle:OnChanged(reconcileGunModsNow)
+toggles.noOverheatGunMod_Toggle:OnChanged(reconcileGunModsNow)
+toggles.noBoltGunMod_Toggle:OnChanged(reconcileGunModsNow)
+toggles.noRecoilGunMod_Toggle:OnChanged(reconcileGunModsNow)
+toggles.noSpreadGunMod_Toggle:OnChanged(reconcileGunModsNow)
+toggles.wallPiercingGunMod_Toggle:OnChanged(reconcileGunModsNow)
+toggles.fastReloadGunMod_Toggle:OnChanged(reconcileGunModsNow)
+toggles.homingBulletsGunMod_Toggle:OnChanged(reconcileGunModsNow)
+options.projectileSpeedGunMod_Slider:OnChanged(requestGunModReconcile)
+options.fireDelayGunMod_Slider:OnChanged(requestGunModReconcile)
 
 -- [Weapons / Gun Mods] Backpack listener for newly acquired tools
 
@@ -14598,7 +17405,7 @@ local function setupBackpackListener()
 
     gunModBackpackConnection = backpack.ChildAdded:Connect(function(tool)
         if tool:IsA("Tool") then
-            task.delay(0.5, reconcileGunMods) -- gives the game time to build the weapon object; no-op when no mod is on
+            task.delay(0.5, reconcileGunModsNow) -- gives the game time to build the weapon object; no-op when no mod is on
         end
     end)
 end
@@ -14622,7 +17429,6 @@ table.insert(teardownTasks, function()
 
     gunModCharacterConnection:Disconnect()
     reconcileGunMods()
-    utils.reconcileGunMods = nil
     gunModProjectile.shutdown()
 end)
 
@@ -14965,21 +17771,7 @@ task.spawn(function()
             end
         end,
     })
-
-    skinGroup:AddToggle("skinChangerAuto_Toggle", { Text = "Auto Re-apply", Tooltip = "Keeps the skin on after equipping, respawning, loadout changes, or picking up weapons.",
-        Callback = function(enabled)
-            setAuto(enabled)
-        end,
-    })
-
-    skinGroup:AddToggle("skinChangerBullets_Toggle", { Text = "Match Bullet Color", Tooltip = "Also sets the weapon's AppliedSkin attribute locally so your bullets use the skin's color.", Default = true,
-        Callback = function(enabled)
-            state.matchBullets = enabled
-            syncBulletAttribute()
-        end,
-    })
-
-    skinGroup:AddButton({ Text = "Reset Skins", Tooltip = "Turns off Auto Re-apply and puts every weapon back to its real skin.", Icon = "rotate-ccw",
+    :AddButton({ Text = "Reset Skins", Tooltip = "Turns off Auto Re-apply and puts every weapon back to its real skin.", Icon = "rotate-ccw",
         Func = function()
             if toggles.skinChangerAuto_Toggle.Value then
                 toggles.skinChangerAuto_Toggle:SetValue(false)
@@ -14991,6 +17783,19 @@ task.spawn(function()
             else
                 notify("Error", "Nothing to reset", "No weapons have a local skin applied.", 8)
             end
+        end,
+    })
+
+    skinGroup:AddToggle("skinChangerAuto_Toggle", { Text = "Auto Re-apply", Tooltip = "Keeps the skin on after equipping, respawning, loadout changes, or picking up weapons.",
+        Callback = function(enabled)
+            setAuto(enabled)
+        end,
+    })
+
+    skinGroup:AddToggle("skinChangerBullets_Toggle", { Text = "Match Bullet Color", Tooltip = "Also sets the weapon's AppliedSkin attribute locally so your bullets use the skin's color.", Default = true,
+        Callback = function(enabled)
+            state.matchBullets = enabled
+            syncBulletAttribute()
         end,
     })
 
@@ -15020,7 +17825,7 @@ end)
 
 -- [Miscellaneous / Weapon Spam] Repeated equip/unequip cycle
 ui.weapons.gunOptions:AddToggle("weaponSpam_Toggle", { Text = "Weapon Spam" })
-ui.misc.objectives:AddButton({ Text = "Give Office Card", Icon = "plus-circle",
+ui.misc.objectives:AddButton({ Text = "Office Card", Icon = "plus-circle",
     Func = function()
         if entityLib.getTool("Specific", "Card2") then
             notify("Error", "Failed", "You already have the office keycard.", 8)
@@ -15031,8 +17836,7 @@ ui.misc.objectives:AddButton({ Text = "Give Office Card", Icon = "plus-circle",
         utils.fireTouchEvent(hrp, area51.AdminRoom.Table.Card)
     end,
 })
-
-ui.misc.objectives:AddButton({ Text = "Vault Keycard", Icon = "plus-circle",
+:AddButton({ Text = "Vault Keycard", Icon = "plus-circle",
     Func = function()
         if entityLib.getTool("Specific", "Card1") then
             notify("Error", "Failed", "You already have the vault keycard.", 8)
@@ -15207,10 +18011,10 @@ end)
 -- 15 | TAB: UI SETTINGS AND CLEANUP
 -- ============================================================================
 
-
 ui.settings.menu:AddToggle("openKeybindMenu_Toggle", { Text = "Open Keybind Menu", Default = window.keybindFrameEnabled, Callback = function(enabled) library.KeybindFrame.Visible = enabled end })
 ui.settings.menu:AddToggle("configKeybinds_Toggle", { Text = "Keybind Menu Visibility", Tooltip = "Show or hide specific keybinds.", Visible = false, Callback = function(enabled) library.KeybindMenu:SetVisibilityControl(enabled) end })
 ui.settings.menu:AddToggle("alwaysOnTop_Toggle", { Text = "Always On Top", Default = window.AlwaysOnTop, Tooltip = "Places the window over all Roblox GUI.", Callback = function(enabled) window:SetAlwaysOnTop(enabled) end })
+ui.settings.menu:AddToggle("windowSnapping_Toggle", { Text = "Snapping", Default = true, Callback = function(enabled) window:SetSnapping(enabled) end })
 ui.settings.overlays:AddToggle("notifSound_Toggle", { Text = "Notification Alert Sounds", Default = true, Callback = function(enabled) window.notifSoundEnabled = enabled end })
 
 local notifSoundSettings = toggles.notifSound_Toggle:AddSettings({ Width = 230 })
@@ -15297,6 +18101,9 @@ do
             damage = 0,
             mostDamage = 0,
             damageByKiller = {} :: { [string]: number }, -- Health lost near each Killer, for the Top Killer mode
+            caseFiles = 0, -- Case files you collected
+            caseFileTracker = nil :: RBXScriptConnection?,
+            caseFilesAvailable = true,
             lifeStart = nil,
             livesCompleted = 0, -- Lives that ended while Survival Time was tracked
             livesTotal = 0, -- Seconds survived across those lives
@@ -15569,7 +18376,7 @@ do
                 settings = function(settings)
                     settings:AddDropdown("sessionInfoKillsMode_Dropdown", { Text = "Tracking Mode", Values = { "Session kills", "Kills per minute" }, Default = 1,
                         Tooltip = "Kills per minute is your kills divided by the time Kills has been tracked." })
-                    settings:AddToggle("sessionInfoSyntheticKills_Toggle", { Text = "Synthetic Kills", Default = false, Tooltip = "Also counts the kills Disable Aura makes itself (the Kill method and Emergency Kill) in Kills, K/D Ratio and Bullets Per Kill. Off by default, so only kills you get yourself are counted." })
+                    settings:AddToggle("sessionInfoSyntheticKills_Toggle", { Text = "Synthetic Kills", Tooltip = "Also counts the kills Disable Aura makes itself, K/D Ratio and Bullets Per Kill." })
                 end,
                 value = function()
                     if not sessionInfo.killsAvailable then
@@ -15623,6 +18430,15 @@ do
                     end
 
                     return tostring(getToggle("sessionInfoSyntheticKills_Toggle", false) and sessionInfo.streakPeakCombined or sessionInfo.streakPeak)
+                end },
+
+            { id = "CaseFiles", text = "Case Files", needs = { "caseFiles" }, tooltip = "How many case files you collected this session.",
+                value = function()
+                    if not sessionInfo.caseFilesAvailable then
+                        return "N/A"
+                    end
+
+                    return tostring(sessionInfo.caseFiles)
                 end },
 
             { id = "Bullets", text = "Bullets Fired", needs = function()
@@ -15711,7 +18527,7 @@ do
             { id = "Health", text = "Health", tooltip = "Your current health.",
                 settings = function(settings)
                     settings:AddDropdown("sessionInfoHealthDisplay_Dropdown", { Text = "Health Display", Values = { "Current / Max", "Percentage" }, Default = 1 })
-                    settings:AddToggle("sessionInfoHealthAdaptive_Toggle", { Text = "Adaptive", Default = false, Tooltip = "Colors the text green, yellow or red by how much health you have left." })
+                    settings:AddToggle("sessionInfoHealthAdaptive_Toggle", { Text = "Adaptive", Tooltip = "Colors the text green, yellow or red by how much health you have left." })
                 end,
                 value = function()
                     local character = localplayer.Character
@@ -15758,27 +18574,27 @@ do
                 settings = function(settings)
                     settings:AddSlider("sessionInfoFPSInterval_Slider", { Text = "Update Interval", Default = 1, Min = 0.5, Max = 2, Rounding = 1, Suffix = "s",
                         Tooltip = "How often the FPS is measured. A longer interval is smoother, a shorter one reacts faster." })
-                    settings:AddToggle("sessionInfoFPSAdaptive_Toggle", { Text = "Adaptive", Default = false, Tooltip = "Colors the numbers green, yellow or red by how high the FPS is." })
+                    settings:AddToggle("sessionInfoFPSAdaptive_Toggle", { Text = "Adaptive", Tooltip = "Colors the numbers green, yellow or red by how high the FPS is." })
                     settings:AddToggle("sessionInfoFPSCurrent_Toggle", { Text = "Show Current", Default = true, Tooltip = "Shows the current FPS. Turn it off to only show the highest and lowest." })
-                    settings:AddToggle("sessionInfoFPSMax_Toggle", { Text = "Maximum", Default = false, Tooltip = "Shows the highest FPS of this session, like ↑304." })
-                    settings:AddToggle("sessionInfoFPSMin_Toggle", { Text = "Minimum", Default = false, Tooltip = "Shows the lowest FPS of this session, like ↓54." })
+                    settings:AddToggle("sessionInfoFPSMax_Toggle", { Text = "Maximum", Tooltip = "Shows the highest FPS of this session, like ↑304." })
+                    settings:AddToggle("sessionInfoFPSMin_Toggle", { Text = "Minimum", Tooltip = "Shows the lowest FPS of this session, like ↓54." })
 
-                    local notifyToggle = settings:AddToggle("sessionInfoFPSNotify_Toggle", { Text = "Notify on Low FPS", Default = false, Tooltip = "Sends a notification when the FPS drops below the threshold, so you can spot big FPS drops." })
+                    local notifyToggle = settings:AddToggle("sessionInfoFPSNotify_Toggle", { Text = "Notify on Low FPS", Tooltip = "Sends a notification when the FPS drops below the threshold, so you can spot big FPS drops." })
                     local notifySettings = notifyToggle:AddSettings({ Width = 240 })
-                    notifySettings:AddSlider("sessionInfoFPSThreshold_Slider", { Text = "Threshold", Default = 30, Min = 5, Max = 240, Rounding = 0, Suffix = " FPS" })
+                    notifySettings:AddSlider("sessionInfoFPSThreshold_Slider", { Text = "Threshold", Default = 30, Min = 5, Max = 240, Suffix = " FPS" })
                 end,
                 value = function() return buildReadingValue("sessionInfoFPS", sessionInfo.fps > 0 and sessionInfo.fps or nil, sessionInfo.fpsPeak, sessionInfo.fpsLow, fpsColor) end },
 
             { id = "Ping", text = "Ping", default = true, needs = { "ping" }, tooltip = "Round-trip time to the server in milliseconds.",
                 settings = function(settings)
-                    settings:AddToggle("sessionInfoPingAdaptive_Toggle", { Text = "Adaptive", Default = false, Tooltip = "Colors the numbers green, yellow or red by how low the ping is." })
+                    settings:AddToggle("sessionInfoPingAdaptive_Toggle", { Text = "Adaptive", Tooltip = "Colors the numbers green, yellow or red by how low the ping is." })
                     settings:AddToggle("sessionInfoPingCurrent_Toggle", { Text = "Show Current", Default = true, Tooltip = "Shows the current ping. Turn it off to only show the highest and lowest." })
-                    settings:AddToggle("sessionInfoPingMax_Toggle", { Text = "Maximum", Default = false, Tooltip = "Shows the highest ping of this session, like ↑56." })
-                    settings:AddToggle("sessionInfoPingMin_Toggle", { Text = "Minimum", Default = false, Tooltip = "Shows the lowest ping of this session, like ↓12." })
+                    settings:AddToggle("sessionInfoPingMax_Toggle", { Text = "Maximum", Tooltip = "Shows the highest ping of this session, like ↑56." })
+                    settings:AddToggle("sessionInfoPingMin_Toggle", { Text = "Minimum", Tooltip = "Shows the lowest ping of this session, like ↓12." })
 
-                    local notifyToggle = settings:AddToggle("sessionInfoPingNotify_Toggle", { Text = "Notify on High Ping", Default = false, Tooltip = "Sends a notification when the ping goes above the threshold, so you can spot ping spikes." })
+                    local notifyToggle = settings:AddToggle("sessionInfoPingNotify_Toggle", { Text = "Notify on High Ping", Tooltip = "Sends a notification when the ping goes above the threshold, so you can spot ping spikes." })
                     local notifySettings = notifyToggle:AddSettings({ Width = 240 })
-                    notifySettings:AddSlider("sessionInfoPingThreshold_Slider", { Text = "Threshold", Default = 200, Min = 50, Max = 1000, Rounding = 0, Suffix = " ms" })
+                    notifySettings:AddSlider("sessionInfoPingThreshold_Slider", { Text = "Threshold", Default = 200, Min = 50, Max = 1000, Suffix = " ms" })
                 end,
                 value = function() return buildReadingValue("sessionInfoPing", sessionInfo.ping, sessionInfo.pingPeak, sessionInfo.pingLow, pingColor) end },
         }
@@ -16409,6 +19225,37 @@ do
             end
         end
 
+        local function stopSessionInfoCaseFileTracker()
+            local connection = sessionInfo.caseFileTracker
+
+            if connection then
+                connection:Disconnect()
+                sessionInfo.caseFileTracker = nil
+            end
+        end
+
+        -- Case files picked up manually and through Auto Pickup Case Files are both counted.
+        local function startSessionInfoCaseFileTracker()
+            if sessionInfo.caseFileTracker then
+                return
+            end
+
+            local remoteEvents = game:GetService("ReplicatedStorage"):FindFirstChild("Remote Events")
+            local remote = remoteEvents and remoteEvents:FindFirstChild("KillerCaseDrop")
+
+            if not remote or not remote:IsA("RemoteEvent") then
+                sessionInfo.caseFilesAvailable = false
+                return
+            end
+
+            sessionInfo.caseFilesAvailable = true
+            sessionInfo.caseFileTracker = remote.OnClientEvent:Connect(function(first, second)
+                if not second and first then
+                    sessionInfo.caseFiles += 1
+                end
+            end)
+        end
+
         local function stopSessionInfo()
             sessionInfo.loopToken = nil
             sessionInfo.needs = {}
@@ -16421,6 +19268,7 @@ do
             stopSessionInfoCharacterTracker()
             stopSessionInfoBulletTracker()
             stopSessionInfoDealtTracker()
+            stopSessionInfoCaseFileTracker()
 
             if sessionInfo.label then
                 pcall(function()
@@ -16496,6 +19344,12 @@ do
                 stopSessionInfoDealtTracker()
             end
 
+            if needs.caseFiles then
+                startSessionInfoCaseFileTracker()
+            else
+                stopSessionInfoCaseFileTracker()
+            end
+
             if not sessionInfo.loopToken then
                 local token = {}
                 sessionInfo.loopToken = token
@@ -16539,6 +19393,7 @@ do
             sessionInfo.damage, sessionInfo.mostDamage = 0, 0
             sessionInfo.damageDealt = 0
             table.clear(sessionInfo.damageByKiller)
+            sessionInfo.caseFiles = 0
 
             local character = localplayer.Character
             local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -16638,6 +19493,8 @@ utils.buildArraylist = function()
     local INFO_COLOR = "#a8a8a8"
     local ANIMATION_TIME = 0.15
     local POLL_INTERVAL = 0.2 -- modes and values are not toggles, so the list is also re-read on a timer
+    local DEFAULT_FONT = "Gotham"
+    local FONT_NAMES = { "Code", "Gotham", "GothamMedium", "GothamBold", "Roboto", "RobotoMono", "Ubuntu", "SourceSans", "SourceSansBold", "Arial", "Nunito", "Oswald", "Jura", "Michroma", "SciFi", "Cartoon" } -- Roblox font names
 
     -- [Arraylist / Controls]
     ui.settings.overlays:AddToggle("arraylist_Toggle", { Text = "Arraylist", Tooltip = "Shows a list of every module you have enabled on your screen." })
@@ -16658,11 +19515,12 @@ utils.buildArraylist = function()
     options.arraylistColorMode_Dropdown:OnChanged(updateColorOptions)
     updateColorOptions()
 
-    arraylistSettings:AddSlider("arraylistTextSize_Slider", { Text = "Text Size", Default = 16, Min = 12, Max = 24, Rounding = 0 })
-    arraylistSettings:AddSlider("arraylistBarWidth_Slider", { Text = "Bar Width", Default = 2, Min = 1, Max = 6, Rounding = 0, Suffix = " px" })
+    arraylistSettings:AddDropdown("arraylistFont_Dropdown", { Text = "Font", Tooltip = "The font of the Arraylist text.", Values = FONT_NAMES, Default = table.find(FONT_NAMES, DEFAULT_FONT) })
+    arraylistSettings:AddSlider("arraylistTextSize_Slider", { Text = "Text Size", Default = 16, Min = 12, Max = 24 })
+    arraylistSettings:AddSlider("arraylistBarWidth_Slider", { Text = "Bar Width", Default = 2, Min = 1, Max = 6, Suffix = " px" })
     arraylistSettings:AddSlider("arraylistBackground_Slider", { Text = "Background Transparency", Default = 0.5, Min = 0, Max = 1, Rounding = 2 })
-    arraylistSettings:AddSlider("arraylistOffsetX_Slider", { Text = "Offset X", Default = 6, Min = 0, Max = 400, Rounding = 0, Suffix = " px" })
-    arraylistSettings:AddSlider("arraylistOffsetY_Slider", { Text = "Offset Y", Default = 6, Min = 0, Max = 600, Rounding = 0, Suffix = " px" })
+    arraylistSettings:AddSlider("arraylistOffsetX_Slider", { Text = "Offset X", Default = 6, Min = 0, Max = 400, Suffix = " px" })
+    arraylistSettings:AddSlider("arraylistOffsetY_Slider", { Text = "Offset Y", Default = 6, Min = 0, Max = 600, Suffix = " px" })
     arraylistSettings:AddToggle("arraylistInfo_Toggle", { Text = "Show Info", Tooltip = "Shows a module's mode and values after its name, like Disable Aura's method and range.", Default = true })
     arraylistSettings:AddToggle("arraylistAnimate_Toggle", { Text = "Animations", Default = true })
     arraylistSettings:AddToggle("arraylistExclusions_Toggle", { Text = "Exclusions", Tooltip = "Hides specific modules from the Arraylist." })
@@ -16727,16 +19585,16 @@ utils.buildArraylist = function()
     end
 
     local hitPartNames = { HumanoidRootPart = "Root" }
-    local auraMethodNames = { ["Disable Movement"] = "Movement", ["Disable Humanoid"] = "Humanoid" }
+    local auraMethodNames = { ["Disable Movement"] = "Movement", ["Disable Humanoid"] = "Humanoid", ["Teleport Away"] = "Teleport" }
 
     local modules: { any } = {
         -- Player
         { id = "speedExploit_Toggle", name = "Speed Exploit", suffix = function()
-            return join(" ", choice("speedExploitMethod_Dropdown"), number("speedExploitAmount_Slider"))
+            local noAcceleration = value("speedExploitMethod_Dropdown") == "WalkSpeed" and flag("speedBypass_Toggle") and flag("speedBypassNoAcceleration_Toggle")
+
+            return join(" / ", choice("speedExploitMethod_Dropdown"), number("speedExploitAmount_Slider"), noAcceleration and "No Accel")
         end },
-        { id = "speedBypass_Toggle", name = "Speed Bypass", suffix = function()
-            return flag("speedBypassNoAcceleration_Toggle") and "No Accel" or nil
-        end },
+        { id = "speedBypass_Toggle", name = "Speed Bypass" },
         { id = "toggleFly_Toggle", requires = { "enableFly_Toggle" }, name = "Fly", suffix = function()
             local horizontal, vertical = number("flyHorizSpeed_Slider"), number("flyVertSpeed_Slider")
 
@@ -16770,16 +19628,19 @@ utils.buildArraylist = function()
 
         -- Exploits
         { id = "enableAimbot_Toggle", name = "Aimbot", suffix = function()
-            return join(" ", choice("aimbotHitPart_Dropdown", hitPartNames), number("aimbotMaximumDistance_Slider"))
+            return join(" / ", choice("aimbotHitPart_Dropdown", hitPartNames), number("aimbotMaximumDistance_Slider"))
         end },
         { id = "enableSilentAim_Toggle", name = "Silent Aim", suffix = function()
-            return join(" ", choice("silentAimHitPart_Dropdown", hitPartNames), number("FOV_Slider"))
+            return join(" / ", choice("silentAimHitPart_Dropdown", hitPartNames), number("FOV_Slider", "px"))
         end },
         { id = "enableTriggerbot_Toggle", name = "Triggerbot", suffix = function()
-            return join(" ", choice("triggerbotFireMode_Dropdown"), number("triggerbotRange_Slider"))
+            return join(" / ", choice("triggerbotFireMode_Dropdown"), number("triggerbotRange_Slider"))
         end },
         { id = "disableAllKillers_Toggle", name = "Disable Aura", suffix = function()
-            return join(" ", choice("disableAuraMethod_Dropdown", auraMethodNames), number("disableKillersDistance_Slider"))
+            -- Teleport Away reacts at its own Trigger Distance, not at the Range
+            local teleportAway = value("disableAuraMethod_Dropdown") == "Teleport Away"
+
+            return join(" / ", choice("disableAuraMethod_Dropdown", auraMethodNames), number(teleportAway and "disableAuraTriggerDistance_Slider" or "disableKillersDistance_Slider"))
         end },
         { id = "killerGodmode_Toggle", name = "Killer Godmode" },
         { id = "antiPinhead_Toggle", requires = { "killerGodmode_Toggle" }, name = "Anti Pinhead" },
@@ -16797,6 +19658,7 @@ utils.buildArraylist = function()
             return join(" / ", number("hitboxSize_Slider"), number("hitboxRange_Slider"))
         end },
         { id = "autoCollect_Toggle", name = "Auto Collect" },
+        { id = "autoPickupCaseFiles_Toggle", name = "Auto Case Files" },
         { id = "autofarm_Toggle", name = "Autofarm", suffix = function()
             return join(" / ", number("autofarmFollowDistance_Slider"), number("autofarmDangerDistance_Slider"))
         end },
@@ -16806,7 +19668,7 @@ utils.buildArraylist = function()
 
         -- Visuals
         { id = "killerESP_Toggle", name = "Killer ESP", suffix = function()
-            return join(" ", choice("killerESPBoxType_Dropdown"), number("killerESPDistance_Slider"))
+            return join(" / ", choice("killerESPBoxType_Dropdown"), number("killerESPDistance_Slider"))
         end },
         { id = "toggleKillersNametags_Toggle", requires = { "killerESP_Toggle" }, name = "Name Tags", suffix = function() return number("textSize_Slider") end },
         { id = "killerArrows_Toggle", requires = { "killerESP_Toggle" }, name = "Offscreen Arrows", suffix = function()
@@ -16814,6 +19676,7 @@ utils.buildArraylist = function()
         end },
         { id = "fogReducer_Toggle", name = "Fog Reducer", suffix = function() return number("fogReducerAmount_Slider", "%") end },
         { id = "halloweenKillers_Toggle", name = "Halloween Killers" },
+        { id = "halloweenMap_Toggle", name = "Halloween Map" },
         { id = "campingLantern_Toggle", requires = { "halloweenKillers_Toggle" }, name = "Camping Lantern" },
         { id = "enableFOV_Toggle", name = "FOV", suffix = function() return number("fieldOfViewValue_Slider") end },
         { id = "antiInk_Toggle", name = "Anti Ink" },
@@ -16843,15 +19706,16 @@ utils.buildArraylist = function()
         { id = "skinChangerAuto_Toggle", name = "Skin Changer", suffix = function()
             return join(" / ", choice("skinChangerSkin_Dropdown"))
         end },
-        { id = "enableGunMods_Toggle", name = "Gun Mods", suffix = function() return number("bulletCountGunMod_Slider") end },
         { id = "infiniteAmmoGunMod_Toggle", requires = { "enableGunMods_Toggle" }, name = "Infinite Ammo" },
         { id = "fullAutoGunMod_Toggle", requires = { "enableGunMods_Toggle" }, name = "Full Auto" },
-        { id = "fireRateGunMod_Toggle", requires = { "enableGunMods_Toggle" }, name = "Rapid Fire" },
+        { id = "fireRateGunMod_Toggle", requires = { "enableGunMods_Toggle" }, name = "Rapid Fire", suffix = function() return number("fireDelayGunMod_Slider", "s") end },
         { id = "noOverheatGunMod_Toggle", requires = { "enableGunMods_Toggle" }, name = "No Overheat" },
         { id = "noBoltGunMod_Toggle", requires = { "enableGunMods_Toggle" }, name = "No Sniper Bolt" },
         { id = "noRecoilGunMod_Toggle", requires = { "enableGunMods_Toggle" }, name = "No Recoil" },
         { id = "noSpreadGunMod_Toggle", requires = { "enableGunMods_Toggle" }, name = "No Spread" },
-        { id = "fastReloadGunMod_Toggle", requires = { "enableGunMods_Toggle" }, name = "Fast Reload" },
+        { id = "wallPiercingGunMod_Toggle", requires = { "enableGunMods_Toggle" }, name = "Wall Piercing" },
+        { id = "fastReloadGunMod_Toggle", requires = { "enableGunMods_Toggle" }, name = "Fast Reload", suffix = function() return number("fastReloadSpeedGunMod_Slider", "x") end },
+        { id = "homingBulletsGunMod_Toggle", requires = { "enableGunMods_Toggle" }, name = "Homing Bullets", suffix = function() return number("homingTurnRateGunMod_Slider", "°/s") end },
     }
 
     -- [Arraylist / State]
@@ -16913,7 +19777,7 @@ utils.buildArraylist = function()
             return a:lower() < b:lower()
         end)
 
-        arraylistExclusionSettings:AddDropdown("arraylistExclusions_Dropdown", { Text = "Hidden Modules", Tooltip = "The modules to hide from the Arraylist.", Values = names, Multi = true, Searchable = true, AllowNull = true })
+        arraylistExclusionSettings:AddDropdown("arraylistExclusions_Dropdown", { Text = "Hidden Modules", Tooltip = "The modules to hide from the Arraylist.", Values = names, Multi = true, Searchable = true, AllowNull = true, DragSelect = true })
 
         -- Unselects every module at once, so the dropdown does not have to be scrolled through.
         arraylistExclusionSettings:AddButton({ Text = "Clear Exclusions", Icon = "trash-2", Tooltip = "Unselects every hidden module, so all of them can show in the Arraylist again.",
@@ -16947,6 +19811,7 @@ utils.buildArraylist = function()
         return {
             side = setting("arraylistSide_Dropdown", "Right"),
             sort = setting("arraylistSort_Dropdown", "Longest First"),
+            font = setting("arraylistFont_Dropdown", DEFAULT_FONT),
             size = math.floor(setting("arraylistTextSize_Slider", 16)),
             barWidth = math.floor(setting("arraylistBarWidth_Slider", 2)),
             background = setting("arraylistBackground_Slider", 0.5),
@@ -17010,7 +19875,7 @@ utils.buildArraylist = function()
 
     -- Text widths are cached by font, size and text. Measuring uses Obsidian's own bounds check, which can yield.
     local function measure(rich: string, size: number, font: any): number
-        local key = font.Family .. "|" .. font.Weight.Name .. "|" .. size .. "|" .. rich
+        local key = font.Family .. "|" .. font.Weight.Name .. "|" .. font.Style.Name .. "|" .. size .. "|" .. rich
         local cached = state.widths[key]
 
         if cached then
@@ -17234,13 +20099,22 @@ utils.buildArraylist = function()
     end
 
     -- [Arraylist / Refresh]
+    -- The chosen font. A name that is not a Roblox font falls back to the default.
+    local function resolveFont(name: string): any
+        local success, font = pcall(function()
+            return Font.fromEnum(Enum.Font[name])
+        end)
+
+        if success and typeof(font) == "Font" then
+            return font
+        end
+
+        return Font.fromEnum(Enum.Font[DEFAULT_FONT])
+    end
+
     local function refreshOnce()
         local cfg = readConfig()
-        local font: any = library.Scheme and library.Scheme.Font
-
-        if typeof(font) ~= "Font" then
-            font = Font.fromEnum(Enum.Font.Gotham)
-        end
+        local font: any = resolveFont(cfg.font)
 
         local restyle = state.restyle
         state.restyle = false
@@ -17394,7 +20268,7 @@ utils.buildArraylist = function()
         end
     end)
 
-    for _, id in ipairs({ "arraylistSide_Dropdown", "arraylistSort_Dropdown", "arraylistTextSize_Slider", "arraylistBarWidth_Slider", "arraylistBackground_Slider" }) do
+    for _, id in ipairs({ "arraylistSide_Dropdown", "arraylistSort_Dropdown", "arraylistFont_Dropdown", "arraylistTextSize_Slider", "arraylistBarWidth_Slider", "arraylistBackground_Slider" }) do
         options[id]:OnChanged(requestRestyle)
     end
 
@@ -17422,16 +20296,29 @@ utils.buildArraylist()
 
 -- [UI Settings / Teardown] Disable active features and clear shared state
 local function unloadModules()
+    local function restoreIdentity()
+        if type(setthreadidentity) == "function" then
+            pcall(setthreadidentity, 8)
+        end
+    end
+
+    restoreIdentity()
+
     -- Switch off every toggle so each OnChanged handler can stop its own loops, connections and hooks.
     for name, toggle in pairs(toggles) do
         if type(toggle) == "table" and toggle.Value == true and type(toggle.SetValue) == "function"
             and name ~= "openKeybindMenu_Toggle" and name ~= "autoResetColor_Toggle" and name ~= "notifSound_Toggle" then
+            restoreIdentity()
+
             local success = pcall(toggle.SetValue, toggle, false)
+
+            restoreIdentity()
 
             if not success then
                 -- The UI side failed; still make sure the value is off and the handler runs.
                 toggle.Value = false
                 pcall(function() toggle:RunChanged() end)
+                restoreIdentity()
             end
         end
     end
@@ -17452,7 +20339,11 @@ local function unloadModules()
 
     -- Feature teardown (silent aim hooks, FOV circle, always-on RenderStepped handlers).
     for _, teardown in ipairs(teardownTasks) do
+        restoreIdentity()
+
         local success, err = pcall(teardown)
+
+        restoreIdentity()
 
         if not success then
             warn("[Celestial] Teardown error:", err)
@@ -17460,6 +20351,7 @@ local function unloadModules()
     end
 
     table.clear(teardownTasks)
+    restoreIdentity()
 end
 
 -- Library:Unload() empties library.Toggles / library.Options right after it runs its unload callbacks. Anything that

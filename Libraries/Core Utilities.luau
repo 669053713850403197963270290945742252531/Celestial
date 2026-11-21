@@ -943,4 +943,12 @@ utils.fetchGameImage = function(mode, size)
 	end
 end
 
+utils.isChatPermitted = function()
+    local _, canChat = pcall(function()
+        return textChatService:CanUserChatAsync(player.UserId)
+    end)
+
+    return canChat
+end
+
 return utils
