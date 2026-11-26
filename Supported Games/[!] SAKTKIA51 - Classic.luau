@@ -79,6 +79,15 @@ local killerNames = {
     "Giant"
 }
 
+-- Every rule that skips Weapon.missile_check on Giant & Jane reads utils.immuneKillers, and every
+-- "Excluded Killers" default is built from utils.immuneKillerNames. Never write to either; clone before changing.
+utils.immuneKillerNames = { "Giant", "Jane" }
+utils.immuneKillers = {}
+
+for _, name in ipairs(utils.immuneKillerNames) do
+    utils.immuneKillers[name] = true
+end
+
 -- 03 | SHARED RUNTIME STATE
 
 local cancelPAPQueue = false
@@ -4546,7 +4555,7 @@ ui.exploits.aim:AddToggle("enableAimbot_Toggle", { Text = "Enable Aimbot" })
 local aimbotSettings = toggles.enableAimbot_Toggle:AddSettings({ Width = 280 })
 aimbotSettings:AddDropdown("aimbotHitPart_Dropdown", { Text = "Hit Part", Values = { "Head", "HumanoidRootPart" }, Default = 1 })
 aimbotSettings:AddDropdown("aimbotTargetType_Dropdown", { Text = "Target Type", Values = { "Closest", "Closest to Cursor" }, Default = 2 })
-aimbotSettings:AddDropdown("aimbotExcludedKillers_Dropdown", { Text = "Excluded Killers", Values = killerNames, Default = { "Giant", "Jane" }, Multi = true, Searchable = true, DragSelect = true })
+aimbotSettings:AddDropdown("aimbotExcludedKillers_Dropdown", { Text = "Excluded Killers", Values = killerNames, Default = table.clone(utils.immuneKillerNames), Multi = true, Searchable = true, DragSelect = true })
 aimbotSettings:AddSlider("aimbotMaximumDistance_Slider", { Text = "Range", Tooltip = "Killers farther than this distance will not be targeted.", Default = 100, Min = 10, Max = 2000, Suffix = " Studs", Rounding = 1 })
 aimbotSettings:AddSlider("aimbotSmoothing_Slider", { Text = "Smoothing", Tooltip = "How smooth aimbot should lock onto Killer's.", Default = 400, Min = 10, Max = 1000 })
 aimbotSettings:AddToggle("aimbotVisibilityCheck_Toggle", { Text = "Visibility Check", Tooltip = "Whether to only target Killers that are visible.", Default = true })
@@ -4661,7 +4670,7 @@ end
 local scanSilentAimWeaponTables
 
 do
-    local silentAimBlacklistedNames = { Jane = true, Giant = true }
+    local silentAimBlacklistedNames = utils.immuneKillers
 
     local FORCED_AIM_SOURCES = {
         { key = "autofarmAimTarget", name = "autofarm" },
@@ -4972,6 +4981,14 @@ do
         return grenadeMass
     end
 
+    -- [Shared / Grenade Physics] Downward acceleration of the M203's grenade: gravity minus the BodyForce lift set_missile adds.
+    -- Shared by Kill Aura's ballistic solver (solveGrenadeAimPosition) and the Grenade Trajectory preview (utils.getGrenadeFallAcceleration).
+    local function getGrenadeFallAcceleration()
+        return workspace.Gravity - GRENADE_UP_FORCE / getGrenadeMass()
+    end
+
+    utils.getGrenadeFallAcceleration = getGrenadeFallAcceleration
+
     local function getGrenadeSpeed()
         local multiplier = 1
         local getMultiplier = utils.getProjectileSpeedMultiplier
@@ -5036,7 +5053,7 @@ do
         end
 
         local speed = getGrenadeSpeed()
-        local accel = workspace.Gravity - GRENADE_UP_FORCE / getGrenadeMass()
+        local accel = getGrenadeFallAcceleration()
         local velocity = Vector3.zero
 
         if toggles.silentAimPrediction_Toggle.Value then
@@ -5438,6 +5455,7 @@ do
         silentAimFOVConnection:Disconnect()
         utils.isLauncherWeapon = nil
         utils.killAuraAimPosition = nil
+        utils.getGrenadeFallAcceleration = nil
 
         for _, record in ipairs(silentAimHookRecords) do
             restoreSilentAimRecord(record)
@@ -5733,6 +5751,57 @@ toggles.enableAimbot_Toggle:OnChanged(function(state)
     end
 end)
 
+-- [Shared / Firing] Trigger function for Triggerbot, Autofarm and Kill Aura.
+utils.createTrigger = function(label: string, cursorGetter: any)
+    local trigger = {
+        heldWeapon = nil :: any, -- weapon whose trigger is being held down
+        lastWarn = -math.huge,
+    }
+
+    -- False while the weapon is still equipping, shooting or reloading
+    function trigger.isReady(weapon: any): boolean
+        return weapon.ready == true and not weapon.reloading and not weapon.shooting
+    end
+
+    -- Lets go of the trigger of a weapon that is being held down
+    function trigger.release()
+        local weapon = trigger.heldWeapon
+        trigger.heldWeapon = nil
+
+        if weapon then
+            pcall(function()
+                weapon:button1up()
+            end)
+        end
+    end
+
+    -- Presses the trigger
+    function trigger.press(weapon: any, hold: boolean?)
+        if hold == nil then
+            hold = weapon.is_auto
+        end
+
+        task.spawn(function()
+            local success, err = pcall(weapon.button1down, weapon, cursorGetter)
+
+            if not success and os.clock() - trigger.lastWarn > 2 then
+                trigger.lastWarn = os.clock()
+                warn("[" .. label .. "] Could not fire: " .. tostring(err))
+            end
+        end)
+
+        if hold then
+            trigger.heldWeapon = weapon
+        else
+            pcall(function()
+                weapon:button1up()
+            end)
+        end
+    end
+
+    return trigger
+end
+
 -- [Exploits / Triggerbot] Auto-fire while the aim point is over a Killer.
 do
     local triggerbotToggle = ui.exploits.aim:AddToggle("enableTriggerbot_Toggle", { Text = "Enable Triggerbot", Tooltip = "Fires automatically while your aim is on a Killer." })
@@ -5759,7 +5828,6 @@ do
         targetSince = 0,
         reaction = 0,
         lastError = nil,
-        lastWarn = -math.huge,
         excluded = {},
         params = RaycastParams.new(),
         aimPoint = nil :: Vector2?, -- the screen point the Killer was found at - shots are aimed there
@@ -5768,10 +5836,14 @@ do
         scanning = false,
         nextScan = 0,
         scanMisses = 0, -- searches in a row that found nothing
-        heldWeapon = nil :: any, -- weapon whose trigger is being held down (Hold mode)
         SCAN_INTERVAL = 0.5, -- seconds before the weapon object of the held tool is searched for again, doubled while nothing is found
         SCAN_MAX = 4, -- the longest wait between two such searches
     }
+
+    -- Shoots at the point the Killer was found at, so a shot with Tolerance hits a point that was checked
+    triggerbot.fire = utils.createTrigger("Triggerbot", function()
+        return triggerbot.aimPoint or uis:GetMouseLocation()
+    end)
 
     local sampleDirections = { Vector2.new(1, 0), Vector2.new(-1, 0), Vector2.new(0, 1), Vector2.new(0, -1) }
 
@@ -5856,45 +5928,6 @@ do
         end
 
         return nil
-    end
-
-    -- [Triggerbot / Firing] The game calls the cursor getter for every shot.
-    -- It returns the point the Killer was found at, so a hit found through Tolerance is shot at the point that was checked.
-    function triggerbot.cursorGetter()
-        return triggerbot.aimPoint or uis:GetMouseLocation()
-    end
-
-    -- Releases the trigger of a weapon that is being held down
-    function triggerbot.releaseHeld()
-        local weapon = triggerbot.heldWeapon
-        triggerbot.heldWeapon = nil
-
-        if weapon then
-            pcall(function()
-                weapon:button1up()
-            end)
-        end
-    end
-
-    -- Presses the trigger via Weapon.button1down. The call keeps running while an
-    -- automatic weapon fires, so it runs on its own thread. Without `hold`, it shoots once.
-    function triggerbot.press(weapon, hold)
-        task.spawn(function()
-            local success, err = pcall(weapon.button1down, weapon, triggerbot.cursorGetter)
-
-            if not success and os.clock() - triggerbot.lastWarn > 2 then
-                triggerbot.lastWarn = os.clock()
-                warn("[Triggerbot] Could not fire: " .. tostring(err))
-            end
-        end)
-
-        if hold then
-            triggerbot.heldWeapon = weapon
-        else
-            pcall(function()
-                weapon:button1up()
-            end)
-        end
     end
 
     local function readExcluded(value)
@@ -6107,7 +6140,7 @@ do
         -- Only with a living character, a held tool and the keybind allowing it
         if not tool or not canFire() then
             triggerbot.target = nil
-            triggerbot.releaseHeld()
+            triggerbot.fire.release()
             return
         end
 
@@ -6117,7 +6150,7 @@ do
 
         if not model then
             triggerbot.target = nil
-            triggerbot.releaseHeld()
+            triggerbot.fire.release()
             return
         end
 
@@ -6144,27 +6177,27 @@ do
         end
 
         -- The trigger of another weapon (switched while holding) is let go
-        if triggerbot.heldWeapon and triggerbot.heldWeapon ~= weapon then
-            triggerbot.releaseHeld()
+        if triggerbot.fire.heldWeapon and triggerbot.fire.heldWeapon ~= weapon then
+            triggerbot.fire.release()
         end
 
         local hold = options.triggerbotFireMode_Dropdown.Value == "Hold"
 
         if not hold then
-            triggerbot.releaseHeld()
+            triggerbot.fire.release()
         end
 
         -- Nothing to do while the weapon is still shooting, reloading or equipping. In Hold mode this also presses the trigger
         -- once an automatic weapon stopped; while it is firing, the held trigger does the work.
-        if weapon.ready ~= true or weapon.reloading or weapon.shooting then
+        if not triggerbot.fire.isReady(weapon) then
             return
         end
 
         if hold then
-            triggerbot.press(weapon, true)
+            triggerbot.fire.press(weapon, true)
         elseif now - triggerbot.lastClick >= options.triggerbotInterval_Slider.Value / 1000 then
             triggerbot.lastClick = now
-            triggerbot.press(weapon, false)
+            triggerbot.fire.press(weapon, false)
         end
     end
 
@@ -6176,7 +6209,7 @@ do
 
         triggerbot.target = nil
         triggerbot.aimPoint = nil
-        triggerbot.releaseHeld()
+        triggerbot.fire.release()
         triggerbot.weaponTool = nil
         triggerbot.weaponObjects = nil
         triggerbot.scanMisses = 0
@@ -6215,7 +6248,7 @@ do
         options.triggerbotInterval_Slider:SetVisible(value ~= "Hold")
 
         if value ~= "Hold" then
-            triggerbot.releaseHeld()
+            triggerbot.fire.release()
         end
     end
 
@@ -7236,10 +7269,7 @@ do
 end
 
 -- [Exploits / Killer Controls] Disable Aura: killers it never deals with
-utils.auraIgnoredKillers = {
-    ["Giant"] = true,
-    ["Jane"] = true,
-}
+utils.auraIgnoredKillers = utils.immuneKillers
 
 local function updateKiller(hum, model, root, method, inRange, visible)
     if hum.Health <= 0 then
@@ -8810,6 +8840,101 @@ do
     end
 end
 
+-- [Shared / Hooks] One __namecall hook for the whole executor session, shared by every execution of this script.
+local NAMECALL_HOOK_KEY = "_celestial_namecall"
+local NAMECALL_HOOK_VERSION = 1
+
+utils.registerNamecallHandler = function(id: string, method: string, handler: (any, ...any) -> boolean): boolean
+    if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" then
+        return false
+    end
+
+    local env: any = getgenv()
+    local hookState = env[NAMECALL_HOOK_KEY]
+
+    if type(hookState) ~= "table" or hookState.version ~= NAMECALL_HOOK_VERSION then
+        local byMethod = {} -- [method] = { [id] = handler }
+
+        hookState = {
+            version = NAMECALL_HOOK_VERSION,
+            byMethod = byMethod,
+            methodOf = {}, -- [id] = the method its handler is registered for
+        }
+
+        local wrap = type(newcclosure) == "function" and newcclosure or function(callback)
+            return callback
+        end
+
+        local original
+        original = hookmetamethod(game, "__namecall", wrap(function(self, ...)
+            if next(byMethod) ~= nil then
+                local handlers = byMethod[getnamecallmethod()]
+
+                if handlers then
+                    for _, handler in next, handlers do
+                        local ok, blocked = pcall(handler, self, ...)
+
+                        if ok and blocked then
+                            return nil
+                        end
+                    end
+                end
+            end
+
+            return original(self, ...)
+        end))
+
+        env[NAMECALL_HOOK_KEY] = hookState
+    end
+
+    -- Registering again under the same id (a re-execution that never unloaded) replaces the old handler
+    local registeredFor = hookState.methodOf[id]
+
+    if registeredFor and registeredFor ~= method then
+        utils.unregisterNamecallHandler(id)
+    end
+
+    local handlers = hookState.byMethod[method]
+
+    if not handlers then
+        handlers = {}
+        hookState.byMethod[method] = handlers
+    end
+
+    handlers[id] = handler
+    hookState.methodOf[id] = method
+
+    return true
+end
+
+utils.unregisterNamecallHandler = function(id: string)
+    local env: any = getgenv()
+    local hookState = env[NAMECALL_HOOK_KEY]
+
+    if type(hookState) ~= "table" or type(hookState.methodOf) ~= "table" then
+        return
+    end
+
+    local method = hookState.methodOf[id]
+
+    if not method then
+        return
+    end
+
+    hookState.methodOf[id] = nil
+
+    local handlers = hookState.byMethod[method]
+
+    if handlers then
+        handlers[id] = nil
+
+        -- An empty table is removed, so the hook is a pass-through again once nothing is registered
+        if next(handlers) == nil then
+            hookState.byMethod[method] = nil
+        end
+    end
+end
+
 do
     -- Remotes fired from your client that report damage, and when a call counts as a hit
     local blockedReports = {
@@ -8824,7 +8949,6 @@ do
 
     local godmode = {
         active = false,
-        hookInstalled = false,
         warned = false,
         loopId = 0,
         connections = {} :: { RBXScriptConnection },
@@ -8853,36 +8977,18 @@ do
         return rule(...)
     end
 
-    -- One permanent __namecall hook, inert whenever Killer Godmode is off or the script is unloaded
+    -- Handler of the shared __namecall hook (utils.registerNamecallHandler): blocks the damage reports of killers
+    local function blockReport(self, ...)
+        return godmode.active and not library.Unloaded and shouldBlock(self, ...)
+    end
+
+    -- Only registered while Killer Godmode is on
     local function installReportBlocker()
-        if godmode.hookInstalled then
-            return true
-        end
+        return utils.registerNamecallHandler("killerGodmode", "FireServer", blockReport)
+    end
 
-        if type(hookmetamethod) ~= "function" or type(getnamecallmethod) ~= "function" then
-            return false
-        end
-
-        local wrap = type(newcclosure) == "function" and newcclosure or function(callback)
-            return callback
-        end
-
-        local original
-        original = hookmetamethod(game, "__namecall", wrap(function(self, ...)
-            if godmode.active and not library.Unloaded and getnamecallmethod() == "FireServer" then
-                local ok, blocked = pcall(shouldBlock, self, ...)
-
-                if ok and blocked then
-                    return nil
-                end
-            end
-
-            return original(self, ...)
-        end))
-
-        godmode.hookInstalled = true
-
-        return true
+    local function removeReportBlocker()
+        utils.unregisterNamecallHandler("killerGodmode")
     end
 
     local function isOwnCharacter(instance)
@@ -8956,6 +9062,7 @@ do
         syncAcidDodge()
 
         if not enabled then
+            removeReportBlocker()
             restoreKillerState()
 
             return
@@ -9006,6 +9113,8 @@ do
             end
         end)
     end)
+
+    table.insert(teardownTasks, removeReportBlocker)
 end
 
 toggles.antiPinhead_Toggle:OnChanged(syncAntiPinhead)
@@ -9047,7 +9156,7 @@ do
 
 
     -- Killers the game never registers normal shots on.
-    local immuneKillers = { Giant = true, Jane = true }
+    local immuneKillers = utils.immuneKillers
 
     -- Only these humanoid parts are ever resized.
     local resizableParts = {
@@ -9751,7 +9860,7 @@ do
     end })
     autofarmSettings:AddSlider("autofarmSearchRange_Slider", { Text = "Search Range", Tooltip = "Only Killers within this many studs of you can be locked onto.", Default = 400, Min = 50, Max = 1500, Suffix = " Studs" })
     autofarmSettings:AddSlider("autofarmCooldown_Slider", { Text = "Teleport Delay", Tooltip = "Minimum time between two teleports next to a Killer.", Default = 0.15, Min = 0.05, Max = 1, Rounding = 2, Suffix = " s" })
-    autofarmSettings:AddDropdown("autofarmExcludedKillers_Dropdown", { Text = "Excluded Killers", Tooltip = "Killers that are never locked onto. They still count as a danger, so you keep your distance from them.", Values = killerNames, Default = { "Giant", "Jane" }, Multi = true, Searchable = true, AllowNull = true, DragSelect = true })
+    autofarmSettings:AddDropdown("autofarmExcludedKillers_Dropdown", { Text = "Excluded Killers", Tooltip = "Killers that are never locked onto. They still count as a danger, so you keep your distance from them.", Values = killerNames, Default = table.clone(utils.immuneKillerNames), Multi = true, Searchable = true, AllowNull = true, DragSelect = true })
     -- Fire Interval is hidden
     autofarmSettings:AddToggle("autofarmAutoFire_Toggle", { Text = "Auto Fire", Default = true, Callback = function(enabled)
         local interval = options.autofarmFireInterval_Slider
@@ -10771,13 +10880,12 @@ do
     local fire = {
         connection = nil :: RBXScriptConnection?,
         lastPress = -math.huge,
-        lastWarn = -math.huge,
+        trigger = utils.createTrigger("Autofarm", uis.GetMouseLocation),
         weaponTool = nil :: Instance?, -- the Tool the cached weapon objects belong to
         weaponObjects = nil :: { any }?, -- every weapon object the game keeps for that Tool (one per fire mode)
         scanning = false,
         nextScan = 0,
         scanMisses = 0, -- searches in a row that found nothing
-        heldWeapon = nil :: any, -- automatic weapon whose trigger is being held down
     }
 
     -- The Killer the bullets are redirected to: the one Autofarm is locked onto. Silent Aim reads it through utils.autofarmAimTarget.
@@ -10878,42 +10986,9 @@ do
         return nil
     end
 
-    -- Lets go of the trigger of an automatic weapon
-    function fire.release()
-        local weapon = fire.heldWeapon
-        fire.heldWeapon = nil
-
-        if weapon then
-            pcall(function()
-                weapon:button1up()
-            end)
-        end
-    end
-
-    -- Presses the trigger via Weapon.button1down with the cursor getter
-    function fire.press(weapon)
-        task.spawn(function()
-            local success, err = pcall(weapon.button1down, weapon, uis.GetMouseLocation)
-
-            if not success and os.clock() - fire.lastWarn > 2 then
-                fire.lastWarn = os.clock()
-                warn("[Autofarm] Could not fire: " .. tostring(err))
-            end
-        end)
-
-        if weapon.is_auto then
-            -- The weapon keeps firing by itself while the trigger is held. It is let go when there is nothing left to shoot at.
-            fire.heldWeapon = weapon
-        else
-            pcall(function()
-                weapon:button1up()
-            end)
-        end
-    end
-
     function fire.step()
         if not toggles.autofarmAutoFire_Toggle.Value then
-            fire.release()
+            fire.trigger.release()
 
             return
         end
@@ -10927,7 +11002,7 @@ do
         local targetHumanoid = target and target:FindFirstChildOfClass("Humanoid")
 
         if not humanoid or humanoid.Health <= 0 or not tool or not targetHumanoid or targetHumanoid.Health <= 0 or pausedBySafeSpot(humanoid) then
-            fire.release()
+            fire.trigger.release()
 
             return
         end
@@ -10945,12 +11020,12 @@ do
             return
         end
 
-        if weapon.ready ~= true or weapon.reloading or weapon.shooting then
+        if not fire.trigger.isReady(weapon) then
             return
         end
 
         fire.lastPress = now
-        fire.press(weapon)
+        fire.trigger.press(weapon)
     end
 
     local function protectedStep()
@@ -10980,7 +11055,7 @@ do
             farm.spawnConnection = nil
         end
 
-        fire.release()
+        fire.trigger.release()
         fire.weaponTool = nil
         fire.weaponObjects = nil
         farm.lastWeapon = nil
@@ -11077,7 +11152,7 @@ do
     local killAuraSettings = toggles.killAura_Toggle:AddSettings({ Width = 310 })
     killAuraSettings:AddDropdown("killAuraTargetMode_Dropdown", { Text = "Target Mode", Tooltip = "Nearest: any Killer in range, closest first. Killers behind walls are shot through with Wallbang (without Wallbang only visible ones are taken).\nVisible: only Killers you have a clear line of sight to, closest first.", Values = { "Nearest", "Visible" }, Default = 1 })
     killAuraSettings:AddSlider("killAuraRange_Slider", { Text = "Range", Tooltip = "Killers farther than this are left alone.", Default = 500, Min = 20, Max = 3000, Suffix = " Studs" })
-    killAuraSettings:AddDropdown("killAuraExcludedKillers_Dropdown", { Text = "Excluded Killers", Tooltip = "Killers that are never shot at.", Values = killerNames, Default = { "Giant", "Jane" }, Multi = true, Searchable = true, AllowNull = true, DragSelect = true })
+    killAuraSettings:AddDropdown("killAuraExcludedKillers_Dropdown", { Text = "Excluded Killers", Tooltip = "Killers that are never shot at.", Values = killerNames, Default = table.clone(utils.immuneKillerNames), Multi = true, Searchable = true, AllowNull = true, DragSelect = true })
     killAuraSettings:AddDropdown("killAuraAimPart_Dropdown", { Text = "Aim Part", Tooltip = "Head: always aims at the head.\nAuto: Silent Aim's rule, head when the Killer is close and standing still, otherwise the body.", Values = { "Head", "HumanoidRootPart", "Auto" }, Default = 1 })
     killAuraSettings:AddToggle("killAuraWallbang_Toggle", { Text = "Wallbang", Default = true, Tooltip = "Bullets fired by the aura fly through walls and other obstructions to reach the Killer." })
     killAuraSettings:AddToggle("killAuraNoSpread_Toggle", { Text = "No Spread", Default = true, Tooltip = "Bullets fired by the aura ignore weapon inaccuracy and shotgun pellet spread." })
@@ -11091,7 +11166,7 @@ do
         weaponObjects = nil, -- every weapon object the game keeps for that Tool (one per fire mode)
         scanning = false,
         nextScan = 0,
-        heldWeapon = nil, -- automatic weapon whose trigger Kill Aura is holding down
+        trigger = utils.createTrigger("Kill Aura", uis.GetMouseLocation),
         visible = (setmetatable({}, { __mode = "k" }) :: any) :: { [Model]: any }, -- Killer -> { value, time }
         excluded = {},
         kills = 0,
@@ -11341,46 +11416,17 @@ do
         return best
     end
 
-    -- [Kill Aura / Firing] Presses the trigger via Weapon.button1down with the cursor getter, the same method as the game.
+    -- [Kill Aura / Firing] Presses the trigger via shared aura.trigger
     -- Which Killer the bullets go to is decided by Silent Aim's hooks, which ask utils.killAuraAimTarget for every shot.
-    local function releaseHold()
-        local weapon = aura.heldWeapon
-        aura.heldWeapon = nil
-
-        if weapon then
-            pcall(function()
-                weapon:button1up()
-            end)
-        end
-    end
-
     local function fireWeapon(weapon)
-        if weapon.ready ~= true or weapon.reloading or weapon.shooting then
-            return
-        end
-
-        task.spawn(function()
-            local success, err = pcall(weapon.button1down, weapon, uis.GetMouseLocation)
-
-            if not success and os.clock() - aura.lastWarn > 2 then
-                aura.lastWarn = os.clock()
-                warn("[Kill Aura] Could not fire: " .. tostring(err))
-            end
-        end)
-
-        if weapon.is_auto then
-            -- The weapon keeps firing by itself while the trigger is held and is let go when nothing is left to shoot at
-            aura.heldWeapon = weapon
-        else
-            pcall(function()
-                weapon:button1up()
-            end)
+        if aura.trigger.isReady(weapon) then
+            aura.trigger.press(weapon)
         end
     end
 
     local function idle()
         aura.target = nil
-        releaseHold()
+        aura.trigger.release()
     end
 
     local function step()
@@ -11425,7 +11471,7 @@ do
         aura.target = newModel
 
         if not best then
-            releaseHold()
+            aura.trigger.release()
 
             return
         end
@@ -11442,7 +11488,7 @@ do
         end
 
         aura.target = nil
-        releaseHold()
+        aura.trigger.release()
         table.clear(aura.visible)
     end
 
@@ -11553,11 +11599,10 @@ ui.visuals.esp:AddToggle("killerESP_Toggle", { Text = "Killer ESP" })
 
 local killerESPSettings = toggles.killerESP_Toggle:AddSettings({ Width = 280 })
 
-killerESPSettings:AddDropdown("excludedKillers_Dropdown", { Text = "Excluded Killers", Values = killerNames, Default = { "Giant", "Jane" }, Multi = true, Searchable = true, DragSelect = true })
+killerESPSettings:AddDropdown("excludedKillers_Dropdown", { Text = "Excluded Killers", Values = killerNames, Default = table.clone(utils.immuneKillerNames), Multi = true, Searchable = true, DragSelect = true })
 killerESPSettings:AddSlider("killerESPDistance_Slider", { Text = "Range", Tooltip = "How far away to show ESP on killers", Default = 150, Min = 100, Max = 1000, Suffix = " Studs" })
 killerESPSettings:AddDropdown("killerESPBoxType_Dropdown", { Text = "Box Type", Tooltip = "2D draws a flat box around the killer, 3D draws a wireframe box.", Values = { "2D", "3D" }, Default = 1 })
 killerESPSettings:AddToggle("killerESPHealthBar_Toggle", { Text = "Health Bar", Tooltip = "Shows a health bar next to the killer.", Default = true })
-killerESPSettings:AddToggle("killerESPShowDistance_Toggle", { Text = "Show Distance", Tooltip = "Shows how far each killer is from you, in studs, under its box. Uses the name tag color and text size." })
 utils.addRainbowSettings(killerESPSettings:AddLabel("ESP Color"):AddColorPicker("killerESPColor_ColorPicker",{ Title = "ESP Color", Default = Color3.fromRGB(255, 0, 0), Transparency = nil }), "killerESPColor_ColorPicker", "rainbowESPColor_Toggle")
 killerESPSettings:AddToggle("toggleKillersNametags_Toggle", { Text = "Enable Name Tags" })
 
@@ -11565,6 +11610,7 @@ local killerNametagSettings = toggles.toggleKillersNametags_Toggle:AddSettings({
 utils.addRainbowSettings(killerNametagSettings:AddLabel("Name Tag Color"):AddColorPicker("killerNameTagColor_ColorPicker",{ Title = "Name Tag Color", Default = Color3.fromRGB(255, 255, 255), Transparency = nil }), "killerNameTagColor_ColorPicker", "rainbowNameTagColor_Toggle")
 killerNametagSettings:AddSlider("textSize_Slider", { Text = "Text Size", Default = 15, Min = 10, Max = 50 })
 
+killerESPSettings:AddToggle("killerESPShowDistance_Toggle", { Text = "Show Distance", Tooltip = "Shows how far each killer is from you, in studs, under its box. Uses the name tag color and text size." })
 killerESPSettings:AddToggle("killerArrows_Toggle", { Text = "Offscreen Arrows", Tooltip = "Edge-of-screen arrows pointing to killers behind or beside you." })
 
 do
@@ -11822,7 +11868,7 @@ do
     table.insert(teardownTasks, stopFogReducer)
 end
 
-local excludedKillers = { Giant = true, Jane = true }
+local excludedKillers = utils.immuneKillers -- replaced by a table of its own as soon as the dropdown changes; never written to
 
 local defaultTextSize = 15
 
@@ -12894,7 +12940,7 @@ do
 
 
     -- Killers the game never registers normal shots on.
-    local immuneKillers = { Giant = true, Jane = true }
+    local immuneKillers = utils.immuneKillers
 
     -- Every folder the visualizer creates is tagged, so whatever a run leaves behind can be found and removed again.
     local VISUALIZER_ATTRIBUTE = "CelestialHitboxVisualizer"
@@ -13423,7 +13469,7 @@ do
     local nameLabel = portraitGroup:AddLabel("Nearest Killer: none")
     local healthLabel = portraitGroup:AddLabel("Health: -")
     portraitSettings:AddToggle("killerPortraitWallCheck_Toggle", { Text = "Wall Check", Tooltip = "Only shows the nearest Killer that is visible to you.", Default = true })
-    portraitSettings:AddDropdown("killerPortraitExcluded_Dropdown", { Text = "Excluded Killers", Tooltip = "Killers that are never shown in the portrait.", Values = killerNames, Default = { "Giant", "Jane" }, Multi = true, Searchable = true, DragSelect = true })
+    portraitSettings:AddDropdown("killerPortraitExcluded_Dropdown", { Text = "Excluded Killers", Tooltip = "Killers that are never shown in the portrait.", Values = killerNames, Default = table.clone(utils.immuneKillerNames), Multi = true, Searchable = true, DragSelect = true })
     portraitSettings:AddSlider("killerPortraitHeight_Slider", { Text = "Viewport Height", Default = 180, Min = 100, Max = 300, Suffix = " px" })
 
     -- The preview only shows while the feature is on (the toggle itself and its options stay visible).
@@ -13729,12 +13775,11 @@ do
         local LAUNCHER_TOOL_NAME = "M16A2/M203"
         local MUZZLE_SPEED = 150 -- Weapon.fire: Part.AssemblyLinearVelocity = Unit * 150 (the Projectile Speed Multiplier gun mod multiplies it)
         local PROJECTILE_LIFETIME = 8 -- Weapon.fire: Debris:AddItem(Part, 8), so a grenade that hits nothing disappears after 8 s
-        local LAUNCHER_UP_FORCE = 10 -- M16A2/M203 set_missile: BodyForce.Force = Vector3.new(0, 10, 0)
         local MISSILE_RADIUS = 0.5 -- set_missile resizes the grenade to 1 x 1 x 1
         local AIM_RAY_LENGTH = 200 -- Weapon.screen_to_target
         local SOLID_TRANSPARENCY = 0.99 -- Weapon.hit_transparency_threshold
         local NO_CLIP_GROUP = "SurvivorsKillersNoClip"
-        local UNHITTABLE_KILLERS = { Giant = true, Jane = true } -- Weapon.missile_check (Classic mode)
+        local UNHITTABLE_KILLERS = utils.immuneKillers -- Weapon.missile_check (Classic mode)
 
         -- Simulation and drawing settings
         local STEP_TIME = 0.05
@@ -13743,7 +13788,6 @@ do
         local RING_SEGMENTS = 20
         local RENDER_NAME = "CelestialGrenadeTrajectory"
 
-        local missileMass = nil
         local launcherCache = { object = nil, scanning = false, nextScan = 0 }
         local hasSpherecast = pcall(function() return workspace.Spherecast end)
 
@@ -13763,19 +13807,6 @@ do
         local grenadeIcon = nil
         local running = false
         local lastErrorTime = 0
-
-        -- [Grenade Trajectory / Physics] Mass of the grenade (a 1 x 1 x 1 ball with default density)
-        local function getMissileMass()
-            if not missileMass then
-                local probe = Instance.new("Part")
-                probe.Shape = Enum.PartType.Ball
-                probe.Size = Vector3.new(1, 1, 1)
-                missileMass = probe.Mass
-                probe:Destroy()
-            end
-
-            return missileMass
-        end
 
         -- [Grenade Trajectory / Game rules] Weapon.find_humanoid and the Killer checks used for aiming and for hits
         local function findHumanoid(part)
@@ -14277,9 +14308,16 @@ do
                 return
             end
 
+            local getFallAcceleration = utils.getGrenadeFallAcceleration
+
+            if type(getFallAcceleration) ~= "function" then
+                hideVisuals()
+                return
+            end
+
             local multiplier = getLaunchMultiplier()
             local velocity = aimVector.Unit * MUZZLE_SPEED * multiplier
-            local accelY = workspace.Gravity - LAUNCHER_UP_FORCE / getMissileMass()
+            local accelY = getFallAcceleration()
             local path = simulateMissile(origin, velocity, accelY, multiplier, charactersFolder, killers)
             local impact = path.impact
 
@@ -17001,7 +17039,7 @@ do
         wallTransparency = 0.99, -- Weapon.missile_hit stops a bullet on a CanCollide part more opaque than this
         maxWallChecks = 3, -- Killers one bullet can test per frame; when all are behind walls it just flies straight
         maxWallPasses = 5, -- parts one line of sight can pass through (non-solid or see-through ones) before it counts as blocked
-        immune = { Giant = true, Jane = true }, -- Weapon.missile_check ignores normal shots on these, so curving toward them wastes the bullet
+        immune = utils.immuneKillers, -- Weapon.missile_check ignores normal shots on these, so curving toward them wastes the bullet
     }
 
     gunModProjectile.homing = homing
@@ -20334,7 +20372,6 @@ local function unloadModules()
     table.clear(rainbowState.active)
     rainbowState.hue = 0
 
-    shared.scriptLoaded = false
     isUpdatingTeleporterState = false
 
     -- Feature teardown (silent aim hooks, FOV circle, always-on RenderStepped handlers).
