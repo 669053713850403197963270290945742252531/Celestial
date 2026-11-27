@@ -88,6 +88,20 @@ for _, name in ipairs(utils.immuneKillerNames) do
     utils.immuneKillers[name] = true
 end
 
+-- "Excluded Killers" dropdowns are built here - they share the same values, defaults and options.
+local function addExcludedKillersDropdown(box: any, id: string, tooltip: string?, noDefault: boolean?): any
+    return box:AddDropdown(id, {
+        Text = "Excluded Killers",
+        Tooltip = tooltip,
+        Values = killerNames,
+        Default = if noDefault then nil else table.clone(utils.immuneKillerNames),
+        Multi = true,
+        Searchable = true,
+        AllowNull = true,
+        DragSelect = true,
+    })
+end
+
 -- 03 | SHARED RUNTIME STATE
 
 local cancelPAPQueue = false
@@ -99,6 +113,106 @@ local rainbowState = { hue = 0, active = {} }
 
 -- Callbacks executed once on unload, while library.Toggles / library.Options are still populated.
 local teardownTasks = {}
+
+-- One RenderStepped connection runs every persistent or cosmetic task
+local frameScheduler = { list = {}, connection = nil :: RBXScriptConnection?, dirty = false, warned = {} }
+
+local function stepFrameTasks(deltaTime: number)
+    local list = frameScheduler.list
+
+    for index = 1, #list do
+        local entry = list[index]
+
+        if not entry.removed then
+            local dueDelta = deltaTime
+            local interval = entry.interval
+
+            if interval > 0 then
+                local accumulated = entry.accumulator + deltaTime
+
+                if accumulated >= interval - 0.0005 then
+                    dueDelta = accumulated
+                    -- Keep the remainder so 30 Hz stays 30 Hz at 60 FPS, but never let a long frame cause a burst of runs.
+                    entry.accumulator = if accumulated > interval then math.min(accumulated - interval, interval) else 0
+                else
+                    entry.accumulator = accumulated
+                    dueDelta = nil
+                end
+            end
+
+            if dueDelta then
+                local success, err = pcall(entry.callback, dueDelta)
+
+                if not success and frameScheduler.warned[entry] ~= err then
+                    frameScheduler.warned[entry] = err
+                    warn("[Celestial] Frame task error: " .. tostring(err))
+                end
+            end
+        end
+    end
+
+    if frameScheduler.dirty then
+        frameScheduler.dirty = false
+        local kept = {}
+
+        for _, entry in ipairs(list) do
+            if not entry.removed then
+                table.insert(kept, entry)
+            end
+        end
+
+        frameScheduler.list = kept
+
+        if #kept == 0 and frameScheduler.connection then
+            frameScheduler.connection:Disconnect()
+            frameScheduler.connection = nil
+        end
+    end
+end
+
+local function frameTask(callback: (number) -> (), hz: number?): any
+    local interval = if hz and hz > 0 then 1 / hz else 0
+    -- Spread the first run of each rate-limited task so they do not all land on the same frame.
+    local entry = {
+        callback = callback,
+        interval = interval,
+        accumulator = interval * ((#frameScheduler.list * 0.381966) % 1),
+        removed = false,
+    }
+
+    table.insert(frameScheduler.list, entry)
+
+    if not frameScheduler.connection then
+        frameScheduler.connection = runService.RenderStepped:Connect(stepFrameTasks)
+    end
+
+    return {
+        Connected = true,
+        Disconnect = function(handle)
+            if not entry.removed then
+                entry.removed = true
+                frameScheduler.warned[entry] = nil
+                frameScheduler.dirty = true
+                if type(handle) == "table" then
+                    handle.Connected = false
+                end
+            end
+        end,
+    }
+end
+
+table.insert(teardownTasks, function()
+    for _, entry in ipairs(frameScheduler.list) do
+        entry.removed = true
+    end
+
+    table.clear(frameScheduler.list)
+
+    if frameScheduler.connection then
+        frameScheduler.connection:Disconnect()
+        frameScheduler.connection = nil
+    end
+end)
 
 -- 04 | WINDOW CONFIGURATION
 
@@ -427,7 +541,7 @@ local function toggleRainbow(enabled, colorPickerName)
         active[colorPickerName] = true
 
         if not rainbowConnections.driver then
-            rainbowConnections.driver = runService.RenderStepped:Connect(function(deltaTime)
+            rainbowConnections.driver = frameTask(function(deltaTime)
                 rainbowState.hue = (rainbowState.hue + deltaTime * window.rainbowSpeed) % 1
                 local color = Color3.fromHSV(rainbowState.hue, 1, 1)
 
@@ -440,7 +554,7 @@ local function toggleRainbow(enabled, colorPickerName)
                         rainbowState.active[pickerName] = nil
                     end
                 end
-            end)
+            end, 30)
         end
     else
         active[colorPickerName] = nil
@@ -843,24 +957,37 @@ end
 
 
 
+do
 -- ============================================================================
 -- 07 | TAB: HOME
 -- ============================================================================
 
-local infoTabBox = tabs.home:AddTabbox( { Side = "Left" } )
+local infoTabBox = tabs.home:AddTabbox({ Side = "Left" })
 
 -- [Home / Panels] Player, game, and optional whitelist tabs
 
 local playerTab = infoTabBox:AddTab("Player")
 local gameTab = infoTabBox:AddTab("Game")
-if getgenv()._celestial_auth then
-    local whitelistTab = infoTabBox:AddTab("Whitelist")
 
-    local auth = getgenv()._celestial_auth
-    local user = auth.getUser()
-    whitelistTab:AddLabel("<b>Identifier:</b> " .. utils.escapeRichText(user.Identifier), true)
-    whitelistTab:AddLabel("<b>Rank:</b> " .. utils.escapeRichText(user.Rank), true)
-    whitelistTab:AddLabel("<b>Discord ID:</b> " .. utils.escapeRichText(user.DiscordId), true)
+local licenseAuth: any = nil
+if type(getgenv) == "function" then
+    local envOk, executorEnv = pcall(getgenv)
+    if envOk and type(executorEnv) == "table" then
+        local candidate = executorEnv._celestial_auth
+        if type(candidate) == "table" and type(candidate.getUser) == "function" then
+            licenseAuth = candidate
+        end
+    end
+end
+
+if licenseAuth then
+    local userOk, user = pcall(licenseAuth.getUser)
+    if userOk and type(user) == "table" then
+        local whitelistTab = infoTabBox:AddTab("Whitelist")
+        whitelistTab:AddLabel("<b>Identifier:</b> " .. utils.escapeRichText(tostring(user.Identifier or "Unknown")), true)
+        whitelistTab:AddLabel("<b>Rank:</b> " .. utils.escapeRichText(tostring(user.Rank or "User")), true)
+        whitelistTab:AddLabel("<b>Discord ID:</b> " .. utils.escapeRichText(tostring(user.DiscordId or "Unknown")), true)
+    end
 end
 
 -- [Home / Player] Player status and actions
@@ -1515,6 +1642,8 @@ log("gave up asking for a server; press Play manually (the script will still rel
     end)
 end
 
+end
+do
 -- ============================================================================
 -- 08 | TAB: UTILITY
 -- ============================================================================
@@ -1998,6 +2127,8 @@ end
 toggles.autoOpenDoors_Toggle:OnChanged(updateDoorLoop)
 toggles.autoCloseDoors_Toggle:OnChanged(updateDoorLoop)
 
+end
+do
 -- ============================================================================
 -- 08b | TAB: TELEPORTS
 -- ============================================================================
@@ -2275,6 +2406,8 @@ do
     refreshEmptyLabel()
 end
 
+end
+do
 -- ============================================================================
 -- 09 | TAB: PLAYER
 -- ============================================================================
@@ -2867,7 +3000,7 @@ end
 
 -- [Player / Speed Exploit] WalkSpeed enforcement
 do
-    local walkSpeedConnection = runService.RenderStepped:Connect(function()
+    local walkSpeedConnection = frameTask(function()
         if not options.speedExploitMethod_Dropdown then return end
         if humanoid and toggles.speedExploit_Toggle.Value and options.speedExploitMethod_Dropdown.Value == "WalkSpeed" then
             local targetSpeed = options.speedExploitAmount_Slider.Value
@@ -4481,6 +4614,8 @@ options.freecamPanSpeedSlider:OnChanged(function(val)
     camLib.Freecam:updatePanSpeed(freecamPanSpeedSlider.Value)
 end)
 
+end
+do
 -- ============================================================================
 -- 10 | TAB: EXPLOITS
 -- ============================================================================
@@ -4555,7 +4690,7 @@ ui.exploits.aim:AddToggle("enableAimbot_Toggle", { Text = "Enable Aimbot" })
 local aimbotSettings = toggles.enableAimbot_Toggle:AddSettings({ Width = 280 })
 aimbotSettings:AddDropdown("aimbotHitPart_Dropdown", { Text = "Hit Part", Values = { "Head", "HumanoidRootPart" }, Default = 1 })
 aimbotSettings:AddDropdown("aimbotTargetType_Dropdown", { Text = "Target Type", Values = { "Closest", "Closest to Cursor" }, Default = 2 })
-aimbotSettings:AddDropdown("aimbotExcludedKillers_Dropdown", { Text = "Excluded Killers", Values = killerNames, Default = table.clone(utils.immuneKillerNames), Multi = true, Searchable = true, DragSelect = true })
+addExcludedKillersDropdown(aimbotSettings, "aimbotExcludedKillers_Dropdown")
 aimbotSettings:AddSlider("aimbotMaximumDistance_Slider", { Text = "Range", Tooltip = "Killers farther than this distance will not be targeted.", Default = 100, Min = 10, Max = 2000, Suffix = " Studs", Rounding = 1 })
 aimbotSettings:AddSlider("aimbotSmoothing_Slider", { Text = "Smoothing", Tooltip = "How smooth aimbot should lock onto Killer's.", Default = 400, Min = 10, Max = 1000 })
 aimbotSettings:AddToggle("aimbotVisibilityCheck_Toggle", { Text = "Visibility Check", Tooltip = "Whether to only target Killers that are visible.", Default = true })
@@ -5435,7 +5570,7 @@ do
     end
 
     -- The rainbow loop writes into the color picker, so the circle only has to follow the picker.
-    local silentAimFOVConnection = runService.RenderStepped:Connect(function()
+    local silentAimFOVConnection = frameTask(function()
         if not silentAimFOVCircle then
             return
         end
@@ -5811,7 +5946,7 @@ do
     triggerbotSettings:AddDropdown("triggerbotFireMode_Dropdown", { Text = "Fire Mode", Tooltip = "Click: pulls the trigger once per Click Interval (semi-auto weapons).\nHold: keeps the trigger held while on target (automatic weapons).", Values = { "Click", "Hold" }, Default = 1 })
     triggerbotSettings:AddDropdown("triggerbotAimSource_Dropdown", { Text = "Aim Source", Tooltip = "Where the check ray starts on screen. Use Screen Center for third person / shift lock.", Values = { "Cursor", "Screen Center" }, Default = 1 })
     triggerbotSettings:AddDropdown("triggerbotHitPart_Dropdown", { Text = "Target Part", Tooltip = "Only fire when the aim point is on this part of the Killer.", Values = { "Any", "Head", "HumanoidRootPart" }, Default = 1 })
-    triggerbotSettings:AddDropdown("triggerbotExcludedKillers_Dropdown", { Text = "Excluded Killers", Values = killerNames, Default = { "Jane" }, Multi = true, Searchable = true, DragSelect = true })
+    addExcludedKillersDropdown(triggerbotSettings, "triggerbotExcludedKillers_Dropdown")
     triggerbotSettings:AddSlider("triggerbotRange_Slider", { Text = "Range", Tooltip = "Killers farther than this distance will not trigger.", Default = 200, Min = 30, Max = 2000, Suffix = " Studs" })
     triggerbotSettings:AddSlider("triggerbotTolerance_Slider", { Text = "Tolerance", Tooltip = "Also checks points this many pixels around the aim point, so you do not have to be pixel perfect. 0 = exact.", Default = 5, Min = 0, Max = 50, Suffix = " px" })
     triggerbotSettings:AddSlider("triggerbotDelay_Slider", { Text = "Reaction Delay", Tooltip = "How long the aim point must stay on a Killer before firing.", Default = 0, Min = 0, Max = 500, Suffix = " ms" })
@@ -9152,9 +9287,7 @@ do
     local hitboxExpanderSettings = toggles.hitboxExpander_Toggle:AddSettings({ Width = 280 })
     hitboxExpanderSettings:AddSlider("hitboxSize_Slider", { Text = "Hitbox Size", Tooltip = "Smallest size of each resized hit part (head, arms and legs).", Default = 8, Min = 2, Max = 30, Suffix = " Studs", Rounding = 1 })
     hitboxExpanderSettings:AddSlider("hitboxRange_Slider", { Text = "Range", Tooltip = "Only Killers closer than this get an expanded hitbox.", Default = 350, Min = 50, Max = 1000, Suffix = " Studs" })
-    hitboxExpanderSettings:AddDropdown("hitboxExcludedKillers_Dropdown", { Text = "Excluded Killers", Tooltip = "Killers that keep their original hitbox.", Values = killerNames, Multi = true, Searchable = true, AllowNull = true, DragSelect = true })
-
-
+    addExcludedKillersDropdown(hitboxExpanderSettings, "hitboxExcludedKillers_Dropdown", "Killers that keep their original hitbox.", true)
     -- Killers the game never registers normal shots on.
     local immuneKillers = utils.immuneKillers
 
@@ -9860,7 +9993,7 @@ do
     end })
     autofarmSettings:AddSlider("autofarmSearchRange_Slider", { Text = "Search Range", Tooltip = "Only Killers within this many studs of you can be locked onto.", Default = 400, Min = 50, Max = 1500, Suffix = " Studs" })
     autofarmSettings:AddSlider("autofarmCooldown_Slider", { Text = "Teleport Delay", Tooltip = "Minimum time between two teleports next to a Killer.", Default = 0.15, Min = 0.05, Max = 1, Rounding = 2, Suffix = " s" })
-    autofarmSettings:AddDropdown("autofarmExcludedKillers_Dropdown", { Text = "Excluded Killers", Tooltip = "Killers that are never locked onto. They still count as a danger, so you keep your distance from them.", Values = killerNames, Default = table.clone(utils.immuneKillerNames), Multi = true, Searchable = true, AllowNull = true, DragSelect = true })
+    addExcludedKillersDropdown(autofarmSettings, "autofarmExcludedKillers_Dropdown", "Killers that are never locked onto. They still count as a danger, so you keep your distance from them.")
     -- Fire Interval is hidden
     autofarmSettings:AddToggle("autofarmAutoFire_Toggle", { Text = "Auto Fire", Default = true, Callback = function(enabled)
         local interval = options.autofarmFireInterval_Slider
@@ -11152,7 +11285,7 @@ do
     local killAuraSettings = toggles.killAura_Toggle:AddSettings({ Width = 310 })
     killAuraSettings:AddDropdown("killAuraTargetMode_Dropdown", { Text = "Target Mode", Tooltip = "Nearest: any Killer in range, closest first. Killers behind walls are shot through with Wallbang (without Wallbang only visible ones are taken).\nVisible: only Killers you have a clear line of sight to, closest first.", Values = { "Nearest", "Visible" }, Default = 1 })
     killAuraSettings:AddSlider("killAuraRange_Slider", { Text = "Range", Tooltip = "Killers farther than this are left alone.", Default = 500, Min = 20, Max = 3000, Suffix = " Studs" })
-    killAuraSettings:AddDropdown("killAuraExcludedKillers_Dropdown", { Text = "Excluded Killers", Tooltip = "Killers that are never shot at.", Values = killerNames, Default = table.clone(utils.immuneKillerNames), Multi = true, Searchable = true, AllowNull = true, DragSelect = true })
+    addExcludedKillersDropdown(killAuraSettings, "killAuraExcludedKillers_Dropdown", "Killers that are never shot at.")
     killAuraSettings:AddDropdown("killAuraAimPart_Dropdown", { Text = "Aim Part", Tooltip = "Head: always aims at the head.\nAuto: Silent Aim's rule, head when the Killer is close and standing still, otherwise the body.", Values = { "Head", "HumanoidRootPart", "Auto" }, Default = 1 })
     killAuraSettings:AddToggle("killAuraWallbang_Toggle", { Text = "Wallbang", Default = true, Tooltip = "Bullets fired by the aura fly through walls and other obstructions to reach the Killer." })
     killAuraSettings:AddToggle("killAuraNoSpread_Toggle", { Text = "No Spread", Default = true, Tooltip = "Bullets fired by the aura ignore weapon inaccuracy and shotgun pellet spread." })
@@ -11587,6 +11720,8 @@ do
     end)
 end
 
+end
+do
 -- ============================================================================
 -- 11 | TAB: VISUALS
 -- ============================================================================
@@ -11599,7 +11734,7 @@ ui.visuals.esp:AddToggle("killerESP_Toggle", { Text = "Killer ESP" })
 
 local killerESPSettings = toggles.killerESP_Toggle:AddSettings({ Width = 280 })
 
-killerESPSettings:AddDropdown("excludedKillers_Dropdown", { Text = "Excluded Killers", Values = killerNames, Default = table.clone(utils.immuneKillerNames), Multi = true, Searchable = true, DragSelect = true })
+addExcludedKillersDropdown(killerESPSettings, "excludedKillers_Dropdown")
 killerESPSettings:AddSlider("killerESPDistance_Slider", { Text = "Range", Tooltip = "How far away to show ESP on killers", Default = 150, Min = 100, Max = 1000, Suffix = " Studs" })
 killerESPSettings:AddDropdown("killerESPBoxType_Dropdown", { Text = "Box Type", Tooltip = "2D draws a flat box around the killer, 3D draws a wireframe box.", Values = { "2D", "3D" }, Default = 1 })
 killerESPSettings:AddToggle("killerESPHealthBar_Toggle", { Text = "Health Bar", Tooltip = "Shows a health bar next to the killer.", Default = true })
@@ -13398,14 +13533,14 @@ do
         visualizer.token = token
         visualizer.lastStep = nil
 
-        visualizer.connection = runService.RenderStepped:Connect(function()
+        visualizer.connection = frameTask(function()
             local success, err = pcall(stepEntries)
 
             if not success and err ~= visualizer.lastRenderError then
                 visualizer.lastRenderError = err
                 warn("[Visualize Hitbox] " .. tostring(err))
             end
-        end)
+        end, 30)
 
         task.spawn(function()
             while visualizer.token == token and not library.Unloaded do
@@ -13469,7 +13604,7 @@ do
     local nameLabel = portraitGroup:AddLabel("Nearest Killer: none")
     local healthLabel = portraitGroup:AddLabel("Health: -")
     portraitSettings:AddToggle("killerPortraitWallCheck_Toggle", { Text = "Wall Check", Tooltip = "Only shows the nearest Killer that is visible to you.", Default = true })
-    portraitSettings:AddDropdown("killerPortraitExcluded_Dropdown", { Text = "Excluded Killers", Tooltip = "Killers that are never shown in the portrait.", Values = killerNames, Default = table.clone(utils.immuneKillerNames), Multi = true, Searchable = true, DragSelect = true })
+    addExcludedKillersDropdown(portraitSettings, "killerPortraitExcluded_Dropdown", "Killers that are never shown in the portrait.")
     portraitSettings:AddSlider("killerPortraitHeight_Slider", { Text = "Viewport Height", Default = 180, Min = 100, Max = 300, Suffix = " px" })
 
     -- The preview only shows while the feature is on (the toggle itself and its options stay visible).
@@ -13733,14 +13868,14 @@ do
 
         portrait.lastSelect = 0
 
-        portrait.connection = runService.RenderStepped:Connect(function()
+        portrait.connection = frameTask(function()
             local success, err = pcall(step)
 
             if not success and err ~= portrait.lastError then
                 portrait.lastError = err
                 warn("[Killer Portrait] " .. tostring(err))
             end
-        end)
+        end, 30)
     end)
 
     options.killerPortraitHeight_Slider:OnChanged(function(value)
@@ -14936,6 +15071,8 @@ do
     end)
 end
 
+end
+do
 -- ============================================================================
 -- 12 | TAB: WORLD
 -- ============================================================================
@@ -15420,6 +15557,8 @@ ui.world.alien:AddButton({ Text = "Alien Door", Icon = "navigation",
     end,
 })
 
+end
+do
 -- ============================================================================
 -- 13 | TAB: WEAPONS
 -- ============================================================================
@@ -17854,6 +17993,8 @@ task.spawn(function()
 end)
 
 
+end
+do
 -- ============================================================================
 -- 14 | TAB: MISCELLANEOUS
 -- ============================================================================
@@ -18045,6 +18186,7 @@ localplayer.CharacterAdded:Connect(function(char)
     end
 end)
 
+end
 -- ============================================================================
 -- 15 | TAB: UI SETTINGS AND CLEANUP
 -- ============================================================================
@@ -18730,12 +18872,10 @@ do
 
         -- [Session Info / Trackers]
 
-        -- FPS and kills share one RenderStepped connection, and each only does its work while its line is shown.
+        -- FPS is counted every frame by its own tiny task below; everything else here runs at 30 Hz, and each part only does its work while its line is shown.
         local function sessionInfoRenderStep(deltaTime)
             if sessionInfo.needs.fps then
                 local now = os.clock()
-                sessionInfo.frames += 1
-
                 local elapsed = now - sessionInfo.frameStamp
                 local interval = tonumber(getOption("sessionInfoFPSInterval_Slider", 1)) or 1
 
@@ -19353,7 +19493,20 @@ do
             local needsRender = needs.fps or needs.kills
 
             if needsRender and not sessionInfo.renderConnection then
-                sessionInfo.renderConnection = runService.RenderStepped:Connect(sessionInfoRenderStep)
+                -- The frame counter must see every frame.
+                local frameCounter = frameTask(function()
+                    if sessionInfo.needs.fps then
+                        sessionInfo.frames += 1
+                    end
+                end)
+                local stepper = frameTask(sessionInfoRenderStep, 30)
+
+                sessionInfo.renderConnection = {
+                    Disconnect = function()
+                        frameCounter:Disconnect()
+                        stepper:Disconnect()
+                    end,
+                }
             elseif not needsRender and sessionInfo.renderConnection then
                 sessionInfo.renderConnection:Disconnect()
                 sessionInfo.renderConnection = nil
@@ -19522,7 +19675,7 @@ end
 
 utils.buildArraylist = function()
     -- Typed as any inside this function: the big UI/utility tables are expensive for the type checker to follow here
-    local ui: any, utils: any, library: any, window: any, runService: any, teardownTasks: any = ui, utils, library, window, runService, teardownTasks
+    local ui: any, utils: any, library: any, window: any, teardownTasks: any = ui, utils, library, window, teardownTasks
     local Instance: any, UDim2: any, Vector2: any, Color3: any, Enum: any, TweenInfo: any, Font: any = Instance, UDim2, Vector2, Color3, Enum, TweenInfo, Font
 
     local tweenService = game:GetService("TweenService")
@@ -20256,7 +20409,7 @@ utils.buildArraylist = function()
             end)
         end
 
-        state.loop = runService.RenderStepped:Connect(step)
+        state.loop = frameTask(step, 30)
     end
 
     local function stop()
@@ -20449,6 +20602,79 @@ saveManager:SetFolder("Celestial ScriptHub/SAKTKIA51")
 saveManager:SetSubFolder("Classic Mode")
 saveManager:BuildConfigSection(tabs.uiSettings, "folder-cog")
 themeManager:ApplyToTab(tabs.uiSettings, "paintbrush")
+
+-- [UI Settings / Persistence] Config validation
+-- Dropdown:SetValue does not check DisabledValues.
+do
+    local function validateConfigValues()
+        if library.Unloaded then
+            return
+        end
+
+        local fixed = {}
+
+        for _, option in pairs(options) do
+            local disabledList = type(option) == "table" and option.Type == "Dropdown" and option.DisabledValues
+
+            if type(disabledList) == "table" and #disabledList > 0 then
+                local disabled = {}
+
+                for _, value in ipairs(disabledList) do
+                    disabled[value] = true
+                end
+
+                if option.Multi then
+                    local keep, removed = {}, false
+
+                    for value, active in pairs(option.Value) do
+                        if disabled[value] then
+                            removed = true
+                        else
+                            keep[value] = active
+                        end
+                    end
+
+                    if removed then
+                        option:SetValue(keep)
+                        table.insert(fixed, tostring(option.Text))
+                    end
+                elseif option.Value ~= nil and disabled[option.Value] then
+                    local unavailable = option.Value
+
+                    for _, candidate in ipairs(option.Values) do
+                        if type(candidate) == "string" and not disabled[candidate] then
+                            pcall(option.SetValue, option, candidate)
+
+                            if not disabled[option.Value] then
+                                table.insert(fixed, tostring(option.Text) .. " (" .. tostring(unavailable) .. " \u{2192} " .. candidate .. ")")
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        if #fixed > 0 then
+            notify("Warning", "Config", "These saved options are unavailable right now and were changed: " .. utils.bold(table.concat(fixed, ", ")) .. ".", 8)
+        end
+    end
+
+    local originalLoadJSON = saveManager.LoadJSON
+
+    saveManager.LoadJSON = function(self, content)
+        local success, message = originalLoadJSON(self, content)
+
+        if success then
+            -- Once after the deferred element loads, and once more for handlers that defer again themselves.
+            task.defer(validateConfigValues)
+            task.delay(0.5, validateConfigValues)
+        end
+
+        return success, message
+    end
+end
+
 saveManager:LoadAutoloadConfig()
 
 -- [Home / Serverhop] Continue a filtered Serverhop now that the whole UI exists
